@@ -9,7 +9,7 @@ class ReadPosition {
   final int bookId;
   final int chapterId;
   final int sortNum;
-  final double scrollPosition; // 0.0-1.0 滚动百分比
+  final String xPath; // 精确 DOM 定位或旧格式
   final String? title; // 书籍标题
   final String? cover; // 封面 URL
   final String? chapterTitle; // 新增：章节标题
@@ -19,7 +19,7 @@ class ReadPosition {
     required this.bookId,
     required this.chapterId,
     required this.sortNum,
-    required this.scrollPosition,
+    required this.xPath,
     this.title,
     this.cover,
     this.chapterTitle,
@@ -30,7 +30,7 @@ class ReadPosition {
     'bookId': bookId,
     'chapterId': chapterId,
     'sortNum': sortNum,
-    'scrollPosition': scrollPosition,
+    'xPath': xPath,
     'title': title,
     'cover': cover,
     'chapterTitle': chapterTitle,
@@ -42,7 +42,7 @@ class ReadPosition {
       bookId: json['bookId'] as int? ?? 0,
       chapterId: json['chapterId'] as int? ?? 0,
       sortNum: json['sortNum'] as int? ?? 1,
-      scrollPosition: (json['scrollPosition'] as num?)?.toDouble() ?? 0.0,
+      xPath: json['xPath'] as String? ?? '//*',
       title: json['title'] as String?,
       cover: json['cover'] as String?,
       chapterTitle: json['chapterTitle'] as String?,
@@ -100,11 +100,11 @@ class ReadingProgressService {
   }
 
   /// 本地保存滚动百分比
-  Future<void> saveLocalScrollPosition({
+  Future<void> saveLocalPosition({
     required int bookId,
     required int chapterId,
     required int sortNum,
-    required double scrollPosition,
+    required String xPath,
     String? title, // 新增：书籍标题
     String? cover, // 新增：封面 URL
     String? chapterTitle, // 新增：章节标题
@@ -121,16 +121,16 @@ class ReadingProgressService {
       bookId: bookId,
       chapterId: chapterId,
       sortNum: sortNum,
-      scrollPosition: scrollPosition,
+      xPath: xPath,
       title: title,
       cover: cover,
       chapterTitle: chapterTitle,
       updatedAt: timestamp,
     );
 
-    // 格式: chapterId|sortNum|scrollPosition|updatedAt|title|cover|chapterTitle
+    // 格式: chapterId|sortNum|xPath|updatedAt|title|cover|chapterTitle
     final data =
-        '${position.chapterId}|${position.sortNum}|${position.scrollPosition}|${timestamp.toIso8601String()}|${title ?? ''}|${cover ?? ''}|${chapterTitle ?? ''}';
+        '${position.chapterId}|${position.sortNum}|${position.xPath}|${timestamp.toIso8601String()}|${title ?? ''}|${cover ?? ''}|${chapterTitle ?? ''}';
 
     await prefs.setString(key, data);
     // 更新最后阅读书籍索引，用于极速定位
@@ -192,7 +192,7 @@ class ReadingProgressService {
     if (!changed) return;
 
     // 保留进度与 updatedAt（parts[0..3]），仅更新元数据字段
-    // 格式: chapterId|sortNum|scrollPosition|updatedAt|title|cover|chapterTitle
+    // 格式: chapterId|sortNum|xPath|updatedAt|title|cover|chapterTitle
     final rebuilt =
         '${parts[0]}|${parts[1]}|${parts[2]}|${parts[3]}|$newTitle|$newCover|$newChapterTitle';
 
@@ -201,7 +201,7 @@ class ReadingProgressService {
   }
 
   /// 获取本地滚动位置
-  Future<ReadPosition?> getLocalScrollPosition(int bookId) async {
+  Future<ReadPosition?> getLocalPosition(int bookId) async {
     final prefs = await SharedPreferences.getInstance();
     final key = 'read_pos_$bookId';
     final data = prefs.getString(key);
@@ -220,7 +220,7 @@ class ReadingProgressService {
           bookId: bookId,
           chapterId: int.parse(parts[0]),
           sortNum: int.parse(parts[1]),
-          scrollPosition: double.parse(parts[2]),
+          xPath: parts[2],
           updatedAt: parts.length >= 4 ? DateTime.tryParse(parts[3]) : null,
           title:
               parts.length >= 5 ? (parts[4].isEmpty ? null : parts[4]) : null,
@@ -230,7 +230,7 @@ class ReadingProgressService {
               parts.length >= 7 ? (parts[6].isEmpty ? null : parts[6]) : null,
         );
         developer.log(
-          'LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, scroll=${(pos.scrollPosition * 100).toStringAsFixed(1)}%, title=${pos.title}, chTitle=${pos.chapterTitle}',
+          'LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, xPath=${pos.xPath}, title=${pos.title}, chTitle=${pos.chapterTitle}',
           name: 'POSITION',
         );
         return pos;
@@ -249,7 +249,7 @@ class ReadingProgressService {
     // 1. 优先尝试极速索引 (O(1))
     final lastReadId = prefs.getInt('last_read_book_id');
     if (lastReadId != null) {
-      final pos = await getLocalScrollPosition(lastReadId);
+      final pos = await getLocalPosition(lastReadId);
       if (pos != null) return pos;
     }
 
@@ -266,7 +266,7 @@ class ReadingProgressService {
       try {
         final parts = data.split('|');
         if (parts.length >= 4) {
-          // chapterId|sortNum|scrollPosition|updatedAt
+          // chapterId|sortNum|xPath|updatedAt
           final updatedAt = DateTime.parse(parts[3]);
 
           if (lastTime == null || updatedAt.isAfter(lastTime)) {
@@ -278,7 +278,7 @@ class ReadingProgressService {
                 bookId: bookId,
                 chapterId: int.parse(parts[0]),
                 sortNum: int.parse(parts[1]),
-                scrollPosition: double.parse(parts[2]),
+                xPath: parts[2],
                 updatedAt: updatedAt,
                 title:
                     parts.length >= 5

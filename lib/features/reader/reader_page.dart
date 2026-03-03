@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:developer' as developer;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
@@ -23,8 +24,20 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/widgets/universal_glass_panel.dart';
+import 'package:visibility_detector/visibility_detector.dart';
+import 'package:novella/core/utils/xpath_utils.dart';
 
 enum _ReaderLayoutMode { standard, immersive, center }
+
+class _FootnoteProcessingResult {
+  final String html;
+  final Map<String, String> notesById;
+
+  const _FootnoteProcessingResult({
+    required this.html,
+    required this.notesById,
+  });
+}
 
 class _ReaderLayoutInfo {
   final _ReaderLayoutMode mode;
@@ -36,6 +49,41 @@ class _ReaderLayoutInfo {
     this.startsWithImage = false,
     this.endsWithImage = false,
   });
+}
+
+class _XPathWidgetFactory extends WidgetFactory {
+  final void Function(String xPath, VisibilityInfo info) onVisibilityChanged;
+
+  _XPathWidgetFactory(this.onVisibilityChanged);
+
+  @override
+  void parse(BuildTree tree) {
+    super.parse(tree);
+
+    final rawXPath = tree.element.attributes['data-xpath'];
+    if (rawXPath != null) {
+      final cleanXPath = XPathUtils.cleanXPath(rawXPath);
+      tree.register(
+        BuildOp(
+          onRenderedChildren: (tree, children) {
+            final built = buildColumnPlaceholder(tree, children);
+            if (built == null) return null;
+
+            return built.wrapWith(
+              (context, child) => VisibilityDetector(
+                key: Key('xpath_$cleanXPath'),
+                onVisibilityChanged: (info) {
+                  // 回传给业务层时传递原始自带 //*/ 的 xpath 保证上传正常
+                  onVisibilityChanged(rawXPath, info);
+                },
+                child: child,
+              ),
+            );
+          },
+        ),
+      );
+    }
+  }
 }
 
 class ReaderPage extends ConsumerStatefulWidget {
@@ -85,6 +133,24 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   // 缓存位置用于销毁时同步保存
   double _lastScrollPercent = 0.0;
 
+  // 保存当前可见节点的 XPath 和偏移量
+  final Map<String, VisibilityInfo> _visibleElements = {};
+  String _lastTopVisibleXPath = '//*';
+
+  // 图片宽高比缓存，key: srcUrl, value: 宽高比 (width/height)
+  // 用于懒加载中维持插画的绝对原比例高度占位
+  final Map<String, double> _imageAspectRatioCache = {};
+
+  // 图片懒加载记录：记录某个 url 是否曾经进入过视口
+  final Set<String> _shownImages = {};
+
+  SharedPreferences? _prefs;
+
+  // 预处理后的章节 HTML（脚注/注释已抽离隐藏）
+  String? _renderedChapterHtml;
+  // 脚注/注释内容映射：id -> innerHtml
+  Map<String, String> _footnoteNotesById = const {};
+
   // ColorScheme 静态缓存
   static final Map<String, ColorScheme> _schemeCache = {};
 
@@ -119,6 +185,27 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         .backgroundColor;
   }
 
+  void _onVisibilityChanged(String xPath, VisibilityInfo info) {
+    if (info.visibleFraction == 0) {
+      _visibleElements.remove(xPath);
+    } else {
+      _visibleElements[xPath] = info;
+    }
+
+    if (_visibleElements.isNotEmpty) {
+      var entries = _visibleElements.entries.toList();
+      entries.sort(
+        (a, b) =>
+            a.value.visibleBounds.top.compareTo(b.value.visibleBounds.top),
+      );
+      _lastTopVisibleXPath = entries.first.key;
+    }
+  }
+
+  String _getTopVisibleXPath() {
+    return _lastTopVisibleXPath;
+  }
+
   /// 获取当前阅读文字色
   Color _getReaderTextColor(AppSettings settings) {
     if (settings.readerUseThemeBackground) {
@@ -141,6 +228,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // 初始化 SharedPreferences 及图片比例缓存
+    SharedPreferences.getInstance().then((prefs) {
+      _prefs = prefs;
+      if (mounted) setState(() {});
+    });
 
     // 初始化动画控制器，默认展开状态 (value: 1.0)
     _barsAnimController = AnimationController(
@@ -254,22 +347,26 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   @override
   void dispose() {
+    // 关闭可能残留的注释 Popover
+    _FootnoteAnchor.dismissCurrent();
+
     _barsAnimController.dispose();
     _savePositionTimer?.cancel();
     _batteryStateSubscription?.cancel();
     // 结束阅读时长记录
     _readingTimeService.endSession();
     // 销毁前同步保存位置
-    if (_chapter != null && _lastScrollPercent > 0) {
+    if (_chapter != null) {
+      final finalXPath = _getTopVisibleXPath();
       developer.log(
-        'DISPOSE: Saving cached position $_lastScrollPercent',
+        'DISPOSE: Saving cached position $finalXPath',
         name: 'POSITION',
       );
-      _progressService.saveLocalScrollPosition(
+      _progressService.saveLocalPosition(
         bookId: widget.bid,
         chapterId: _chapter!.id,
         sortNum: _chapter!.sortNum,
-        scrollPosition: _lastScrollPercent,
+        xPath: finalXPath,
         title: widget.bookTitle,
         cover: widget.coverUrl,
         chapterTitle: _chapter?.title,
@@ -301,6 +398,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
+
+    // 滚动时关闭注释 Popover，避免悬浮层与内容位置脱节
+    _FootnoteAnchor.dismissCurrent();
+
     final offset = _scrollController.offset;
     final maxScroll = _scrollController.position.maxScrollExtent;
 
@@ -336,33 +437,27 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   Future<void> _saveCurrentPosition() async {
     if (_chapter == null || !_scrollController.hasClients) return;
 
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
-    final scrollPercent = maxScroll > 0 ? currentScroll / maxScroll : 0.0;
+    final currentXPath = _getTopVisibleXPath();
 
     // 本地保存以便快速恢复
-    await _progressService.saveLocalScrollPosition(
+    await _progressService.saveLocalPosition(
       bookId: widget.bid,
       chapterId: _chapter!.id,
       sortNum: _chapter!.sortNum,
-      scrollPosition: scrollPercent,
+      xPath: currentXPath,
       title: widget.bookTitle,
       cover: widget.coverUrl,
       chapterTitle: _chapter?.title,
     );
 
-    // 同步服务端（XPath 格式存储百分比）
-    // 记录用户所在章节
-    // 格式 "scroll:{percentage}"
+    // 记录用户所在章节（基于 XPath 的确切定位）
     await _progressService.saveReadPosition(
       bookId: widget.bid,
       chapterId: _chapter!.id,
-      xPath: 'scroll:${scrollPercent.toStringAsFixed(4)}',
+      xPath: currentXPath,
     );
 
-    _logger.info(
-      'Saved position: ch${_chapter!.sortNum} @ ${(scrollPercent * 100).toStringAsFixed(1)}%',
-    );
+    _logger.info('Saved position: ch${_chapter!.sortNum} @ $currentXPath');
   }
 
   /// 内容加载后恢复进度
@@ -370,18 +465,25 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     if (_initialScrollDone) return;
     _initialScrollDone = true;
 
-    final position = await _progressService.getLocalScrollPosition(widget.bid);
+    final position = await _progressService.getLocalPosition(widget.bid);
 
     _logger.info(
       'Restoring position check: saved=${position?.sortNum}, current=${_chapter?.sortNum}, '
-      'scrollPos=${position?.scrollPosition.toStringAsFixed(3)}, hasClients=${_scrollController.hasClients}',
+      'xPath=${position?.xPath}, hasClients=${_scrollController.hasClients}',
     );
 
     if (position != null &&
         position.sortNum == _chapter?.sortNum &&
         _scrollController.hasClients) {
-      // 使用帧回调递归等待布局完成
-      await _waitForLayoutAndJump(position.scrollPosition);
+      if (position.xPath.startsWith('scroll:')) {
+        double targetPos =
+            double.tryParse(position.xPath.replaceAll('scroll:', '')) ?? 0.0;
+        await _waitForLayoutAndJump(targetPos);
+      } else {
+        // 先假设这就是最终状态以防还没渲染就退出
+        _lastTopVisibleXPath = position.xPath;
+        await _waitForLayoutAndXPathJump(position.xPath);
+      }
     } else if (position != null) {
       _logger.info(
         'Position NOT restored: sortNum mismatch or no scroll clients. '
@@ -390,11 +492,71 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     }
   }
 
-  /// 等待布局完成后跳转到指定位置
-  /// 使用帧回调递归，更符合 Flutter 响应式设计
-  Future<void> _waitForLayoutAndJump(double scrollPercent) async {
-    const maxFrames = 60; // 最多等待 60 帧 (约 1 秒 @ 60fps)
+  /// 按 XPath 查询并滚动到指定可见节点
+  Future<void> _waitForLayoutAndXPathJump(String targetXPath) async {
+    const maxFrames = 60; // 最多尝试的帧数
     int frameCount = 0;
+
+    final completer = Completer<void>();
+    // 清洗收到的目标 XPath 防止前缀多端差异无法命中 Key
+    final cleanTargetXPath = XPathUtils.cleanXPath(targetXPath);
+
+    void checkLayout(Duration _) {
+      if (!mounted || !_scrollController.hasClients) {
+        completer.complete();
+        return;
+      }
+
+      // 寻找对应的 xpath key 环境
+      final key = Key('xpath_$cleanTargetXPath');
+      final element = _findChildElementByKey(context as Element, key);
+
+      if (element != null) {
+        final box = element.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize) {
+          Scrollable.ensureVisible(element, duration: Duration.zero).then((_) {
+            _logger.info('XPath Target reached on matched node.');
+            if (!completer.isCompleted) completer.complete();
+          });
+          return;
+        }
+      }
+
+      final maxScroll = _scrollController.position.maxScrollExtent;
+
+      if (maxScroll <= 0 || frameCount >= maxFrames) {
+        completer.complete();
+        return;
+      }
+
+      frameCount++;
+      WidgetsBinding.instance.addPostFrameCallback(checkLayout);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback(checkLayout);
+    return completer.future;
+  }
+
+  /// 在整个构建树下级递归寻找匹配的 RenderObjectElement
+  Element? _findChildElementByKey(Element parent, Key key) {
+    Element? found;
+    parent.visitChildren((child) {
+      if (found != null) return;
+      if (child.widget.key == key) {
+        found = child;
+        return;
+      }
+      found = _findChildElementByKey(child, key);
+    });
+    return found;
+  }
+
+  /// 等待布局完成后跳转到指定比例（降级老旧百分比）
+  /// 采用“迭代逼近跳转算法”解决 SliverList 动态高度估计带来的百分比漂移
+  Future<void> _waitForLayoutAndJump(double targetPercent) async {
+    const maxFrames = 60; // 最多尝试的帧数
+    int frameCount = 0;
+    const double tolerance = 0.005; // 允许的误差范围 (0.5%)
 
     final completer = Completer<void>();
 
@@ -405,32 +567,44 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       }
 
       final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.offset;
+      final currentPercent = maxScroll > 0 ? currentScroll / maxScroll : 0.0;
 
-      // 布局完成：maxScrollExtent > 0
-      // 或短内容：已经尝试了足够多帧，内容确实很短
-      if (maxScroll > 0 || frameCount >= maxFrames) {
-        if (maxScroll > 0 && scrollPercent > 0) {
-          final targetScroll = scrollPercent * maxScroll;
-          _logger.info(
-            'Jumping to: target=$targetScroll, max=$maxScroll, '
-            'percent=${(scrollPercent * 100).toStringAsFixed(1)}% (frame $frameCount)',
-          );
-          _scrollController.jumpTo(targetScroll);
-        } else if (maxScroll == 0) {
-          _logger.info(
-            'Content too short for scrolling (maxScroll=0), position restore skipped',
-          );
-        }
+      // 如果内容过短无需滚动，或者迭代次数用尽
+      if (maxScroll <= 0 || frameCount >= maxFrames) {
         completer.complete();
         return;
       }
 
-      // 继续等待下一帧
+      // 评估误差：计算目前所在百分比与目标百分比的差值
+      final error = (currentPercent - targetPercent).abs();
+
+      // 如果误差小于容忍度，或这已经是尝试的最后一帧，完成定位
+      if (error <= tolerance) {
+        _logger.info(
+          'Target reached iteratively. frame: $frameCount, '
+          'error: ${(error * 100).toStringAsFixed(2)}%, '
+          'maxScroll: $maxScroll',
+        );
+        completer.complete();
+        return;
+      }
+
+      // 未达到容忍度，基于当前的估算 maxScroll 继续逼近跳转
+      final targetScroll = targetPercent * maxScroll;
+      _logger.info(
+        'Approximating jump: targetScroll=$targetScroll, current_percent=${(currentPercent * 100).toStringAsFixed(1)}%, '
+        'target=${(targetPercent * 100).toStringAsFixed(1)}% (frame $frameCount)',
+      );
+
+      _scrollController.jumpTo(targetScroll);
+
+      // 触发下一次帧回调继续验证（由于上一行刚改变了 offset，渲染管线会在下一帧暴露新的 maxScrollExtent）
       frameCount++;
       WidgetsBinding.instance.addPostFrameCallback(checkLayout);
     }
 
-    // 开始第一次检查
+    // 启动迭代循环
     WidgetsBinding.instance.addPostFrameCallback(checkLayout);
 
     return completer.future;
@@ -451,17 +625,31 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       _loading = true;
       _error = null;
       _initialScrollDone = false;
+
+      // 重置渲染内容与脚注缓存，避免短暂显示上一章的注释映射
+      _renderedChapterHtml = null;
+      _footnoteNotesById = const {};
     });
 
     try {
       final settings = ref.read(settingsProvider);
 
-      // 1. 获取内容
-      final chapter = await _chapterService.getNovelContent(
+      // 1. 获取内容 & 同步校验最新云端进度（双管齐下）
+      // 由于用户可能在详情页刷新完前极速点击，这里做最后一道防线
+      final contentFuture = _chapterService.getNovelContent(
         bid,
         sortNum,
         convert: settings.convertType == 'none' ? null : settings.convertType,
       );
+
+      final bookInfoFuture = _bookService
+          .getBookInfo(bid)
+          .then<BookInfo?>((v) => v)
+          .catchError((_) => null);
+
+      final results = await Future.wait([contentFuture, bookInfoFuture]);
+      final chapter = results[0] as ChapterContent;
+      final info = results[1] as BookInfo?;
 
       // 打断检查：如果有新请求，放弃当前结果
       if (currentVersion != _loadVersion) {
@@ -469,6 +657,59 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           'Load interrupted, version $currentVersion != $_loadVersion',
         );
         return;
+      }
+
+      // 进度极速防伪核对
+      if (info != null &&
+          info.serverReadPosition != null &&
+          info.serverReadPosition!.chapterId != null) {
+        final serverChapterId = info.serverReadPosition!.chapterId!;
+        int? serverSortNum;
+        for (int i = 0; i < info.chapters.length; i++) {
+          if (info.chapters[i].id == serverChapterId) {
+            serverSortNum = i + 1;
+            break;
+          }
+        }
+
+        final serverXPath = info.serverReadPosition!.position ?? '//*';
+
+        if (serverSortNum != null) {
+          final localPos = await _progressService.getLocalPosition(bid);
+          bool shouldUseServer = false;
+
+          if (localPos != null && localPos.sortNum == serverSortNum) {
+            if (serverXPath != '//*') shouldUseServer = true;
+          } else {
+            shouldUseServer = true;
+          }
+
+          if (shouldUseServer) {
+            _logger.info(
+              'ReaderPage Speed Check: overriding with server pos: $serverSortNum @ $serverXPath',
+            );
+            await _progressService.saveLocalPosition(
+              bookId: bid,
+              chapterId: serverChapterId,
+              sortNum: serverSortNum,
+              xPath: serverXPath,
+            );
+
+            // 如果连章节号都变了，立刻重定向并终止本次旧章加载
+            if (serverSortNum != sortNum) {
+              _logger.info(
+                'ReaderPage Speed Check: chapter changed to $serverSortNum, redirecting...',
+              );
+              if (mounted) {
+                setState(() {
+                  _targetSortNum = serverSortNum!;
+                });
+                _loadChapter(bid, serverSortNum);
+              }
+              return;
+            }
+          }
+        }
       }
 
       _logger.info('Chapter loaded: ${chapter.title}');
@@ -497,13 +738,23 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       }
 
       if (mounted && currentVersion == _loadVersion) {
+        // 3. 预处理脚注/注释（对标 Web：隐藏原注释节点 + 记录内容 + 禁用默认跳转）
+        final processed = _processFootnotes(chapter.content);
+        // 赋予 DOM 节点 xPath 以便挂载拦截器观测可视坐标
+        final injectedHtml = XPathUtils.injectXPathAttributes(processed.html);
+
         setState(() {
           _chapter = chapter;
           // 确保目标章节号与实际加载章节一致（使用请求的 sortNum，而非返回的）
           _targetSortNum = sortNum;
           _fontFamily = family; // 字体加载逻辑
+          _renderedChapterHtml = injectedHtml;
+          _footnoteNotesById = processed.notesById;
           _loading = false;
           _lastScrollPercent = 0.0;
+          _visibleElements.clear();
+          _shownImages.clear(); // 新层清空曾经看过的图
+          _lastTopVisibleXPath = '//*';
         });
 
         // 构建后恢复进度
@@ -525,11 +776,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               );
             } else {
               // 布局未完成但章节已加载，至少同步章节信息
-              await _progressService.saveLocalScrollPosition(
+              await _progressService.saveLocalPosition(
                 bookId: widget.bid,
                 chapterId: _chapter!.id,
                 sortNum: _chapter!.sortNum,
-                scrollPosition: 0.0,
+                xPath: 'scroll:0.0000',
               );
               await _progressService.saveReadPosition(
                 bookId: widget.bid,
@@ -753,10 +1004,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final readerBackgroundColor = _getReaderBackgroundColor(settings);
     final readerTextColor = _getReaderTextColor(settings);
 
+    final chapterHtml = _renderedChapterHtml ?? _chapter?.content ?? '';
+
     // 分析布局模式
     final layoutInfo =
-        _chapter != null
-            ? _analyzeLayout(_chapter!.content)
+        chapterHtml.isNotEmpty
+            ? _analyzeLayout(chapterHtml)
             : const _ReaderLayoutInfo(_ReaderLayoutMode.standard);
 
     // 基础 padding 计算
@@ -822,8 +1075,28 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         'center',
       };
       if (textTags.contains(element.localName)) {
-        // 如果包含图片，则认为是插图容器，取消默认 padding
-        if (element.getElementsByTagName('img').isNotEmpty) {
+        bool isFootnoteMarkerImage(dom.Element img) {
+          // 多看脚注的小图标通常为 <img class="footnote" .../>
+          if (img.classes.contains('footnote')) return true;
+
+          // 常见结构：<a.duokan-footnote><sup><img .../></sup></a>
+          // 若该 img 位于 a.duokan-footnote 内，则视为脚注 marker，不应触发“插图段落”样式。
+          dom.Element? p = img.parent;
+          while (p != null) {
+            if (p.localName == 'a' && p.classes.contains('duokan-footnote')) {
+              return true;
+            }
+            p = p.parent;
+          }
+          return false;
+        }
+
+        final hasIllustrationImage = element
+            .getElementsByTagName('img')
+            .any((img) => !isFootnoteMarkerImage(img));
+
+        // 如果包含插图图片，则认为是插图容器，取消默认 padding
+        if (hasIllustrationImage) {
           return {
             'margin': '0',
             'padding': '0',
@@ -856,8 +1129,37 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
     // 通用 Widget 构建器 (图片缓存)
     Widget? customWidgetBuilder(dom.Element element) {
+      // 0) 脚注/注释触发点（对标 Web: a.duokan-footnote）
+      // Web 用 <a.duokan-footnote href="#noteX"><sup><img class="footnote" .../></sup></a>
+      // App 直接拦截 <a.duokan-footnote>，替换为 Flutter 原生图标 + Popover，避免 img 加载失败。
+      if (element.localName == 'a' &&
+          element.classes.contains('duokan-footnote')) {
+        final rawId =
+            element.attributes['data-footnote-id'] ??
+            (element.attributes['href']?.startsWith('#') == true
+                ? element.attributes['href']!.substring(1)
+                : null);
+
+        final footnoteId = (rawId ?? '').trim();
+        final noteHtml =
+            footnoteId.isNotEmpty ? _footnoteNotesById[footnoteId] : null;
+
+        return _FootnoteAnchor(
+          key: ValueKey('footnote_${footnoteId}_${_chapter?.id ?? 0}'),
+          footnoteId: footnoteId,
+          noteHtml: noteHtml,
+          baseFontSize: settings.fontSize,
+          fontFamily: _fontFamily,
+          readerBackgroundColor: readerBackgroundColor,
+          readerTextColor: readerTextColor,
+        );
+      }
+
       if (element.localName == 'img') {
         final src = element.attributes['src'];
+
+        // 脚注图标已由上面的 a.duokan-footnote 拦截；这里不再单独处理 img.footnote。
+
         if (src != null && src.isNotEmpty) {
           // 检查是否在浮动容器中 (向上查找 3 层)
           bool isFloating = false;
@@ -888,42 +1190,127 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             current = current.parent;
           }
 
-          final imageWidget = CachedNetworkImage(
-            imageUrl: src,
-            memCacheWidth: 1080, // 阅读页插画限定在主流屏幕物理宽度，防止解析4K竖屏超长图导致 OOM
-            placeholder:
-                (context, url) => Container(
-                  height: 200,
-                  color: readerTextColor.withValues(alpha: 0.05),
-                  child: const Center(child: M3ELoadingIndicator(size: 20)),
-                ),
-            errorWidget:
-                (context, url, error) => Container(
-                  height: 120,
-                  color: readerTextColor.withValues(alpha: 0.05),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.broken_image,
-                        color: readerTextColor.withValues(alpha: 0.3),
-                        size: 40,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '加载失败',
-                        style: TextStyle(
-                          color: readerTextColor.withValues(alpha: 0.5),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            fit: BoxFit.contain,
-            // 如果是浮动元素，强制限制宽度 (避免过大)
-            width: isFloating ? null : double.infinity,
+          final cachedRatio =
+              _prefs?.getDouble('image_ratio_$src') ??
+              _imageAspectRatioCache[src];
+
+          // 为了保持无缝图片加载而不丢失懒加载特性
+          // 如果还没有此图片的缓存比例，用 Image 监听其加载，并在获得宽高后回填
+          if (cachedRatio == null) {
+            final imageProvider = CachedNetworkImageProvider(src);
+            imageProvider
+                .resolve(const ImageConfiguration())
+                .addListener(
+                  ImageStreamListener((info, _) {
+                    if (!mounted) return;
+                    final width = info.image.width.toDouble();
+                    final height = info.image.height.toDouble();
+                    if (height > 0) {
+                      final ratio = width / height;
+                      _imageAspectRatioCache[src] = ratio;
+                      _prefs?.setDouble('image_ratio_$src', ratio);
+                      // 只有没被包裹 AspectRatio 的时候才抛出刷新，以让占位即刻拥有真实高度
+                      if (mounted) setState(() {});
+                    }
+                  }),
+                );
+          }
+
+          Widget buildPlaceholder({required bool isError}) {
+            if (isFloating) {
+              // 浮动小图（头像/角标等）不使用大占位，避免挤占过多空间
+              final height = isError ? 56.0 : 72.0;
+              return Container(
+                height: height,
+                width: height,
+                color: readerTextColor.withValues(alpha: 0.05),
+                alignment: Alignment.center,
+                child:
+                    isError
+                        ? Icon(
+                          Icons.broken_image,
+                          color: readerTextColor.withValues(alpha: 0.3),
+                          size: 22,
+                        )
+                        : const M3ELoadingIndicator(size: 18),
+              );
+            }
+
+            // 如果已经有了真实比例缓存，我们就用真实比例
+            // 如果尚无真实比例，则暂时不使用外包裹高度防止拉伸（因为 ImageStream 正在后台加载并会在不久后触发 setState）
+            Widget indicator = Container(
+              color: readerTextColor.withValues(alpha: 0.05),
+              alignment: Alignment.center,
+              child:
+                  isError
+                      ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.broken_image,
+                            color: readerTextColor.withValues(alpha: 0.3),
+                            size: 40,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '加载失败',
+                            style: TextStyle(
+                              color: readerTextColor.withValues(alpha: 0.5),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      )
+                      : const M3ELoadingIndicator(size: 20),
+            );
+
+            if (cachedRatio != null) {
+              return AspectRatio(aspectRatio: cachedRatio, child: indicator);
+            }
+            // 返回一个较为中庸的通用保底
+            return AspectRatio(aspectRatio: 1 / 1.6, child: indicator);
+          }
+
+          Widget imageWidget = StatefulBuilder(
+            builder: (context, setState) {
+              final isShown = _shownImages.contains(src);
+
+              // 当未显示时，仅返回一个等大小的骨架侦测器，以拦截真正的下载
+              if (!isShown) {
+                return VisibilityDetector(
+                  key: Key('lazy_img_$src'),
+                  onVisibilityChanged: (info) {
+                    if (info.visibleFraction > 0) {
+                      _shownImages.add(src);
+                      setState(() {});
+                    }
+                  },
+                  child: buildPlaceholder(isError: false),
+                );
+              }
+
+              // 显示之后，返回原本的网络图片容器
+              return CachedNetworkImage(
+                imageUrl: src,
+                memCacheWidth: 1080, // 阅读页插画限定在主流屏幕物理宽度，防止解析4K竖屏超长图导致 OOM
+                placeholder: (context, url) => buildPlaceholder(isError: false),
+                errorWidget:
+                    (context, url, error) => buildPlaceholder(isError: true),
+                fit: BoxFit.contain,
+                // 如果是浮动元素，强制限制宽度 (避免过大)
+                width: isFloating ? null : double.infinity,
+              );
+            },
           );
+
+          // 核心方案：如果在缓存中取到了真实比例，用 AspectRatio 死死地锁住图片
+          // 这能保证即便这部分并未进入视图而被懒加载剔除骨架，SliverList 的估算也能精准无比！
+          if (cachedRatio != null && !isFloating) {
+            imageWidget = AspectRatio(
+              aspectRatio: cachedRatio,
+              child: imageWidget,
+            );
+          }
 
           if (isFloating) {
             // 针对浮动图片的专门处理：
@@ -949,56 +1336,39 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
     Widget content;
 
-    if (layoutInfo.mode == _ReaderLayoutMode.center) {
-      // 居中模式：内容短，使用默认 Column 模式 + SingleChildScrollView
-      content = LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            controller: _scrollController,
-            padding: EdgeInsets.zero,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Center(
-                child: HtmlWidget(
-                  _chapter!.content,
-                  textStyle: TextStyle(
-                    fontFamily: _fontFamily,
-                    fontSize: settings.fontSize,
-                    height: 1.6,
-                    color: readerTextColor,
-                  ),
-                  customStylesBuilder: customStylesBuilder,
-                  customWidgetBuilder: customWidgetBuilder,
-                  // 默认 renderMode: RenderMode.column
+    content = LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          controller: _scrollController,
+          padding:
+              layoutInfo.mode == _ReaderLayoutMode.center
+                  ? EdgeInsets.zero
+                  : padding,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Align(
+              alignment:
+                  layoutInfo.mode == _ReaderLayoutMode.center
+                      ? Alignment.center
+                      : Alignment.topCenter,
+              child: HtmlWidget(
+                chapterHtml,
+                factoryBuilder: () => _XPathWidgetFactory(_onVisibilityChanged),
+                textStyle: TextStyle(
+                  fontFamily: _fontFamily,
+                  fontSize: settings.fontSize,
+                  height: 1.6,
+                  color: readerTextColor,
                 ),
+                customStylesBuilder: customStylesBuilder,
+                customWidgetBuilder: customWidgetBuilder,
+                // Omit renderMode to default to RenderMode.column (Which resolves the bug!)
               ),
-            ),
-          );
-        },
-      );
-    } else {
-      // 标准/沉浸模式：使用 CustomScrollView + SliverList 模式 (懒加载)
-      content = CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          SliverPadding(
-            padding: padding,
-            sliver: HtmlWidget(
-              _chapter!.content,
-              renderMode: RenderMode.sliverList,
-              textStyle: TextStyle(
-                fontFamily: _fontFamily,
-                fontSize: settings.fontSize,
-                height: 1.6,
-                color: readerTextColor,
-              ),
-              customStylesBuilder: customStylesBuilder,
-              customWidgetBuilder: customWidgetBuilder,
             ),
           ),
-        ],
-      );
-    }
+        );
+      },
+    );
 
     // 包裹背景色容器
     return Container(
@@ -1011,6 +1381,222 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         child: content,
       ),
     );
+  }
+
+  /// 预处理章节 HTML：抽离脚注/注释内容并从正文中移除，避免注释直接跟在文字后面。
+  ///
+  /// 对标 Web 端：
+  /// - 遍历 `.duokan-footnote` 获取 href 的 id
+  /// - 从 DOM 中找到对应 id 的注释节点并隐藏/移除，同时缓存其 innerHTML
+  /// - 禁用默认跳转（移除 href），后续由 Flutter 的 Popover 交互接管
+  _FootnoteProcessingResult _processFootnotes(String html) {
+    if (html.isEmpty) {
+      return const _FootnoteProcessingResult(html: '', notesById: {});
+    }
+
+    try {
+      final doc = html_parser.parse(html);
+
+      final Map<String, String> notesById = {};
+
+      String shortenForLog(String input, {int max = 420}) {
+        final normalized =
+            input
+                .replaceAll('\u200B', '')
+                .replaceAll('\r', '')
+                .replaceAll('\n', ' ')
+                .replaceAll(RegExp(r'\s+'), ' ')
+                .trim();
+        if (normalized.length <= max) return normalized;
+        return '${normalized.substring(0, max)}…';
+      }
+
+      String? findSnippet(String raw, String token, {int radius = 140}) {
+        final idx = raw.indexOf(token);
+        if (idx < 0) return null;
+        final start = (idx - radius).clamp(0, raw.length).toInt();
+        final end = (idx + token.length + radius).clamp(0, raw.length).toInt();
+        return raw.substring(start, end);
+      }
+
+      // 说明（对标 Web）：
+      // Web 直接用 `document.getElementById(id)` 获取注释节点并读取 `innerHTML`。
+      // 但服务端内容偶尔会出现“重复 id / 嵌套 id”（例如：
+      // <li id="x"><a id="x">到</a>译注：日本的高龄驾驶标志</li>）。
+      // 浏览器在重复 id 情况下会返回文档序中更靠前（通常是外层 li）的元素；
+      // 而 `package:html` 的 `getElementById` 在重复 id 时可能返回内层 a，导致只取到“到”。
+      //
+      // 为了对齐 Web 行为，这里手动遍历 DOM（文档序）建立 id/name 索引，并优先选择“文本最多”的元素。
+
+      String normalizeText(String text) {
+        // 去掉我们注入的零宽空格，避免干扰长度判断
+        return text.replaceAll('\u200B', '').trim();
+      }
+
+      int textScore(dom.Element el) {
+        return normalizeText(el.text).length;
+      }
+
+      String? attrValue(dom.Element el, String nameLower) {
+        for (final entry in el.attributes.entries) {
+          final keyLower = entry.key.toString().toLowerCase();
+          if (keyLower == nameLower) return entry.value;
+        }
+        return null;
+      }
+
+      Iterable<dom.Element> walkElements(dom.Node node) sync* {
+        if (node is dom.Element) {
+          yield node;
+        }
+        for (final child in node.nodes) {
+          yield* walkElements(child);
+        }
+      }
+
+      // 文档序索引 id/name（不依赖 selector 引擎，避免大小写/重复 id 解析差异）
+      final Map<String, List<dom.Element>> idIndex = {};
+      final Map<String, List<dom.Element>> nameIndex = {};
+      final root = doc.documentElement ?? doc;
+      for (final el in walkElements(root)) {
+        final idValue = attrValue(el, 'id');
+        if (idValue != null && idValue.isNotEmpty) {
+          (idIndex[idValue] ??= []).add(el);
+        }
+        final nameValue = attrValue(el, 'name');
+        if (nameValue != null && nameValue.isNotEmpty) {
+          (nameIndex[nameValue] ??= []).add(el);
+        }
+      }
+
+      dom.Element? findBestNoteContainer(String id) {
+        final candidates = <dom.Element>[
+          ...(idIndex[id] ?? const []),
+          ...(nameIndex[id] ?? const []),
+        ];
+
+        if (candidates.isEmpty) {
+          // 最后兜底：保留原 getElementById 行为
+          return doc.getElementById(id);
+        }
+
+        dom.Element best = candidates.first;
+        var bestScore = textScore(best);
+        for (final c in candidates.skip(1)) {
+          final score = textScore(c);
+          if (score > bestScore) {
+            best = c;
+            bestScore = score;
+          }
+        }
+
+        // 再兜底一次：如果 best 是纯锚点/标记（例如“到”），但父级包含更多文本，提升到父级（通常是 li）。
+        dom.Element container = best;
+        if (container.localName == 'a') {
+          final parent = container.parent;
+          if (parent is dom.Element) {
+            const allowed = {'li', 'p', 'div', 'span', 'section', 'aside'};
+            final parentScore = textScore(parent);
+            final selfScore = textScore(container);
+            if (allowed.contains(parent.localName) && parentScore > selfScore) {
+              container = parent;
+            }
+          }
+        }
+
+        return container;
+      }
+
+      for (final a in doc.querySelectorAll('a.duokan-footnote')) {
+        final href = a.attributes['href'];
+        if (href == null || !href.startsWith('#') || href.length <= 1) {
+          continue;
+        }
+
+        final id = href.substring(1);
+        if (id.isEmpty) continue;
+
+        final noteElement = findBestNoteContainer(id);
+        if (noteElement != null) {
+          // Web: content = noteElement.innerHTML
+          // App：直接对齐 Web 行为，不做“按 id 移除子节点”的清理。
+          // 说明：真实内容可能就在 <li id="noteX">...</li> 里，如果清理会把内容删光。
+          final extractedHtml = noteElement.innerHtml.trim();
+          final noteOuterHtmlForLog = shortenForLog(noteElement.outerHtml);
+
+          notesById.putIfAbsent(id, () => extractedHtml);
+
+          final extractedPreview = normalizeText(extractedHtml);
+          if (extractedPreview.length <= 2) {
+            final raw = html.replaceAll('\u200B', '');
+            final snippetHref = findSnippet(raw, 'href="#$id"');
+            final snippetId1 = findSnippet(raw, 'id="$id"');
+            final snippetId2 = findSnippet(raw, "id='$id'");
+            final snippetName1 = findSnippet(raw, 'name="$id"');
+            final snippetName2 = findSnippet(raw, "name='$id'");
+
+            // 候选元素概要（用于判断是否选错容器）
+            final candidates = <dom.Element>[
+              ...(idIndex[id] ?? const []),
+              ...(nameIndex[id] ?? const []),
+            ];
+            final candidateSummary =
+                candidates.isEmpty
+                    ? '[]'
+                    : candidates
+                            .take(4)
+                            .map(
+                              (e) =>
+                                  '${e.localName}:${textScore(e)}:${shortenForLog(e.outerHtml, max: 120)}',
+                            )
+                            .join(' | ') +
+                        (candidates.length > 4
+                            ? ' …(+${candidates.length - 4})'
+                            : '');
+
+            _logger.warning(
+              'FOOTNOTE_EXTRACT_SHORT id=$id '
+              'tag=${noteElement.localName} '
+              'extracted="${shortenForLog(extractedHtml, max: 120)}" '
+              'noteOuter="$noteOuterHtmlForLog" '
+              'anchor="${shortenForLog(a.outerHtml, max: 180)}" '
+              'candidates=$candidateSummary '
+              'snipHref="${shortenForLog(snippetHref ?? '', max: 160)}" '
+              'snipId="${shortenForLog(snippetId1 ?? snippetId2 ?? '', max: 160)}" '
+              'snipName="${shortenForLog(snippetName1 ?? snippetName2 ?? '', max: 160)}"',
+            );
+          }
+
+          // ⚠️ 极其重要：为了保持与 Web 端的 DOM 节点计数与结构绝对一致（保证双边生成的 XPath index 相同）
+          // 我们必须如同 Web(style.display = 'none') 那样仅仅将其 CSS 隐藏。
+          // 绝不能调用 remove()，否则后续所有标签的下标将发生毁灭性漂移！
+          final currentStyle = noteElement.attributes['style'] ?? '';
+          noteElement.attributes['style'] = '$currentStyle; display: none;';
+        }
+
+        // 禁用默认跳转行为，交由 Flutter 手势处理
+        a.attributes['data-footnote-id'] = id;
+        a.attributes.remove('href');
+
+        // 清理脚注锚点内部的 <sup>/<img>，避免正文容器被误判为“包含图片”从而触发插图样式（居中/无 padding）。
+        // 视觉由 Flutter 的 customWidgetBuilder 接管。
+        a.innerHtml = '';
+      }
+
+      // 清理残留的脚注小图标（有些内容会把 marker 渲染成独立的 img.footnote）
+      for (final img in doc.querySelectorAll('img.footnote')) {
+        img.remove();
+      }
+
+      final processedHtml = doc.body?.innerHtml ?? html;
+      return _FootnoteProcessingResult(
+        html: processedHtml,
+        notesById: notesById,
+      );
+    } catch (_) {
+      // 解析失败则回退到原文
+      return _FootnoteProcessingResult(html: html, notesById: const {});
+    }
   }
 
   // ==================== 悬浮控件 ====================
@@ -1662,6 +2248,367 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             label: const Text('重试'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 阅读页脚注/注释触发器：用 Flutter 原生图标替代 Web 的脚注小图片，并点击弹出 Popover。
+class _FootnoteAnchor extends StatefulWidget {
+  final String footnoteId;
+  final String? noteHtml;
+  final double baseFontSize;
+  final String? fontFamily;
+  final Color readerBackgroundColor;
+  final Color readerTextColor;
+
+  const _FootnoteAnchor({
+    super.key,
+    required this.footnoteId,
+    required this.noteHtml,
+    required this.baseFontSize,
+    required this.fontFamily,
+    required this.readerBackgroundColor,
+    required this.readerTextColor,
+  });
+
+  static void dismissCurrent() {
+    _FootnoteAnchorState._currentOpen?._removeOverlay();
+  }
+
+  @override
+  State<_FootnoteAnchor> createState() => _FootnoteAnchorState();
+}
+
+class _FootnoteAnchorState extends State<_FootnoteAnchor>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  static _FootnoteAnchorState? _currentOpen;
+
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+
+  late final AnimationController _fadeController;
+  late final Animation<double> _fadeAnimation;
+  bool _isClosing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+      reverseDuration: const Duration(milliseconds: 120),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+  }
+
+  @override
+  void dispose() {
+    _removeOverlay(animate: false);
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    if (_overlayEntry != null) {
+      _removeOverlay();
+      return;
+    }
+
+    // 确保同一时间只展示一个 Popover
+    if (_currentOpen != null && _currentOpen != this) {
+      _currentOpen!._removeOverlay();
+    }
+    _currentOpen = this;
+    _showOverlay();
+  }
+
+  void _showOverlay() {
+    if (!mounted) return;
+
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return;
+
+    final anchorTopLeft = renderBox.localToGlobal(Offset.zero);
+    final anchorSize = renderBox.size;
+
+    final media = MediaQuery.of(context);
+    final screenSize = media.size;
+    final paddingTop = media.padding.top;
+    final paddingBottom = media.padding.bottom;
+
+    final spaceBelow =
+        screenSize.height -
+        (anchorTopLeft.dy + anchorSize.height) -
+        paddingBottom;
+    final spaceAbove = anchorTopLeft.dy - paddingTop;
+    final showBelow = spaceBelow >= 140 || spaceBelow >= spaceAbove;
+
+    final maxWidth = (screenSize.width * 0.9).clamp(0.0, 420.0);
+    final maxHeight = (screenSize.height * 0.35).clamp(0.0, 320.0);
+
+    // 将 Popover 水平居中于触发点，必要时微调避免越界
+    final anchorCenterX = anchorTopLeft.dx + anchorSize.width / 2;
+    final idealLeft = anchorCenterX - maxWidth / 2;
+    const horizontalMargin = 12.0;
+    final clampedLeft = idealLeft.clamp(
+      horizontalMargin,
+      screenSize.width - maxWidth - horizontalMargin,
+    );
+    final dx = clampedLeft - idealLeft;
+
+    _isClosing = false;
+    _fadeController.stop();
+    _fadeController.value = 0.0;
+
+    _overlayEntry = OverlayEntry(
+      builder: (overlayContext) {
+        return Stack(
+          children: [
+            // 点击空白处消失
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _removeOverlay,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            CompositedTransformFollower(
+              link: _layerLink,
+              showWhenUnlinked: false,
+              targetAnchor:
+                  showBelow ? Alignment.bottomCenter : Alignment.topCenter,
+              followerAnchor:
+                  showBelow ? Alignment.topCenter : Alignment.bottomCenter,
+              offset: Offset(dx, showBelow ? 8 : -8),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: Material(
+                  color: Colors.transparent,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: maxWidth,
+                        maxHeight: maxHeight,
+                      ),
+                      child: _buildPopoverContent(context),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    final overlay = Overlay.of(context, rootOverlay: true);
+    overlay.insert(_overlayEntry!);
+
+    _fadeController.forward();
+  }
+
+  /// 规范化脚注 HTML：去掉返回引用空链接，并在存在列表结构时扁平化为纯内容。
+  ///
+  /// 目标：避免 flutter_widget_from_html 对 <ol>/<li> 的 marker 渲染产生残留符号（如只剩一个“.”）。
+  String _normalizeFootnoteHtml(String html) {
+    try {
+      final doc = html_parser.parse('<div id="__root__">$html</div>');
+      final root = doc.getElementById('__root__');
+      if (root == null) return html;
+
+      // 移除形如：<a href="#note_refX"></a>
+      for (final a in root.querySelectorAll('a')) {
+        if (a.text.trim().isEmpty && a.children.isEmpty) {
+          a.remove();
+        }
+      }
+
+      // 若包含列表项，则直接抽取 li 内容（对标 Web 的 list-style:none，且更稳妥）
+      final items =
+          root
+              .querySelectorAll('li')
+              .map((e) => e.innerHtml.trim())
+              .where((s) => s.isNotEmpty)
+              .toList();
+      if (items.isNotEmpty) {
+        return items.map((s) => '<div>$s</div>').join();
+      }
+
+      return root.innerHtml.trim();
+    } catch (_) {
+      return html;
+    }
+  }
+
+  Widget _buildPopoverContent(BuildContext context) {
+    final bgColor = Color.alphaBlend(
+      widget.readerTextColor.withValues(alpha: 0.08),
+      widget.readerBackgroundColor,
+    );
+
+    final borderColor = widget.readerTextColor.withValues(alpha: 0.18);
+
+    final noteHtml = widget.noteHtml;
+    final normalizedHtml =
+        (noteHtml != null && noteHtml.trim().isNotEmpty)
+            ? _normalizeFootnoteHtml(noteHtml)
+            : null;
+    final content =
+        (normalizedHtml != null && normalizedHtml.trim().isNotEmpty)
+            ? HtmlWidget(
+              normalizedHtml,
+              textStyle: TextStyle(
+                fontFamily: widget.fontFamily,
+                fontSize: (widget.baseFontSize * 0.95).clamp(12.0, 18.0),
+                height: 1.5,
+                color: widget.readerTextColor,
+              ),
+              customStylesBuilder: (element) {
+                // 对标 Web: .note-style ol { list-style: none; margin:0; padding:10px }
+                if (element.localName == 'ol' || element.localName == 'ul') {
+                  return {
+                    // flutter_widget_from_html 对 shorthand 的支持不稳定，显式使用 list-style-type
+                    'list-style-type': 'none',
+                    'margin': '0',
+                    'padding': '0',
+                    'padding-left': '0',
+                  };
+                }
+                if (element.localName == 'li') {
+                  return {
+                    'list-style-type': 'none',
+                    'margin': '0',
+                    'padding': '0',
+                  };
+                }
+                // 脚注内容里常见的“返回引用”空链接：<a href="#note_refX"></a>
+                // Web 里存在但视觉上不展示；这里直接隐藏，避免多余的空白/符号。
+                if (element.localName == 'a') {
+                  final text = element.text.trim();
+                  if (text.isEmpty && element.children.isEmpty) {
+                    return {'display': 'none'};
+                  }
+                }
+                if (element.localName == 'p') {
+                  return {'margin': '0', 'padding': '0'};
+                }
+                return null;
+              },
+            )
+            : Text(
+              '未找到注释内容',
+              style: TextStyle(
+                fontFamily: widget.fontFamily,
+                fontSize: (widget.baseFontSize * 0.95).clamp(12.0, 18.0),
+                height: 1.5,
+                color: widget.readerTextColor.withValues(alpha: 0.7),
+              ),
+            );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor.withValues(alpha: 0.98),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor, width: 0.8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Scrollbar(
+          thumbVisibility: false,
+          child: SingleChildScrollView(child: content),
+        ),
+      ),
+    );
+  }
+
+  void _removeOverlay({bool animate = true}) {
+    final entry = _overlayEntry;
+    if (entry == null) return;
+
+    if (!animate) {
+      entry.remove();
+      _overlayEntry = null;
+      _isClosing = false;
+      _fadeController.stop();
+      _fadeController.value = 0.0;
+      if (_currentOpen == this) {
+        _currentOpen = null;
+      }
+      return;
+    }
+
+    if (_isClosing) return;
+    _isClosing = true;
+
+    _fadeController
+        .reverse()
+        .then((_) {
+          // 可能已被立即移除/替换
+          if (_overlayEntry == entry) {
+            entry.remove();
+            _overlayEntry = null;
+          } else {
+            try {
+              entry.remove();
+            } catch (_) {}
+          }
+
+          _isClosing = false;
+          if (_currentOpen == this) {
+            _currentOpen = null;
+          }
+        })
+        .catchError((_) {
+          // TickerCanceled 等：直接移除
+          if (_overlayEntry == entry) {
+            entry.remove();
+            _overlayEntry = null;
+          } else {
+            try {
+              entry.remove();
+            } catch (_) {}
+          }
+
+          _isClosing = false;
+          if (_currentOpen == this) {
+            _currentOpen = null;
+          }
+        });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final iconSize = (widget.baseFontSize * 0.85).clamp(12.0, 18.0).toDouble();
+    final iconColor = Theme.of(context).colorScheme.primary;
+
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggle,
+          child: Icon(
+            Icons.note_alt_outlined,
+            size: iconSize,
+            color: iconColor,
+          ),
+        ),
       ),
     );
   }

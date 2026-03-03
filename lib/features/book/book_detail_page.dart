@@ -491,7 +491,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
         // 在章节列表中查找 sortNum
         int? sortNum;
-        double scrollPosition = 0.0;
+        String xPath = '//*';
 
         for (int i = 0; i < info.chapters.length; i++) {
           if (info.chapters[i].id == serverChapterId) {
@@ -500,36 +500,42 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           }
         }
 
-        // 忽略服务端章节内位置（格式不兼容），仅同步章节ID
-        scrollPosition = 0.0;
+        // 恢复接收服务端章节内位置 (XPath 已经完美互通)
+        xPath = info.serverReadPosition?.position ?? '//*';
 
         if (sortNum != null) {
           position = ReadPosition(
             bookId: widget.bookId,
             chapterId: serverChapterId,
             sortNum: sortNum,
-            scrollPosition: scrollPosition,
+            xPath: xPath,
           );
-          _logger.info(
-            'Using server position: chapter $sortNum @ ${(scrollPosition * 100).toStringAsFixed(1)}%',
-          );
+          _logger.info('Using server position: chapter $sortNum @ $xPath');
         }
       }
 
       // 2. 获取本地进度
-      final localPosition = await _progressService.getLocalScrollPosition(
+      final localPosition = await _progressService.getLocalPosition(
         widget.bookId,
       );
 
-      // 3. 进度决策：仅当服务端章节 > 本地章节时使用服务端
+      // 3. 进度决策：服务端现在拥有了精确的 xPath
       if (position != null) {
         if (localPosition != null &&
             position.sortNum == localPosition.sortNum) {
-          // 章节相同，优先使用本地（保留章节内位置）
-          position = localPosition;
-          _logger.info(
-            'Using local position (same chapter): chapter ${position.sortNum}',
-          );
+          // 章节相同，优先判断服务端是否带有最新的章节内进度追踪
+          if (position.xPath != '//*') {
+            // 服务端有精确位置，可能是从 Web 端阅读后同步的，以服务端为准
+            _logger.info(
+              'Using server position (same chapter, precise xPath): chapter ${position.sortNum} @ ${position.xPath}',
+            );
+          } else {
+            // 服务端只有粗糙的大章节起点，此时优先使用本地的旧坐标
+            position = localPosition;
+            _logger.info(
+              'Using local position (same chapter, server is //*): chapter ${position.sortNum}',
+            );
+          }
         } else {
           // 章节不同（无论前后），使用服务端（位置归零）
           _logger.info(
@@ -586,8 +592,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   Future<void> _refreshReadingProgress() async {
     try {
       // 本地进度（用于保留章节内 scroll）
-      ReadPosition? localPosition = await _progressService
-          .getLocalScrollPosition(widget.bookId);
+      ReadPosition? localPosition = await _progressService.getLocalPosition(
+        widget.bookId,
+      );
 
       // 服务端章节进度（权威源）：从已加载/缓存的 _bookInfo 中提取
       ReadPosition? serverPosition;
@@ -610,17 +617,22 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
             bookId: widget.bookId,
             chapterId: serverChapterId,
             sortNum: sortNum,
-            scrollPosition: 0.0, // 服务端章节内位置不兼容，保持 0
+            xPath: info.serverReadPosition?.position ?? '//*',
           );
         }
       }
 
-      // 章节号严格以服务端为准；仅当“同一章节”时才使用本地 scroll
+      // 章节号严格以服务端为准
       ReadPosition? effectivePosition;
       if (serverPosition != null) {
         if (localPosition != null &&
             localPosition.sortNum == serverPosition.sortNum) {
-          effectivePosition = localPosition;
+          if (serverPosition.xPath != '//*') {
+            // 同样：只要服务端有确切进度就优先选用
+            effectivePosition = serverPosition;
+          } else {
+            effectivePosition = localPosition;
+          }
         } else {
           effectivePosition = serverPosition;
         }
@@ -666,7 +678,11 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           cached.views != info.views ||
           cached.lastUpdatedAt != info.lastUpdatedAt ||
           cached.lastUpdatedChapter != info.lastUpdatedChapter ||
-          cached.chapters.length != info.chapters.length;
+          cached.chapters.length != info.chapters.length ||
+          cached.serverReadPosition?.chapterId !=
+              info.serverReadPosition?.chapterId ||
+          cached.serverReadPosition?.position !=
+              info.serverReadPosition?.position;
 
       if (infoChanged) {
         _logger.info('Background sync: book info changed, updating UI');
@@ -680,7 +696,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         final serverChapterId = info.serverReadPosition!.chapterId!;
 
         int? sortNum;
-        double scrollPosition = 0.0;
+        String xPath = '//*';
 
         for (int i = 0; i < info.chapters.length; i++) {
           if (info.chapters[i].id == serverChapterId) {
@@ -689,15 +705,15 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           }
         }
 
-        // 忽略服务端章节内位置（格式不兼容），仅同步章节ID
-        scrollPosition = 0.0;
+        // 恢复接收服务端精确章节内位置 (XPath)
+        xPath = info.serverReadPosition?.position ?? '//*';
 
         if (sortNum != null) {
           serverPosition = ReadPosition(
             bookId: widget.bookId,
             chapterId: serverChapterId,
             sortNum: sortNum,
-            scrollPosition: scrollPosition,
+            xPath: xPath,
           );
         }
       }
@@ -708,11 +724,13 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       bool positionChanged = false;
       ReadPosition? effectivePosition;
       if (serverPosition != null) {
-        final localPos = await _progressService.getLocalScrollPosition(
-          widget.bookId,
-        );
+        final localPos = await _progressService.getLocalPosition(widget.bookId);
         if (localPos != null && localPos.sortNum == serverPosition.sortNum) {
-          effectivePosition = localPos;
+          if (serverPosition.xPath != '//*') {
+            effectivePosition = serverPosition;
+          } else {
+            effectivePosition = localPos;
+          }
         } else {
           effectivePosition = serverPosition;
         }
@@ -720,7 +738,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         if (_readPosition == null) {
           positionChanged = true;
         } else if (_readPosition!.sortNum != effectivePosition.sortNum ||
-            _readPosition!.chapterId != effectivePosition.chapterId) {
+            _readPosition!.chapterId != effectivePosition.chapterId ||
+            _readPosition!.xPath != effectivePosition.xPath) {
           positionChanged = true;
         }
       }
@@ -755,12 +774,25 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
-  void _startReading({int sortNum = 1}) {
+  void _startReading({int sortNum = 1}) async {
+    // 强制写入 SharedPreferences，确保立刻启动的 ReaderPage 无论如何都能读到最新的合法进度
+    if (_readPosition != null && _readPosition!.sortNum == sortNum) {
+      await _progressService.saveLocalPosition(
+        bookId: widget.bookId,
+        chapterId: _readPosition!.chapterId,
+        sortNum: _readPosition!.sortNum,
+        xPath: _readPosition!.xPath,
+        skipIndexUpdate: true,
+      );
+    }
+
     // 获取封面 URL 用于阅读器动态色
     final coverUrl =
         widget.initialCoverUrl?.isNotEmpty == true
             ? widget.initialCoverUrl!
             : (_bookInfo?.cover ?? '');
+
+    if (!mounted) return;
 
     Navigator.of(context)
         .push(
@@ -796,7 +828,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   /// 注：章节号权威源仍然是服务端；这里只用于同设备的“立刻更新按钮”。
   Future<void> _refreshReadingProgressPreferLocal() async {
     try {
-      final localPosition = await _progressService.getLocalScrollPosition(
+      final localPosition = await _progressService.getLocalPosition(
         widget.bookId,
       );
       final mark = await _bookMarkService.getBookMark(widget.bookId);
@@ -1563,6 +1595,16 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
             ),
           ),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.bug_report),
+              onPressed: () {
+                final pos = _bookInfo?.serverReadPosition?.position;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Server XPath: ${pos ?? "null"}')),
+                );
+              },
+              tooltip: 'Debug Server XPath',
+            ),
             IconButton(
               onPressed: () {
                 Navigator.of(context).push(

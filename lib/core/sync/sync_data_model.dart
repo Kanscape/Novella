@@ -130,17 +130,14 @@ class SyncModule {
   /// - 其他：整体取最新
   SyncModule mergeWith(SyncModule remote, {String? moduleName}) {
     // 需要按条目合并的模块
-    final entryMergeModules = {
-      SyncModuleNames.bookmarks,
-      SyncModuleNames.readingProgress,
-    };
+    final entryMergeModules = {SyncModuleNames.bookmarks};
 
     // 阅读时长特殊处理：取每日最大值
     if (moduleName == SyncModuleNames.readingTime) {
       return _mergeReadingTime(remote);
     }
 
-    // bookmarks 和 readingProgress：按条目合并
+    // bookmarks：按条目合并
     if (moduleName != null && entryMergeModules.contains(moduleName)) {
       return _mergeByEntry(remote);
     }
@@ -152,7 +149,7 @@ class SyncModule {
     return this;
   }
 
-  /// 按条目合并（适用于 bookmarks/readingProgress）
+  /// 按条目合并（适用于 bookmarks）
   SyncModule _mergeByEntry(SyncModule remote) {
     final mergedData = <String, dynamic>{};
     final allKeys = {...data.keys, ...remote.data.keys};
@@ -216,7 +213,6 @@ class SyncModule {
 /// 模块名称常量
 class SyncModuleNames {
   static const String bookmarks = 'bookmarks';
-  static const String readingProgress = 'readingProgress';
   static const String readingTime = 'readingTime';
   static const String settings = 'settings';
   static const String auth = 'auth';
@@ -240,39 +236,6 @@ class BookmarkEntry {
 
   Map<String, dynamic> toJson() => {
     'status': status,
-    'updatedAt': updatedAt.toIso8601String(),
-  };
-}
-
-/// 阅读进度条目
-class ProgressEntry {
-  final int chapterId;
-  final int sortNum;
-  final double scrollPosition;
-  final DateTime updatedAt;
-
-  ProgressEntry({
-    required this.chapterId,
-    required this.sortNum,
-    required this.scrollPosition,
-    required this.updatedAt,
-  });
-
-  factory ProgressEntry.fromJson(Map<String, dynamic> json) {
-    return ProgressEntry(
-      chapterId: json['chapterId'] as int? ?? 0,
-      sortNum: json['sortNum'] as int? ?? 1,
-      scrollPosition: (json['scrollPosition'] as num?)?.toDouble() ?? 0.0,
-      updatedAt:
-          DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
-          DateTime.now(),
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'chapterId': chapterId,
-    'sortNum': sortNum,
-    'scrollPosition': scrollPosition,
     'updatedAt': updatedAt.toIso8601String(),
   };
 }

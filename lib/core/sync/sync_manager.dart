@@ -9,7 +9,6 @@ import 'package:novella/core/sync/gist_sync_service.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_data_model.dart';
 import 'package:novella/data/services/book_mark_service.dart';
-import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,7 +33,6 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
   final GistSyncService _gistService = GistSyncService();
   final BookMarkService _bookMarkService = BookMarkService();
-  final ReadingProgressService _progressService = ReadingProgressService();
 
   static const _storage = FlutterSecureStorage();
   static const _keyGithubToken = 'github_access_token';
@@ -576,48 +574,6 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       );
     }
 
-    // 收集阅读进度
-    final progressData = <String, dynamic>{};
-    for (final key in prefs.getKeys()) {
-      if (key.startsWith('read_pos_')) {
-        final bookIdStr = key.substring('read_pos_'.length);
-        final data = prefs.getString(key);
-        if (data != null) {
-          final parts = data.split('|');
-          if (parts.length >= 3) {
-            progressData[bookIdStr] = {
-              'chapterId': int.tryParse(parts[0]) ?? 0,
-              'sortNum': int.tryParse(parts[1]) ?? 1,
-              'scrollPosition': double.tryParse(parts[2]) ?? 0.0,
-              'updatedAt':
-                  parts.length >= 4
-                      ? parts[3]
-                      : DateTime.now().toIso8601String(), // 兼容旧数据
-              'title':
-                  parts.length >= 5
-                      ? (parts[4].isEmpty ? null : parts[4])
-                      : null,
-              'cover':
-                  parts.length >= 6
-                      ? (parts[5].isEmpty ? null : parts[5])
-                      : null,
-              'chapterTitle':
-                  parts.length >= 7
-                      ? (parts[6].isEmpty ? null : parts[6])
-                      : null,
-            };
-          }
-        }
-      }
-    }
-    if (progressData.isNotEmpty) {
-      modules[SyncModuleNames.readingProgress] = SyncModule(
-        version: 1,
-        updatedAt: DateTime.now(),
-        data: progressData,
-      );
-    }
-
     // 收集 RefreshToken
     final refreshToken = prefs.getString('refresh_token');
     if (refreshToken != null) {
@@ -669,33 +625,6 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
           }
         }
       }
-    }
-
-    // 应用阅读进度
-    final progressModule = remoteData.modules[SyncModuleNames.readingProgress];
-    if (progressModule != null) {
-      for (final entry in progressModule.data.entries) {
-        final bookId = int.tryParse(entry.key);
-        final data = entry.value as Map<String, dynamic>?;
-        if (bookId != null && data != null) {
-          final updatedAt = DateTime.tryParse(
-            data['updatedAt'] as String? ?? '',
-          );
-          await _progressService.saveLocalScrollPosition(
-            bookId: bookId,
-            chapterId: data['chapterId'] as int? ?? 0,
-            sortNum: data['sortNum'] as int? ?? 1,
-            scrollPosition: (data['scrollPosition'] as num?)?.toDouble() ?? 0.0,
-            title: data['title'] as String?,
-            cover: data['cover'] as String?,
-            chapterTitle: data['chapterTitle'] as String?,
-            updatedAt: updatedAt, // 传递远程时间戳
-            skipIndexUpdate: true, // 同步过程中不更新“最后阅读”索引，防止中间乱序覆盖
-          );
-        }
-      }
-      // 所有进度同步完成后，根据时间戳统一刷新一次“最后阅读”索引
-      await _progressService.refreshLastReadIndex();
     }
 
     // 应用 RefreshToken

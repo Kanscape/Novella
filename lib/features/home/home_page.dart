@@ -269,7 +269,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
           bookId: pos.bookId,
           chapterId: pos.chapterId,
           sortNum: pos.sortNum,
-          scrollPosition: pos.scrollPosition,
+          xPath: pos.xPath,
           title: pos.title ?? info.title,
           cover: pos.cover ?? info.cover,
           chapterTitle: matchingChapter.title,
