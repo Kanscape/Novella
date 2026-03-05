@@ -73,7 +73,7 @@ class UniversalGlassPanel extends StatelessWidget {
   }
 
   LinearGradient _getLiquidGlassGradient(BuildContext context) {
-    final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
@@ -93,7 +93,7 @@ class UniversalGlassPanel extends StatelessWidget {
   }
 
   List<Color> _getGlassOverlayColors(BuildContext context) {
-    final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (isDark) {
       return [
         Colors.white.withValues(alpha: 0.01),
@@ -110,7 +110,7 @@ class UniversalGlassPanel extends StatelessWidget {
   }
 
   Color _getBorderColor(BuildContext context) {
-    final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return isDark
         ? Colors.white.withValues(alpha: 0.15)
         : Colors.white.withValues(alpha: 0.6);

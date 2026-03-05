@@ -143,10 +143,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   bool _initialScrollDone = false;
   bool _barsVisible = true;
 
-  // 边界自动展示菜单栏：仅在“首次到达边界”时触发，避免在章节开头/结尾无法手动收起
-  bool _edgeInitialized = false;
-  bool _wasAtTop = false;
-  bool _wasAtBottom = false;
+  // 物理滚动边界检测：首次达到最大/最小范围时拉出菜单栏
+  bool _atTopEdge = true; // 默认由于尚未加载或处于章节开头，先算作处于顶部，避免一进来就触发
+  bool _atBottomEdge = false;
 
   // 基于封面的动态配色
   ColorScheme? _dynamicColorScheme;
@@ -579,6 +578,30 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     _itemScrollController.jumpTo(index: clamped, alignment: alignment);
   }
 
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollUpdateNotification ||
+        notification is OverscrollNotification) {
+      final metrics = notification.metrics;
+
+      // 触顶检测：滚动位置 <= 最小值
+      final atTop = metrics.pixels <= metrics.minScrollExtent;
+      // 触底检测：滚动位置 >= 最大值 (这里是精准的物理位置，不受元素内容或 padding 等逻辑算错干扰)
+      final atBottom = metrics.pixels >= metrics.maxScrollExtent;
+
+      if (atTop && !_atTopEdge) {
+        if (!_barsVisible) _toggleBars();
+      }
+      if (atBottom && !_atBottomEdge) {
+        if (!_barsVisible) _toggleBars();
+      }
+
+      _atTopEdge = atTop;
+      _atBottomEdge = atBottom;
+    }
+    // 不要拦截，让系统继续向上传递滚动事件
+    return false;
+  }
+
   void _onItemPositionsChanged() {
     final result = _blocksResult;
     if (result == null || result.blocks.isEmpty) return;
@@ -604,15 +627,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       _lastTopVisibleXPath = result.blocks[topIndex].xPath;
     }
 
-    // 边界检测：
-    // - atTop：第一项顶端对齐
-    // - atBottom：最后一项的底边进入视口（考虑浮点误差；并不要求“滚动到底部 padding”）
-    final atTop = topIndex == 0 && top.itemLeadingEdge >= 0;
-    final lastIndex = result.blocks.length - 1;
-    final atBottom = positions.any(
-      (p) => p.index == lastIndex && p.itemTrailingEdge <= 1.0001,
-    );
-
     // 进度：prefixWeight + block 内部比例（基于 leadingEdge）
     final total = result.totalWeight;
     final before = topIndex > 0 ? result.prefixWeights[topIndex - 1] : 0.0;
@@ -625,31 +639,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     double progress =
         total > 0 ? ((before + (fractionPast * blockWeight)) / total) : 0.0;
 
-    // UX：用户到达章节末尾时应显示 100%，避免“永远 99%”。
-    if (atTop) {
-      progress = 0.0;
-    } else if (atBottom) {
-      progress = 1.0;
-    }
-
     _readProgressNotifier.value = progress.clamp(0.0, 1.0);
-
-    // 边界自动显示菜单栏：
-    // 仅在“进入边界”的瞬间触发，避免用户在章节开头/结尾无法手动收起
-    if (!_edgeInitialized) {
-      _edgeInitialized = true;
-      _wasAtTop = atTop;
-      _wasAtBottom = atBottom;
-    } else {
-      final enteredTop = atTop && !_wasAtTop;
-      final enteredBottom = atBottom && !_wasAtBottom;
-      _wasAtTop = atTop;
-      _wasAtBottom = atBottom;
-
-      if ((enteredTop || enteredBottom) && !_barsVisible) {
-        _toggleBars();
-      }
-    }
 
     // 防抖保存（闲置 2 秒）
     _savePositionTimer?.cancel();
@@ -929,9 +919,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       _initialScrollDone = false;
 
       // 重置边界状态：新章节首次到边界时可自动展示一次菜单栏
-      _edgeInitialized = false;
-      _wasAtTop = false;
-      _wasAtBottom = false;
+      _atTopEdge = true;
+      _atBottomEdge = false;
 
       // 重置渲染内容与脚注缓存，避免短暂显示上一章的注释映射
       _footnoteNotesById = const {};
@@ -1559,29 +1548,32 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           );
         }
 
-        return ScrollablePositionedList.builder(
-          itemScrollController: _itemScrollController,
-          itemPositionsListener: _itemPositionsListener,
-          itemCount: blocks.length,
-          padding: padding,
-          itemBuilder: (context, index) {
-            final block = blocks[index];
+        return NotificationListener<ScrollNotification>(
+          onNotification: _onScrollNotification,
+          child: ScrollablePositionedList.builder(
+            itemScrollController: _itemScrollController,
+            itemPositionsListener: _itemPositionsListener,
+            itemCount: blocks.length,
+            padding: padding,
+            itemBuilder: (context, index) {
+              final block = blocks[index];
 
-            return Align(
-              alignment: Alignment.topCenter,
-              child: HtmlWidget(
-                block.html,
-                textStyle: TextStyle(
-                  fontFamily: _fontFamily,
-                  fontSize: settings.fontSize,
-                  height: 1.6,
-                  color: readerTextColor,
+              return Align(
+                alignment: Alignment.topCenter,
+                child: HtmlWidget(
+                  block.html,
+                  textStyle: TextStyle(
+                    fontFamily: _fontFamily,
+                    fontSize: settings.fontSize,
+                    height: 1.6,
+                    color: readerTextColor,
+                  ),
+                  customStylesBuilder: customStylesBuilder,
+                  customWidgetBuilder: customWidgetBuilder,
                 ),
-                customStylesBuilder: customStylesBuilder,
-                customWidgetBuilder: customWidgetBuilder,
-              ),
-            );
-          },
+              );
+            },
+          ),
         );
       },
     );
@@ -1820,378 +1812,392 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       top: topPadding + 8,
       left: 12,
       right: 12,
-      child: AnimatedOpacity(
-        opacity: _barsVisible ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 200),
-        child: IgnorePointer(
-          ignoring: !_barsVisible,
-          child: Row(
-            children: [
-              // 返回按钮 - AdaptiveFloatingActionButton
-              if (settings.useIOS26Style)
-                SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: AdaptiveButton.sfSymbol(
+      child: AnimatedBuilder(
+        animation: _barsAnimController,
+        builder: (context, child) {
+          if (_barsAnimController.value == 0.0) {
+            return const SizedBox.shrink();
+          }
+
+          final slideOffset = Tween<Offset>(
+            begin: const Offset(0, -1.0), // 向上翻出隐藏
+            end: Offset.zero,
+          ).evaluate(
+            CurvedAnimation(
+              parent: _barsAnimController,
+              curve: Curves.easeOutCubic,
+            ),
+          );
+
+          return FractionalTranslation(
+            translation: slideOffset,
+            child: IgnorePointer(ignoring: !_barsVisible, child: child),
+          );
+        },
+        child: Row(
+          children: [
+            // 返回按钮 - AdaptiveFloatingActionButton
+            if (settings.useIOS26Style)
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: AdaptiveButton.sfSymbol(
+                  onPressed: () {
+                    _exitReaderPage();
+                  },
+                  sfSymbol: const SFSymbol('chevron.left', size: 20),
+                  style: AdaptiveButtonStyle.glass,
+                  borderRadius: BorderRadius.circular(1000),
+                  useSmoothRectangleBorder: false,
+                  padding: EdgeInsets.zero,
+                ),
+              )
+            else
+              Builder(
+                builder: (context) {
+                  final settings = ref.watch(settingsProvider);
+                  final colorScheme =
+                      (settings.coverColorExtraction
+                          ? _dynamicColorScheme
+                          : null) ??
+                      Theme.of(context).colorScheme;
+                  return AdaptiveFloatingActionButton(
+                    mini: true,
                     onPressed: () {
                       _exitReaderPage();
                     },
-                    sfSymbol: const SFSymbol('chevron.left', size: 20),
-                    style: AdaptiveButtonStyle.glass,
-                    borderRadius: BorderRadius.circular(1000),
-                    useSmoothRectangleBorder: false,
-                    padding: EdgeInsets.zero,
-                  ),
-                )
-              else
-                Builder(
+                    backgroundColor: colorScheme.primaryContainer,
+                    foregroundColor: colorScheme.onPrimaryContainer,
+                    child: Icon(
+                      PlatformInfo.isIOS
+                          ? CupertinoIcons.chevron_left
+                          : Icons.arrow_back,
+                      size: 20,
+                    ),
+                  );
+                },
+              ),
+            const SizedBox(width: 12),
+
+            // 章节信息卡片 - 根据标题长度动态收缩
+            // 使用 Flexible + Center：允许收缩，且在剩余空间居中
+            Flexible(
+              child: Center(
+                child: Builder(
                   builder: (context) {
+                    // 根据阅读背景亮度动态计算文字颜色
                     final settings = ref.watch(settingsProvider);
-                    final colorScheme =
-                        (settings.coverColorExtraction
-                            ? _dynamicColorScheme
-                            : null) ??
-                        Theme.of(context).colorScheme;
-                    return AdaptiveFloatingActionButton(
-                      mini: true,
-                      onPressed: () {
-                        _exitReaderPage();
-                      },
-                      backgroundColor: colorScheme.primaryContainer,
-                      foregroundColor: colorScheme.onPrimaryContainer,
-                      child: Icon(
-                        PlatformInfo.isIOS
-                            ? CupertinoIcons.chevron_left
-                            : Icons.arrow_back,
-                        size: 20,
+                    final readerBgColor = _getReaderBackgroundColor(settings);
+                    // computeLuminance 返回 0.0-1.0，越接近 1 越亮
+                    final isLightBg = readerBgColor.computeLuminance() > 0.5;
+                    final textColor = isLightBg ? Colors.black : Colors.white;
+                    final subTextColor = textColor.withValues(alpha: 0.7);
+
+                    return UniversalGlassPanel(
+                      blurAmount: 15,
+                      borderRadius: BorderRadius.circular(100),
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 140,
+                        ), // 最小宽度
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(100),
+                          border: Border.all(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outlineVariant.withValues(alpha: 0.3),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // 章节标题（支持简化）
+                            Text(
+                              _loading
+                                  ? '加载中'
+                                  : (() {
+                                    String title = _chapter?.title ?? '';
+                                    if (title.isNotEmpty &&
+                                        settings.cleanChapterTitle) {
+                                      // 混合正则：
+                                      // 处理 【第一话】 或非英文前缀
+                                      // 处理 『「〈 分隔符
+                                      // 保留纯英文标题
+                                      final regex = RegExp(
+                                        r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
+                                      );
+                                      final match = regex.firstMatch(title);
+                                      if (match != null) {
+                                        final extracted =
+                                            (match.group(1) ?? '') +
+                                            (match.group(2) ?? '');
+                                        if (extracted.isNotEmpty) {
+                                          title = extracted;
+                                        }
+                                      }
+                                    }
+                                    return title;
+                                  })(),
+                              style: Theme.of(
+                                context,
+                              ).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: textColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 2),
+                            // 阅读进度（clamp 确保 0-100%）
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 70, // 加宽以容纳长文本
+                                  child: ValueListenableBuilder<String>(
+                                    valueListenable: _timeStringNotifier,
+                                    builder: (context, timeString, _) {
+                                      return Text(
+                                        timeString,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall?.copyWith(
+                                          color: subTextColor,
+                                          fontSize: 11,
+                                          // height: 1,
+                                        ),
+                                        textAlign:
+                                            TextAlign.right, // 靠右对齐，紧贴电量条
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+
+                                // IOS: 自定义电池条
+                                if (Platform.isIOS) ...[
+                                  AnimatedBuilder(
+                                    animation: Listenable.merge([
+                                      _batteryLevelNotifier,
+                                      _batteryStateNotifier,
+                                    ]),
+                                    builder: (context, _) {
+                                      final batteryLevel =
+                                          _batteryLevelNotifier.value;
+                                      final batteryState =
+                                          _batteryStateNotifier.value;
+
+                                      final widthFactor = (batteryLevel / 100.0)
+                                          .clamp(0.0, 1.0);
+
+                                      final barColor = () {
+                                        if (batteryState ==
+                                            BatteryState.charging) {
+                                          // K: 充电则显示蓝色条
+                                          return Colors.blue;
+                                        }
+                                        // 正常状态
+                                        if (batteryLevel <= 15) {
+                                          return Colors.red; // 15% 以下红
+                                        } else if (batteryLevel <= 35) {
+                                          return Colors.yellow; // 35% 以下黄
+                                        }
+                                        // 默认绿
+                                        return const Color(0xFF34C759);
+                                      }();
+
+                                      return Container(
+                                        width: 36,
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          color: subTextColor.withValues(
+                                            alpha: 0.2,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            3,
+                                          ),
+                                        ),
+                                        alignment: Alignment.centerLeft,
+                                        child: FractionallySizedBox(
+                                          widthFactor: widthFactor,
+                                          heightFactor: 1.0,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: barColor,
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ] else
+                                  // 其他平台：百分比文字
+                                  ValueListenableBuilder<int>(
+                                    valueListenable: _batteryLevelNotifier,
+                                    builder: (context, batteryLevel, _) {
+                                      return Text(
+                                        '电量 $batteryLevel%',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall?.copyWith(
+                                          color: subTextColor,
+                                          fontSize: 11,
+                                          height: 1,
+                                        ),
+                                      );
+                                    },
+                                  ),
+
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 70, // 保持对称
+                                  child: ValueListenableBuilder<double>(
+                                    valueListenable: _readProgressNotifier,
+                                    builder: (context, value, _) {
+                                      final percent =
+                                          (value.clamp(0.0, 1.0) * 100)
+                                              .round()
+                                              .clamp(0, 100)
+                                              .toInt();
+                                      return Text(
+                                        '已读 $percent%',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall?.copyWith(
+                                          color: subTextColor,
+                                          fontSize: 11,
+                                          // height: 1,
+                                        ),
+                                        textAlign: TextAlign.left,
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },
                 ),
-              const SizedBox(width: 12),
+              ),
+            ),
+            const SizedBox(width: 12),
 
-              // 章节信息卡片 - 根据标题长度动态收缩
-              // 使用 Flexible + Center：允许收缩，且在剩余空间居中
-              Flexible(
-                child: Center(
-                  child: Builder(
-                    builder: (context) {
-                      // 根据阅读背景亮度动态计算文字颜色
-                      final settings = ref.watch(settingsProvider);
-                      final readerBgColor = _getReaderBackgroundColor(settings);
-                      // computeLuminance 返回 0.0-1.0，越接近 1 越亮
-                      final isLightBg = readerBgColor.computeLuminance() > 0.5;
-                      final textColor = isLightBg ? Colors.black : Colors.white;
-                      final subTextColor = textColor.withValues(alpha: 0.7);
+            // 更多菜单按钮（章节列表 + 阅读背景）
+            if (Platform.isIOS || Platform.isMacOS)
+              AdaptivePopupMenuButton.icon<String>(
+                icon:
+                    settings.useIOS26Style
+                        ? 'ellipsis'
+                        : CupertinoIcons.ellipsis,
+                buttonStyle: PopupButtonStyle.glass,
+                items: [
+                  AdaptivePopupMenuItem(
+                    label: '章节列表',
+                    icon:
+                        settings.useIOS26Style
+                            ? 'list.bullet'
+                            : CupertinoIcons.list_bullet,
+                    value: 'chapters',
+                  ),
+                  AdaptivePopupMenuItem(
+                    label: '阅读背景',
+                    icon:
+                        settings.useIOS26Style
+                            ? 'paintbrush'
+                            : CupertinoIcons.paintbrush,
+                    value: 'background',
+                  ),
+                ],
+                onSelected: (index, item) {
+                  switch (item.value) {
+                    case 'chapters':
+                      _showChapterListSheet(context);
+                      break;
+                    case 'background':
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const ReaderBackgroundPage(),
+                        ),
+                      );
+                      break;
+                  }
+                },
+              )
+            else
+              Builder(
+                builder: (context) {
+                  // 根据阅读背景亮度动态计算图标颜色
+                  final settings = ref.watch(settingsProvider);
+                  final readerBgColor = _getReaderBackgroundColor(settings);
+                  final isLightBg = readerBgColor.computeLuminance() > 0.5;
+                  final iconColor = isLightBg ? Colors.black : Colors.white;
 
-                      return UniversalGlassPanel(
-                        blurAmount: 15,
-                        borderRadius: BorderRadius.circular(100),
-                        child: Container(
-                          constraints: const BoxConstraints(
-                            minWidth: 140,
-                          ), // 最小宽度
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(100),
-                            border: Border.all(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outlineVariant
-                                  .withValues(alpha: 0.3),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
+                  return PopupMenuButton<String>(
+                    icon: Icon(Icons.more_horiz, color: iconColor),
+                    itemBuilder: (context) {
+                      final colorScheme = Theme.of(context).colorScheme;
+                      return [
+                        PopupMenuItem(
+                          value: 'chapters',
+                          child: Row(
                             children: [
-                              // 章节标题（支持简化）
-                              Text(
-                                _loading
-                                    ? '加载中'
-                                    : (() {
-                                      String title = _chapter?.title ?? '';
-                                      if (title.isNotEmpty &&
-                                          settings.cleanChapterTitle) {
-                                        // 混合正则：
-                                        // 处理 【第一话】 或非英文前缀
-                                        // 处理 『「〈 分隔符
-                                        // 保留纯英文标题
-                                        final regex = RegExp(
-                                          r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
-                                        );
-                                        final match = regex.firstMatch(title);
-                                        if (match != null) {
-                                          final extracted =
-                                              (match.group(1) ?? '') +
-                                              (match.group(2) ?? '');
-                                          if (extracted.isNotEmpty) {
-                                            title = extracted;
-                                          }
-                                        }
-                                      }
-                                      return title;
-                                    })(),
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: textColor,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
+                              Icon(
+                                Icons.list,
+                                color: colorScheme.onSurfaceVariant,
                               ),
-                              const SizedBox(height: 2),
-                              // 阅读进度（clamp 确保 0-100%）
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 70, // 加宽以容纳长文本
-                                    child: ValueListenableBuilder<String>(
-                                      valueListenable: _timeStringNotifier,
-                                      builder: (context, timeString, _) {
-                                        return Text(
-                                          timeString,
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall?.copyWith(
-                                            color: subTextColor,
-                                            fontSize: 11,
-                                            // height: 1,
-                                          ),
-                                          textAlign:
-                                              TextAlign.right, // 靠右对齐，紧贴电量条
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-
-                                  // IOS: 自定义电池条
-                                  if (Platform.isIOS) ...[
-                                    AnimatedBuilder(
-                                      animation: Listenable.merge([
-                                        _batteryLevelNotifier,
-                                        _batteryStateNotifier,
-                                      ]),
-                                      builder: (context, _) {
-                                        final batteryLevel =
-                                            _batteryLevelNotifier.value;
-                                        final batteryState =
-                                            _batteryStateNotifier.value;
-
-                                        final widthFactor = (batteryLevel /
-                                                100.0)
-                                            .clamp(0.0, 1.0);
-
-                                        final barColor = () {
-                                          if (batteryState ==
-                                              BatteryState.charging) {
-                                            // K: 充电则显示蓝色条
-                                            return Colors.blue;
-                                          }
-                                          // 正常状态
-                                          if (batteryLevel <= 15) {
-                                            return Colors.red; // 15% 以下红
-                                          } else if (batteryLevel <= 35) {
-                                            return Colors.yellow; // 35% 以下黄
-                                          }
-                                          // 默认绿
-                                          return const Color(0xFF34C759);
-                                        }();
-
-                                        return Container(
-                                          width: 36,
-                                          height: 6,
-                                          decoration: BoxDecoration(
-                                            color: subTextColor.withValues(
-                                              alpha: 0.2,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              3,
-                                            ),
-                                          ),
-                                          alignment: Alignment.centerLeft,
-                                          child: FractionallySizedBox(
-                                            widthFactor: widthFactor,
-                                            heightFactor: 1.0,
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                color: barColor,
-                                                borderRadius:
-                                                    BorderRadius.circular(3),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ] else
-                                    // 其他平台：百分比文字
-                                    ValueListenableBuilder<int>(
-                                      valueListenable: _batteryLevelNotifier,
-                                      builder: (context, batteryLevel, _) {
-                                        return Text(
-                                          '电量 $batteryLevel%',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall?.copyWith(
-                                            color: subTextColor,
-                                            fontSize: 11,
-                                            height: 1,
-                                          ),
-                                        );
-                                      },
-                                    ),
-
-                                  const SizedBox(width: 8),
-                                  SizedBox(
-                                    width: 70, // 保持对称
-                                    child: ValueListenableBuilder<double>(
-                                      valueListenable: _readProgressNotifier,
-                                      builder: (context, value, _) {
-                                        final percent =
-                                            (value.clamp(0.0, 1.0) * 100)
-                                                .round()
-                                                .clamp(0, 100)
-                                                .toInt();
-                                        return Text(
-                                          '已读 $percent%',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall?.copyWith(
-                                            color: subTextColor,
-                                            fontSize: 11,
-                                            // height: 1,
-                                          ),
-                                          textAlign: TextAlign.left,
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
+                              const SizedBox(width: 12),
+                              const Text('章节列表'),
                             ],
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-
-              // 更多菜单按钮（章节列表 + 阅读背景）
-              if (Platform.isIOS || Platform.isMacOS)
-                AdaptivePopupMenuButton.icon<String>(
-                  icon:
-                      settings.useIOS26Style
-                          ? 'ellipsis'
-                          : CupertinoIcons.ellipsis,
-                  buttonStyle: PopupButtonStyle.glass,
-                  items: [
-                    AdaptivePopupMenuItem(
-                      label: '章节列表',
-                      icon:
-                          settings.useIOS26Style
-                              ? 'list.bullet'
-                              : CupertinoIcons.list_bullet,
-                      value: 'chapters',
-                    ),
-                    AdaptivePopupMenuItem(
-                      label: '阅读背景',
-                      icon:
-                          settings.useIOS26Style
-                              ? 'paintbrush'
-                              : CupertinoIcons.paintbrush,
-                      value: 'background',
-                    ),
-                  ],
-                  onSelected: (index, item) {
-                    switch (item.value) {
-                      case 'chapters':
-                        _showChapterListSheet(context);
-                        break;
-                      case 'background':
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const ReaderBackgroundPage(),
-                          ),
-                        );
-                        break;
-                    }
-                  },
-                )
-              else
-                Builder(
-                  builder: (context) {
-                    // 根据阅读背景亮度动态计算图标颜色
-                    final settings = ref.watch(settingsProvider);
-                    final readerBgColor = _getReaderBackgroundColor(settings);
-                    final isLightBg = readerBgColor.computeLuminance() > 0.5;
-                    final iconColor = isLightBg ? Colors.black : Colors.white;
-
-                    return PopupMenuButton<String>(
-                      icon: Icon(Icons.more_horiz, color: iconColor),
-                      itemBuilder: (context) {
-                        final colorScheme = Theme.of(context).colorScheme;
-                        return [
-                          PopupMenuItem(
-                            value: 'chapters',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.list,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: 12),
-                                const Text('章节列表'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'background',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.palette_outlined,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: 12),
-                                const Text('阅读背景'),
-                              ],
-                            ),
-                          ),
-                        ];
-                      },
-                      onSelected: (value) {
-                        switch (value) {
-                          case 'chapters':
-                            _showChapterListSheet(context);
-                            break;
-                          case 'background':
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder:
-                                    (context) => const ReaderBackgroundPage(),
+                        PopupMenuItem(
+                          value: 'background',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.palette_outlined,
+                                color: colorScheme.onSurfaceVariant,
                               ),
-                            );
-                            break;
-                        }
-                      },
-                    );
-                  },
-                ),
-            ],
-          ),
+                              const SizedBox(width: 12),
+                              const Text('阅读背景'),
+                            ],
+                          ),
+                        ),
+                      ];
+                    },
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'chapters':
+                          _showChapterListSheet(context);
+                          break;
+                        case 'background':
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder:
+                                  (context) => const ReaderBackgroundPage(),
+                            ),
+                          );
+                          break;
+                      }
+                    },
+                  );
+                },
+              ),
+          ],
         ),
       ),
     );
@@ -2205,120 +2211,128 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     return Positioned(
       right: 16,
       bottom: bottomPadding + 16,
-      child: AnimatedSlide(
-        offset: _barsVisible ? Offset.zero : const Offset(1.5, 0),
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        child: AnimatedOpacity(
-          opacity: _barsVisible ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 200),
-          child: IgnorePointer(
-            ignoring: !_barsVisible,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 上一章
-                if (settings.useIOS26Style)
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(1000),
-                      border: Border.all(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.outlineVariant.withValues(alpha: 0.3),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: AdaptiveButton.sfSymbol(
-                      key: ValueKey('prev_btn_${_targetSortNum > 1}'),
-                      onPressed: _targetSortNum > 1 ? _onPrev : null,
-                      sfSymbol: const SFSymbol('chevron.left', size: 20),
-                      style: AdaptiveButtonStyle.glass,
-                      borderRadius: BorderRadius.circular(1000),
-                      useSmoothRectangleBorder: false,
-                      padding: EdgeInsets.zero,
-                    ),
-                  )
-                else
-                  Builder(
-                    builder: (context) {
-                      final settings = ref.watch(settingsProvider);
-                      final colorScheme =
-                          (settings.coverColorExtraction
-                              ? _dynamicColorScheme
-                              : null) ??
-                          Theme.of(context).colorScheme;
-                      return AdaptiveFloatingActionButton(
-                        mini: true,
-                        onPressed: _targetSortNum > 1 ? _onPrev : null,
-                        backgroundColor: colorScheme.surfaceContainerHighest,
-                        foregroundColor: colorScheme.onSurfaceVariant,
-                        elevation: 0,
-                        child: const Icon(Icons.chevron_left),
-                      );
-                    },
-                  ),
-                const SizedBox(width: 12),
-                // 下一章
-                if (settings.useIOS26Style)
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(1000),
-                      border: Border.all(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.outlineVariant.withValues(alpha: 0.3),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: AdaptiveButton.sfSymbol(
-                      key: ValueKey(
-                        'next_btn_${_targetSortNum < widget.totalChapters}',
-                      ),
-                      onPressed:
-                          _targetSortNum < widget.totalChapters
-                              ? _onNext
-                              : null,
-                      sfSymbol: const SFSymbol('chevron.right', size: 20),
-                      style: AdaptiveButtonStyle.glass,
-                      borderRadius: BorderRadius.circular(1000),
-                      useSmoothRectangleBorder: false,
-                      padding: EdgeInsets.zero,
-                    ),
-                  )
-                else
-                  Builder(
-                    builder: (context) {
-                      final settings = ref.watch(settingsProvider);
-                      final colorScheme =
-                          (settings.coverColorExtraction
-                              ? _dynamicColorScheme
-                              : null) ??
-                          Theme.of(context).colorScheme;
-                      return AdaptiveFloatingActionButton(
-                        mini: true,
-                        onPressed:
-                            _targetSortNum < widget.totalChapters
-                                ? _onNext
-                                : null,
-                        backgroundColor: colorScheme.primaryContainer,
-                        foregroundColor: colorScheme.onPrimaryContainer,
-                        child: Icon(
-                          PlatformInfo.isIOS
-                              ? CupertinoIcons.chevron_right
-                              : Icons.chevron_right,
-                          size: 20,
-                        ),
-                      );
-                    },
-                  ),
-              ],
+      child: AnimatedBuilder(
+        animation: _barsAnimController,
+        builder: (context, child) {
+          if (_barsAnimController.value == 0.0) {
+            return const SizedBox.shrink();
+          }
+
+          // 使用 Tween 仅实现滑动效果 (从 offset x: 1.5 到 0)，不再使用 Opacity
+          final slideOffset = Tween<Offset>(
+            begin: const Offset(1.5, 0),
+            end: Offset.zero,
+          ).evaluate(
+            CurvedAnimation(
+              parent: _barsAnimController,
+              curve: Curves.easeOutCubic,
             ),
-          ),
+          );
+
+          return FractionalTranslation(
+            translation: slideOffset,
+            child: IgnorePointer(ignoring: !_barsVisible, child: child),
+          );
+        },
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 上一章
+            if (settings.useIOS26Style)
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(1000),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    width: 0.5,
+                  ),
+                ),
+                child: AdaptiveButton.sfSymbol(
+                  key: ValueKey('prev_btn_${_targetSortNum > 1}'),
+                  onPressed: _targetSortNum > 1 ? _onPrev : null,
+                  sfSymbol: const SFSymbol('chevron.left', size: 20),
+                  style: AdaptiveButtonStyle.glass,
+                  borderRadius: BorderRadius.circular(1000),
+                  useSmoothRectangleBorder: false,
+                  padding: EdgeInsets.zero,
+                ),
+              )
+            else
+              Builder(
+                builder: (context) {
+                  final settings = ref.watch(settingsProvider);
+                  final colorScheme =
+                      (settings.coverColorExtraction
+                          ? _dynamicColorScheme
+                          : null) ??
+                      Theme.of(context).colorScheme;
+                  return AdaptiveFloatingActionButton(
+                    mini: true,
+                    onPressed: _targetSortNum > 1 ? _onPrev : null,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    foregroundColor: colorScheme.onSurfaceVariant,
+                    elevation: 0,
+                    child: const Icon(Icons.chevron_left),
+                  );
+                },
+              ),
+            const SizedBox(width: 12),
+            // 下一章
+            if (settings.useIOS26Style)
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(1000),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    width: 0.5,
+                  ),
+                ),
+                child: AdaptiveButton.sfSymbol(
+                  key: ValueKey(
+                    'next_btn_${_targetSortNum < widget.totalChapters}',
+                  ),
+                  onPressed:
+                      _targetSortNum < widget.totalChapters ? _onNext : null,
+                  sfSymbol: const SFSymbol('chevron.right', size: 20),
+                  style: AdaptiveButtonStyle.glass,
+                  borderRadius: BorderRadius.circular(1000),
+                  useSmoothRectangleBorder: false,
+                  padding: EdgeInsets.zero,
+                ),
+              )
+            else
+              Builder(
+                builder: (context) {
+                  final settings = ref.watch(settingsProvider);
+                  final colorScheme =
+                      (settings.coverColorExtraction
+                          ? _dynamicColorScheme
+                          : null) ??
+                      Theme.of(context).colorScheme;
+                  return AdaptiveFloatingActionButton(
+                    mini: true,
+                    onPressed:
+                        _targetSortNum < widget.totalChapters ? _onNext : null,
+                    backgroundColor: colorScheme.primaryContainer,
+                    foregroundColor: colorScheme.onPrimaryContainer,
+                    child: Icon(
+                      PlatformInfo.isIOS
+                          ? CupertinoIcons.chevron_right
+                          : Icons.chevron_right,
+                      size: 20,
+                    ),
+                  );
+                },
+              ),
+          ],
         ),
       ),
     );
