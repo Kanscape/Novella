@@ -98,7 +98,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
           ListTile(
             leading: const Icon(Icons.cloud_off),
             title: const Text('未连接'),
-            subtitle: const Text('连接 GitHub 以同步书签、阅读进度等数据'),
+            subtitle: const Text('连接 GitHub 以同步书签、阅读时间等数据'),
           ),
 
           Padding(

@@ -17,7 +17,7 @@ class SyncSettingsPage extends StatelessWidget {
               icon: Icons.sync,
               title: '同步设置',
               subtitle:
-                  '管理增强功能的云端同步\n为章节内进度、书籍标记、阅读时间\n提供进阶同步能力\n轻书架会保存章节级进度和书架数据\n即使禁用本页面的功能，也拥有基础同步能力',
+                  '管理增强功能的云端同步\n为书籍标记、阅读时间\n提供进阶同步能力\n轻书架会保存进度和默认书架的数据\n即使禁用本页面的功能，也拥有基础同步能力',
             ),
           ),
           SliverToBoxAdapter(child: SyncSettingsSection()),
