@@ -37,6 +37,13 @@ class ChapterContent {
 
 class ChapterService {
   static final Logger _logger = Logger('ChapterService');
+
+  /// 是否启用“零宽空格注入”。
+  ///
+  /// 用途：强制 Flutter 在任意位置断行。
+  /// 备注：当前用于排查“字与字之间莫名其妙出现空隙”的问题，先临时禁用。
+  static const bool _kEnableZeroWidthSpaceInjection = false;
+
   final SignalRService _signalRService = SignalRService();
 
   /// 获取章节内容
@@ -85,9 +92,9 @@ class ChapterService {
           );
         }
 
-        // 处理内容，注入零宽空格以解决换行问题
+        // 处理内容：必要时注入零宽空格以解决换行问题
         String content = chapterJson['Content'] as String? ?? '';
-        if (content.isNotEmpty) {
+        if (_kEnableZeroWidthSpaceInjection && content.isNotEmpty) {
           content = _injectZeroWidthSpace(content);
           // 更新 JSON 中的 Content
           chapterJson['Content'] = content;
