@@ -23,7 +23,7 @@ class SourceCodePage extends StatelessWidget {
             title: 'Novella',
             subtitle: '本项目',
             description: 'Novella 是轻书架的第三方 Flutter 客户端',
-            url: 'https://github.com/LiuHaoUltra/Novella',
+            url: 'https://github.com/Kanscape/Novella',
             icon: Icons.smartphone,
             isHighlight: true,
           ),

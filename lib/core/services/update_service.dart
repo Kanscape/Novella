@@ -10,7 +10,7 @@ import 'dart:developer' as developer;
 
 class UpdateService {
   static const String _releasesUrl =
-      'https://api.github.com/repos/LiuHaoUltra/Novella/releases/latest';
+      'https://api.github.com/repos/Kanscape/Novella/releases/latest';
 
   /// 检查更新
   ///

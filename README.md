@@ -45,8 +45,8 @@
 
 ## 📬 反馈与交流
 
-- 💡 **哇，新点子！** [前往 Discussions 讨论](https://github.com/LiuHaoUltra/Novella/discussions/7)
-- 🐛 **发现问题？** [提交 Issue 反馈](https://github.com/LiuHaoUltra/Novella/issues/new?labels=bug)
+- 💡 **哇，新点子！** [前往 Discussions 讨论](https://github.com/Kanscape/Novella/discussions/7)
+- 🐛 **发现问题？** [提交 Issue 反馈](https://github.com/Kanscape/Novella/issues/new?labels=bug)
 
 ## 🚀 快速开始
 
@@ -61,7 +61,7 @@
 git lfs install
 
 # 2. 克隆项目
-git clone https://github.com/LiuHaoUltra/Novella.git
+git clone https://github.com/Kanscape/Novella.git
 
 # 3. 运行
 flutter run
