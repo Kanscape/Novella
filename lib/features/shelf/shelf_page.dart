@@ -145,7 +145,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('\u52a0\u8f7d\u4e66\u67b6\u5931\u8d25')),
+        const SnackBar(content: Text('加载书架失败')),
       );
     }
   }
@@ -587,7 +587,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
           return ShelfMoveDestination(
             title:
                 folder.title.isEmpty
-                    ? '\u672a\u547d\u540d\u6587\u4ef6\u5939'
+                    ? '未命名文件夹'
                     : folder.title,
             subtitle: pathTitles.isEmpty ? null : pathTitles.join(' / '),
             parents: [...folder.parents, folderId],
@@ -616,12 +616,12 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       canRename: _canRenameSelectedFolder,
       moveDisabledReason:
           hasSelectedFolders
-              ? '\u9009\u4e2d\u6587\u4ef6\u5939\u65f6\u6682\u4e0d\u652f\u6301\u79fb\u52a8'
+              ? '选中文件夹时暂不支持移动'
               : destinations.isEmpty
-              ? '\u5f53\u524d\u6ca1\u6709\u53ef\u79fb\u52a8\u7684\u76ee\u6807'
+              ? '当前没有可移动的目标'
               : null,
       renameDisabledReason:
-          '\u4ec5\u652f\u6301\u5355\u9009\u6587\u4ef6\u5939\u91cd\u547d\u540d',
+          '仅支持单选文件夹重命名',
     );
 
     if (!mounted || action == null) {
@@ -674,9 +674,9 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     final snackBarText =
         folderCount > 0
             ? impactedBookCount > 0
-                ? '\u5df2\u5220\u9664 $impactedBookCount \u672c\u4e66\u548c $folderCount \u4e2a\u6587\u4ef6\u5939'
-                : '\u5df2\u5220\u9664 $folderCount \u4e2a\u6587\u4ef6\u5939'
-            : '\u5df2\u4ece\u4e66\u67b6\u79fb\u51fa ${selectedBookIds.length} \u672c\u4e66';
+                ? '已删除 $impactedBookCount 本书和 $folderCount 个文件夹'
+                : '已删除 $folderCount 个文件夹'
+            : '已从书架移出 ${selectedBookIds.length} 本书';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(snackBarText),
@@ -704,7 +704,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('\u5df2\u79fb\u52a8 ${selectedIds.length} \u672c\u4e66'),
+        content: Text('已移动 ${selectedIds.length} 本书'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -754,7 +754,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            '\u6587\u4ef6\u5939\u540d\u79f0\u65e0\u6548\u6216\u5df2\u5b58\u5728',
+            '文件夹名称无效或已存在',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -765,7 +765,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '\u5df2\u91cd\u547d\u540d\u6587\u4ef6\u5939\uff1a$trimmedName',
+          '已重命名文件夹：$trimmedName',
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -800,7 +800,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            '\u6587\u4ef6\u5939\u540d\u79f0\u65e0\u6548\u6216\u5df2\u5b58\u5728',
+            '文件夹名称无效或已存在',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -810,7 +810,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('\u5df2\u65b0\u5efa\u6587\u4ef6\u5939\uff1a$folderName'),
+        content: Text('已新建文件夹：$folderName'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -834,11 +834,11 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
   String _getFilterLabel(int filterIndex) {
     switch (filterIndex) {
       case 1:
-        return '\u5f85\u8bfb';
+        return '待读';
       case 2:
-        return '\u5728\u8bfb';
+        return '在读';
       case 3:
-        return '\u5df2\u8bfb';
+        return '已读';
       default:
         return '';
     }
@@ -853,11 +853,11 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     final title =
         _isEditMode
             ? (_isSortMode
-                ? '\u62d6\u62fd\u6392\u5e8f'
+                ? '拖拽排序'
                 : !_hasSelection
-                ? '\u7f16\u8f91\u4e66\u67b6'
-                : '\u5df2\u9009\u62e9 $selectedImpactCount \u672c')
-            : '\u4e66\u67b6';
+                ? '编辑书架'
+                : '已选 $selectedImpactCount 本')
+            : '书架';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 16, 8),
@@ -878,7 +878,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                 icon: const Icon(Icons.add),
                 onPressed:
                     (_hasSelection || _isSortMode) ? null : _createFolder,
-                tooltip: '\u65b0\u5efa\u6587\u4ef6\u5939',
+                tooltip: '新建文件夹',
               ),
             if (_selectedFilter == 0)
               IconButton(
@@ -889,30 +889,30 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                 onPressed: _hasSelection ? null : _toggleSortMode,
                 tooltip:
                     _isSortMode
-                        ? '\u9000\u51fa\u62d6\u62fd\u6392\u5e8f'
-                        : '\u62d6\u62fd\u6392\u5e8f',
+                        ? '退出拖拽排序'
+                        : '拖拽排序',
               ),
             IconButton(
               icon: const Icon(Icons.close),
               onPressed: _isSortMode ? null : _exitEditMode,
-              tooltip: '\u53d6\u6d88',
+              tooltip: '取消',
             ),
             IconButton(
               icon: const Icon(Icons.check),
               onPressed:
                   _hasSelection && !_isSortMode ? _handleEditConfirm : null,
-              tooltip: '\u786e\u8ba4',
+              tooltip: '确认',
             ),
           ] else ...[
             IconButton(
               icon: const Icon(Icons.edit_outlined),
               onPressed: _enterEditMode,
-              tooltip: '\u7f16\u8f91',
+              tooltip: '编辑',
             ),
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => _fetchShelf(force: true),
-              tooltip: '\u5237\u65b0',
+              tooltip: '刷新',
             ),
           ],
         ],
@@ -922,10 +922,10 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
   Widget _buildFilterTabs(ColorScheme colorScheme) {
     const labels = [
-      '\u9ed8\u8ba4',
-      '\u5f85\u8bfb',
-      '\u5728\u8bfb',
-      '\u5df2\u8bfb',
+      '默认',
+      '待读',
+      '在读',
+      '已读',
     ];
 
     return SizedBox(
@@ -983,7 +983,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
           const SizedBox(height: 16),
           if (_selectedFilter == 0)
             Text(
-              '\u4e66\u67b6\u7a7a\u7a7a\u5982\u4e5f',
+              '书架空空如也',
               textAlign: TextAlign.center,
               style: textTheme.bodyLarge?.copyWith(
                 color: colorScheme.onSurfaceVariant,
@@ -991,7 +991,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
             )
           else ...[
             Text(
-              '\u6ca1\u6709\u6807\u8bb0\u4e3a${_getFilterLabel(_selectedFilter)}\u7684\u4e66\u7c4d',
+              '没有标记为${_getFilterLabel(_selectedFilter)}的书籍',
               textAlign: TextAlign.center,
               style: textTheme.bodyLarge?.copyWith(
                 color: colorScheme.onSurfaceVariant,
@@ -999,7 +999,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
             ),
             const SizedBox(height: 6),
             Text(
-              '\u957f\u6309\u8be6\u60c5\u9875\u4e66\u7b7e\u6309\u94ae\u5373\u53ef\u6807\u8bb0',
+              '长按详情页书签按钮即可标记',
               textAlign: TextAlign.center,
               style: textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,

@@ -118,7 +118,7 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('\u52a0\u8f7d\u6587\u4ef6\u5939\u5931\u8d25'),
+            content: Text('加载文件夹失败'),
           ),
         );
       }
@@ -392,8 +392,8 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
   List<ShelfMoveDestination> _moveDestinations() {
     final destinations = <ShelfMoveDestination>[
       const ShelfMoveDestination(
-        title: '\u4e66\u67b6\u9876\u5c42',
-        subtitle: '\u4e0d\u5728\u4efb\u4f55\u6587\u4ef6\u5939\u4e2d',
+        title: '书架顶层',
+        subtitle: '不在任何文件夹中',
         parents: [],
         isRoot: true,
       ),
@@ -408,7 +408,7 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
         ShelfMoveDestination(
           title:
               folder.title.isEmpty
-                  ? '\u672a\u547d\u540d\u6587\u4ef6\u5939'
+                  ? '未命名文件夹'
                   : folder.title,
           subtitle: pathTitles.isEmpty ? null : pathTitles.join(' / '),
           parents: [...folder.parents, folderId],
@@ -433,7 +433,7 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
       canMove: destinations.isNotEmpty,
       moveDisabledReason:
           destinations.isEmpty
-              ? '\u5f53\u524d\u6ca1\u6709\u53ef\u79fb\u52a8\u7684\u76ee\u6807'
+              ? '当前没有可移动的目标'
               : null,
     );
 
@@ -480,7 +480,7 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '\u5df2\u4ece\u4e66\u67b6\u79fb\u51fa ${selectedIds.length} \u672c\u4e66',
+          '已从书架移出 ${selectedIds.length} 本书',
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -504,7 +504,7 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('\u5df2\u79fb\u52a8 ${selectedIds.length} \u672c\u4e66'),
+        content: Text('已移动 ${selectedIds.length} 本书'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -549,7 +549,7 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
                               ),
                               const SizedBox(height: 16),
                               Text(
-                                '\u5f53\u524d\u6587\u4ef6\u5939\u4e3a\u7a7a',
+                                '当前文件夹为空',
                                 textAlign: TextAlign.center,
                                 style: textTheme.bodyLarge?.copyWith(
                                   color: colorScheme.onSurfaceVariant,
@@ -691,11 +691,11 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
     final appBarTitle =
         _isEditMode
             ? (_isSortMode
-                ? '\u62d6\u62fd\u6392\u5e8f'
+                ? '拖拽排序'
                 : _selectedBookIds.isEmpty
-                ? '\u7f16\u8f91\u6587\u4ef6\u5939'
-                : '\u5df2\u9009\u62e9 ${_selectedBookIds.length} \u672c')
-            : (_folderTitle.isEmpty ? '\u6587\u4ef6\u5939' : _folderTitle);
+                ? '编辑文件夹'
+                : '已选 ${_selectedBookIds.length} 本')
+            : (_folderTitle.isEmpty ? '文件夹' : _folderTitle);
 
     return Scaffold(
       appBar: AppBar(
@@ -710,13 +710,13 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
               onPressed: _selectedBookIds.isNotEmpty ? null : _toggleSortMode,
               tooltip:
                   _isSortMode
-                      ? '\u9000\u51fa\u62d6\u62fd\u6392\u5e8f'
-                      : '\u62d6\u62fd\u6392\u5e8f',
+                      ? '退出拖拽排序'
+                      : '拖拽排序',
             ),
             IconButton(
               icon: const Icon(Icons.close),
               onPressed: _isSortMode ? null : _exitEditMode,
-              tooltip: '\u53d6\u6d88',
+              tooltip: '取消',
             ),
             IconButton(
               icon: const Icon(Icons.check),
@@ -724,18 +724,18 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
                   _selectedBookIds.isEmpty || _isSortMode
                       ? null
                       : _handleEditConfirm,
-              tooltip: '\u786e\u8ba4',
+              tooltip: '确认',
             ),
           ] else ...[
             IconButton(
               icon: const Icon(Icons.edit_outlined),
               onPressed: _enterEditMode,
-              tooltip: '\u7f16\u8f91',
+              tooltip: '编辑',
             ),
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => _loadFolder(forceRefresh: true),
-              tooltip: '\u5237\u65b0',
+              tooltip: '刷新',
             ),
           ],
         ],

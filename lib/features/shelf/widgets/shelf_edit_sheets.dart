@@ -20,14 +20,14 @@ String _buildSelectionSummary({
   required int selectedBookCount,
   required int selectedFolderCount,
 }) {
-  final folderSummary = '$selectedFolderCount \u4e2a\u6587\u4ef6\u5939';
+  final folderSummary = '$selectedFolderCount 个文件夹';
   if (selectedFolderCount > 0 && selectedBookCount > 0) {
-    return '$selectedBookCount \u672c\u4e66\uff0c$folderSummary';
+    return '$selectedBookCount 本书，$folderSummary';
   }
   if (selectedFolderCount > 0) {
     return folderSummary;
   }
-  return '$selectedBookCount \u672c\u4e66';
+  return '$selectedBookCount 本书';
 }
 
 Future<ShelfEditAction?> showShelfEditActionSheet({
@@ -54,11 +54,11 @@ Future<ShelfEditAction?> showShelfEditActionSheet({
       );
       final selectionHint =
           selectedFolderCount > 0
-              ? '\u9009\u62e9\u8981\u5bf9\u8fd9\u4e9b\u9879\u76ee\u6267\u884c\u7684\u64cd\u4f5c'
-              : '\u9009\u62e9\u8981\u5bf9\u8fd9\u4e9b\u4e66\u7c4d\u6267\u884c\u7684\u64cd\u4f5c';
+              ? '选择要对这些项目执行的操作'
+              : '选择要对这些书籍执行的操作';
       final nestedFolderHint =
           selectedFolderCount > 0 && selectedFolderBookCount > 0
-              ? '\u6b64\u5916\uff0c\u6587\u4ef6\u5939\u5185\u5305\u542b $selectedFolderBookCount \u672c'
+              ? '此外，文件夹内包含 $selectedFolderBookCount 本'
               : null;
 
       return SafeArea(
@@ -69,7 +69,7 @@ Future<ShelfEditAction?> showShelfEditActionSheet({
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Text(
-                '\u5df2\u9009\u62e9 $selectionSummary',
+                '已选 $selectionSummary',
                 style: textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -107,12 +107,12 @@ Future<ShelfEditAction?> showShelfEditActionSheet({
                         ? colorScheme.primary
                         : colorScheme.onSurfaceVariant,
               ),
-              title: const Text('\u79fb\u52a8'),
+              title: const Text('移动'),
               subtitle: Text(
                 canMove
-                    ? '\u79fb\u52a8\u5230\u6839\u6587\u4ef6\u5939\u6216\u5176\u5b83\u6587\u4ef6\u5939'
+                    ? '移动到根文件夹或其它文件夹'
                     : (moveDisabledReason ??
-                        '\u5f53\u524d\u9009\u62e9\u4e0d\u652f\u6301\u79fb\u52a8'),
+                        '当前选择不支持移动'),
               ),
               onTap:
                   canMove
@@ -124,7 +124,7 @@ Future<ShelfEditAction?> showShelfEditActionSheet({
             ListTile(
               leading: Icon(Icons.delete_outline, color: colorScheme.error),
               title: Text(
-                '\u5220\u9664',
+                '删除',
                 style: TextStyle(
                   color: colorScheme.error,
                   fontWeight: FontWeight.w700,
@@ -132,8 +132,8 @@ Future<ShelfEditAction?> showShelfEditActionSheet({
               ),
               subtitle: Text(
                 selectedFolderCount > 0
-                    ? '\u4ece\u4e66\u67b6\u5220\u9664\u6240\u9009\u4e66\u7c4d\u548c\u6587\u4ef6\u5939\u5185\u5bb9'
-                    : '\u4ece\u4e66\u67b6\u79fb\u51fa\u6240\u9009\u4e66\u7c4d',
+                    ? '从书架删除所选书籍和文件夹内容'
+                    : '从书架移出所选书籍',
               ),
               onTap: () {
                 Navigator.pop(sheetContext, ShelfEditAction.delete);
@@ -149,12 +149,12 @@ Future<ShelfEditAction?> showShelfEditActionSheet({
                           ? colorScheme.primary
                           : colorScheme.onSurfaceVariant,
                 ),
-                title: const Text('\u91cd\u547d\u540d'),
+                title: const Text('重命名'),
                 subtitle: Text(
                   canRename
-                      ? '\u4fee\u6539\u9009\u4e2d\u6587\u4ef6\u5939\u540d\u79f0'
+                      ? '修改选中文件夹名称'
                       : (renameDisabledReason ??
-                          '\u4ec5\u652f\u6301\u5355\u9009\u6587\u4ef6\u5939\u91cd\u547d\u540d'),
+                          '仅支持单选文件夹重命名'),
                 ),
                 onTap:
                     canRename
@@ -191,7 +191,7 @@ Future<bool> showShelfDeleteConfirmSheet({
       );
       final deleteHint =
           selectedFolderCount > 0 && selectedFolderBookCount > 0
-              ? '\u786e\u5b9a\u8981\u4ece\u4e66\u67b6\u5220\u9664\u6240\u9009\u7684 $selectionSummary \u5417\uff1f\u6587\u4ef6\u5939\u5185\u542b $selectedFolderBookCount \u672c\u4e66\u4e5f\u4f1a\u4e00\u5e76\u5220\u9664\u3002'
+              ? '确定要从书架删除所选的 $selectionSummary 吗？文件夹内含 $selectedFolderBookCount 本书也会一并删除。'
               : null;
 
       return SafeArea(
@@ -203,8 +203,8 @@ Future<bool> showShelfDeleteConfirmSheet({
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Text(
                 selectedFolderCount > 0
-                    ? '\u5220\u9664\u6240\u9009\u9879\u76ee'
-                    : '\u79fb\u51fa\u4e66\u67b6',
+                    ? '删除所选项目'
+                    : '移出书架',
                 style: textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -215,8 +215,8 @@ Future<bool> showShelfDeleteConfirmSheet({
               child: Text(
                 selectedFolderCount > 0
                     ? (deleteHint ??
-                        '\u786e\u5b9a\u8981\u4ece\u4e66\u67b6\u5220\u9664\u6240\u9009\u7684 $selectionSummary \u5417\uff1f')
-                    : '\u786e\u5b9a\u8981\u5c06\u9009\u4e2d\u7684 $selectionSummary \u79fb\u51fa\u4e66\u67b6\u5417\uff1f',
+                        '确定要从书架删除所选的 $selectionSummary 吗？')
+                    : '确定要将选中的 $selectionSummary 移出书架吗？',
                 style: textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -225,7 +225,7 @@ Future<bool> showShelfDeleteConfirmSheet({
             ListTile(
               leading: Icon(Icons.delete, color: colorScheme.error),
               title: Text(
-                '\u786e\u8ba4\u5220\u9664',
+                '确认删除',
                 style: TextStyle(
                   color: colorScheme.error,
                   fontWeight: FontWeight.w700,
@@ -235,7 +235,7 @@ Future<bool> showShelfDeleteConfirmSheet({
             ),
             ListTile(
               leading: Icon(Icons.close, color: colorScheme.onSurfaceVariant),
-              title: const Text('\u53d6\u6d88'),
+              title: const Text('取消'),
               onTap: () => Navigator.pop(sheetContext, false),
             ),
             const SizedBox(height: 16),
@@ -261,124 +261,79 @@ Future<List<String>?> showShelfMoveDestinationSheet({
     builder: (sheetContext) {
       final colorScheme = Theme.of(sheetContext).colorScheme;
       final textTheme = Theme.of(sheetContext).textTheme;
-      var query = '';
-
-      return StatefulBuilder(
-        builder: (context, setSheetState) {
-          final normalizedQuery = query.trim().toLowerCase();
-          final filteredDestinations = destinations
-              .where((destination) {
-                final haystacks =
-                    [
-                      destination.title,
-                      if (destination.subtitle != null) destination.subtitle!,
-                    ].join(' ').toLowerCase();
-                return normalizedQuery.isEmpty ||
-                    haystacks.contains(normalizedQuery);
-              })
-              .toList(growable: false);
-
-          return DraggableScrollableSheet(
-            initialChildSize: 0.6,
-            minChildSize: 0.3,
-            maxChildSize: 0.6,
-            expand: false,
-            builder: (context, scrollController) {
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+      return DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.6,
+        expand: false,
+        builder: (context, scrollController) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Text(
-                        '\u79fb\u52a8 $selectedBookCount \u672c\u4e66\u5230...',
-                        style: textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      child: Text(
-                        '\u53ef\u4ee5\u79fb\u5230\u6839\u6587\u4ef6\u5939\u6216\u5176\u5b83\u6587\u4ef6\u5939',
-                        style: textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      child: TextField(
-                        autofocus: true,
-                        onChanged: (value) {
-                          setSheetState(() {
-                            query = value;
-                          });
-                        },
-                        decoration: InputDecoration(
-                          hintText: '\u641c\u7d22\u6587\u4ef6\u5939',
-                          prefixIcon: const Icon(Icons.search),
-                          filled: true,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
+                child: Text(
+                  '移动 $selectedBookCount 本书到...',
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  '可以移到根文件夹或其它文件夹',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Expanded(
+                child:
+                    destinations.isEmpty
+                        ? Center(
+                          child: Text(
+                            '当前没有可移动的目标',
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child:
-                          filteredDestinations.isEmpty
-                              ? Center(
-                                child: Text(
-                                  '\u672a\u627e\u5230\u53ef\u79fb\u52a8\u7684\u76ee\u6807',
-                                  style: textTheme.bodyMedium?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              )
-                              : ListView.builder(
-                                controller: scrollController,
-                                itemCount: filteredDestinations.length,
-                                itemBuilder: (context, index) {
-                                  final destination =
-                                      filteredDestinations[index];
-                                  return ListTile(
-                                    leading: Icon(
-                                      destination.isRoot
-                                          ? Icons.home_outlined
-                                          : Icons.folder_copy_outlined,
-                                      color:
-                                          destination.isRoot
-                                              ? colorScheme.primary
-                                              : colorScheme.onSurfaceVariant,
-                                    ),
-                                    title: Text(destination.title),
-                                    subtitle:
-                                        destination.subtitle == null ||
-                                                destination.subtitle!.isEmpty
-                                            ? null
-                                            : Text(destination.subtitle!),
-                                    onTap: () {
-                                      Navigator.pop(
-                                        sheetContext,
-                                        destination.parents,
-                                      );
-                                    },
-                                  );
-                                },
+                        )
+                        : ListView.builder(
+                          controller: scrollController,
+                          itemCount: destinations.length,
+                          itemBuilder: (context, index) {
+                            final destination = destinations[index];
+                            return ListTile(
+                              leading: Icon(
+                                destination.isRoot
+                                    ? Icons.home_outlined
+                                    : Icons.folder_copy_outlined,
+                                color:
+                                    destination.isRoot
+                                        ? colorScheme.primary
+                                        : colorScheme.onSurfaceVariant,
                               ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                              title: Text(destination.title),
+                              subtitle:
+                                  destination.subtitle == null ||
+                                          destination.subtitle!.isEmpty
+                                      ? null
+                                      : Text(destination.subtitle!),
+                              onTap: () {
+                                Navigator.pop(
+                                  sheetContext,
+                                  destination.parents,
+                                );
+                              },
+                            );
+                          },
+                        ),
+              ),
+            ],
           );
         },
       );
@@ -479,7 +434,7 @@ Future<String?> _showShelfFolderNameSheet({
                       children: [
                         TextButton(
                           onPressed: () => Navigator.pop(sheetContext),
-                          child: const Text('\u53d6\u6d88'),
+                          child: const Text('取消'),
                         ),
                         const Spacer(),
                         FilledButton.icon(
@@ -510,10 +465,10 @@ Future<String?> _showShelfFolderNameSheet({
 Future<String?> showShelfCreateFolderSheet({required BuildContext context}) {
   return _showShelfFolderNameSheet(
     context: context,
-    title: '\u65b0\u5efa\u6587\u4ef6\u5939',
-    subtitle: '\u8f93\u5165\u6587\u4ef6\u5939\u540d\u79f0',
-    hintText: '\u4f8b\u5982\uff1a\u5f85\u6574\u7406',
-    confirmLabel: '\u65b0\u5efa',
+    title: '新建文件夹',
+    subtitle: '输入文件夹名称',
+    hintText: '例如：待整理',
+    confirmLabel: '新建',
     icon: Icons.create_new_folder_outlined,
   );
 }
@@ -524,10 +479,10 @@ Future<String?> showShelfRenameFolderSheet({
 }) {
   return _showShelfFolderNameSheet(
     context: context,
-    title: '\u91cd\u547d\u540d\u6587\u4ef6\u5939',
-    subtitle: '\u8f93\u5165\u65b0\u7684\u6587\u4ef6\u5939\u540d\u79f0',
-    hintText: '\u4f8b\u5982\uff1a\u5f85\u6574\u7406',
-    confirmLabel: '\u786e\u8ba4',
+    title: '重命名文件夹',
+    subtitle: '输入新的文件夹名称',
+    hintText: '例如：待整理',
+    confirmLabel: '确认',
     icon: Icons.drive_file_rename_outline,
     initialValue: initialName,
   );
