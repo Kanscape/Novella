@@ -28,3 +28,12 @@ Future<Uint8List> convertWoff2ToTtf({required List<int> woff2Data}) => RustLib
     .instance
     .api
     .crateApiFontConverterConvertWoff2ToTtf(woff2Data: woff2Data);
+
+/// Find code points that map to zero-advance, empty glyphs in a TTF font.
+///
+/// These are effectively invisible placeholders in the obfuscation font.
+/// Web rendering swallows them naturally, but Flutter may leave visible holes.
+Future<Uint32List> extractInvisibleCodepoints({required List<int> ttfData}) =>
+    RustLib.instance.api.crateApiFontConverterExtractInvisibleCodepoints(
+      ttfData: ttfData,
+    );

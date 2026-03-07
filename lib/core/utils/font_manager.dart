@@ -37,6 +37,7 @@ class FontManager {
   static final FontManager _instance = FontManager._internal();
   final Dio _dio = Dio();
   final Set<String> _loadedFonts = {};
+  final Map<String, Set<int>> _invisibleCodepointsByFont = {};
 
   factory FontManager() => _instance;
   FontManager._internal();
@@ -143,13 +144,19 @@ class FontManager {
 
       // 6. 加载到 Flutter
       ttfBytes = await ttfFile.readAsBytes();
+      final invisibleCodepoints = await _extractInvisibleCodepoints(ttfBytes);
       final fontLoader = FontLoader(fontFamily);
       fontLoader.addFont(Future.value(ByteData.view(ttfBytes.buffer)));
       await fontLoader.load();
 
       _loadedFonts.add(fontFamily);
+      _invisibleCodepointsByFont[fontFamily] = invisibleCodepoints;
       developer.log(
         'Loaded: $fontFamily (${ttfBytes.length} bytes)',
+        name: 'FONT',
+      );
+      developer.log(
+        'Invisible placeholders: ${invisibleCodepoints.length}',
         name: 'FONT',
       );
 
@@ -183,6 +190,7 @@ class FontManager {
 
       // Clear loaded fonts set since cache is gone
       _loadedFonts.clear();
+      _invisibleCodepointsByFont.clear();
 
       developer.log('Cleared $deletedCount cached files', name: 'FONT');
     } catch (e) {
@@ -223,6 +231,7 @@ class FontManager {
 
         // 从已加载集合中移除
         _loadedFonts.remove(baseName);
+        _invisibleCodepointsByFont.remove(baseName);
 
         developer.log('Removed old cache: $baseName', name: 'FONT');
       }
@@ -254,5 +263,30 @@ class FontManager {
     }
 
     return FontCacheInfo(fileCount: fileCount, totalSizeBytes: totalSize);
+  }
+
+  Set<int> getInvisibleCodepoints(String? fontFamily) {
+    if (fontFamily == null) {
+      return const <int>{};
+    }
+
+    return _invisibleCodepointsByFont[fontFamily] ?? const <int>{};
+  }
+
+  Future<Set<int>> _extractInvisibleCodepoints(Uint8List ttfBytes) async {
+    if (!rustLibInitialized || ttfBytes.isEmpty) {
+      return const <int>{};
+    }
+
+    try {
+      final codepoints = await rust_ffi.extractInvisibleCodepoints(
+        ttfData: ttfBytes,
+      );
+      return codepoints.toSet();
+    } catch (e, stack) {
+      developer.log('Failed to inspect invisible codepoints: $e', name: 'FONT');
+      developer.log('Stack: $stack', name: 'FONT');
+      return const <int>{};
+    }
   }
 }

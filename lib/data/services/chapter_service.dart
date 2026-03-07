@@ -41,8 +41,7 @@ class ChapterService {
   /// 是否启用“零宽空格注入”。
   ///
   /// 用途：强制 Flutter 在任意位置断行。
-  /// 备注：当前用于排查“字与字之间莫名其妙出现空隙”的问题，先临时禁用。
-  static const bool _kEnableZeroWidthSpaceInjection = false;
+  static const bool _kEnableZeroWidthSpaceInjection = true;
 
   final SignalRService _signalRService = SignalRService();
 

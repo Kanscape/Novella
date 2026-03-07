@@ -351,6 +351,80 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     return buffer.toString();
   }
 
+  String _stripInvisiblePlaceholderCodepoints(
+    String html,
+    Set<int> invisibleCodepoints,
+  ) {
+    if (html.isEmpty || invisibleCodepoints.isEmpty) {
+      return html;
+    }
+
+    try {
+      final fragment = html_parser.parseFragment(html);
+      var changed = false;
+
+      void visit(dom.Node node) {
+        if (node is dom.Text) {
+          final sanitized = _stripInvisiblePlaceholderCharsFromText(
+            node.text,
+            invisibleCodepoints,
+          );
+          if (sanitized != node.text) {
+            node.text = sanitized;
+            changed = true;
+          }
+          return;
+        }
+
+        for (final child in node.nodes) {
+          visit(child);
+        }
+      }
+
+      for (final node in fragment.nodes) {
+        visit(node);
+      }
+
+      return changed ? _serializeFragmentNodes(fragment.nodes) : html;
+    } catch (_) {
+      return _stripInvisiblePlaceholderCharsFromText(html, invisibleCodepoints);
+    }
+  }
+
+  String _stripInvisiblePlaceholderCharsFromText(
+    String text,
+    Set<int> invisibleCodepoints,
+  ) {
+    if (text.isEmpty || invisibleCodepoints.isEmpty) {
+      return text;
+    }
+
+    final buffer = StringBuffer();
+    var changed = false;
+    var previousWasZeroWidthSpace = false;
+
+    for (final rune in text.runes) {
+      if (invisibleCodepoints.contains(rune)) {
+        changed = true;
+        continue;
+      }
+
+      if (rune == 0x200B) {
+        if (previousWasZeroWidthSpace) {
+          changed = true;
+          continue;
+        }
+        previousWasZeroWidthSpace = true;
+      } else {
+        previousWasZeroWidthSpace = false;
+      }
+
+      buffer.writeCharCode(rune);
+    }
+
+    return changed ? buffer.toString() : text;
+  }
+
   bool _canApplyFirstLineIndent(dom.Element element) {
     const indentableTags = {'p', 'div', 'blockquote'};
     if (!indentableTags.contains(element.localName)) {
@@ -1166,7 +1240,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
       if (mounted && currentVersion == _loadVersion) {
         // 3. 预处理脚注/注释（对标 Web：隐藏原注释节点 + 记录内容 + 禁用默认跳转）
-        final processed = _processFootnotes(chapter.content);
+        final invisibleCodepoints = _fontManager.getInvisibleCodepoints(family);
+        final sanitizedContent =
+            invisibleCodepoints.isEmpty
+                ? chapter.content
+                : _stripInvisiblePlaceholderCodepoints(
+                  chapter.content,
+                  invisibleCodepoints,
+                );
+        final processed = _processFootnotes(sanitizedContent);
         // 4. 构建可虚拟化 blocks（Route B：用于性能优化与逻辑进度）
         final blocksResult = _buildBlocksFromHtml(processed.html);
         final layoutInfo = _analyzeLayoutFromBlocks(blocksResult.blocks);
