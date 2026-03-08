@@ -10,9 +10,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:io' as io;
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
+import 'package:novella/core/network/backend_user_agent.dart';
 // gzip 数据为 JSON 格式，无需 msgpack
 import 'package:novella/core/network/request_queue.dart';
 import 'package:signalr_netcore/signalr_client.dart';
@@ -50,7 +52,17 @@ class SignalRService {
   // 单例
   static final SignalRService _instance = SignalRService._internal();
   factory SignalRService() => _instance;
-  SignalRService._internal();
+  SignalRService._internal() {
+    io.WebSocket.userAgent = null;
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: 'https://api.lightnovel.life',
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 30),
+      ),
+    );
+    BackendUserAgent.attachToDio(_dio);
+  }
 
   HubConnection? _hubConnection;
   final String _baseUrl = 'https://api.lightnovel.life';
@@ -77,13 +89,7 @@ class SignalRService {
   );
 
   // 用于令牌刷新的 Dio 实例
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: 'https://api.lightnovel.life',
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(seconds: 30),
-    ),
-  );
+  late final Dio _dio;
 
   bool get isConnected => _hubConnection?.state == HubConnectionState.Connected;
 
@@ -270,6 +276,7 @@ class SignalRService {
     developer.log('Connecting to: $hubUrl', name: 'SIGNALR');
 
     final token = await _getValidToken();
+    final headers = await BackendUserAgent.signalRHeaders();
     developer.log('Token ready: ${token.isNotEmpty}', name: 'SIGNALR');
 
     _hubConnection =
@@ -278,6 +285,7 @@ class SignalRService {
               hubUrl,
               options: HttpConnectionOptions(
                 accessTokenFactory: () async => await _getValidToken(),
+                headers: headers,
                 requestTimeout: 30000, // 30秒请求超时
               ),
             )

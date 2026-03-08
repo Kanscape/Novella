@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/network/backend_user_agent.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -11,10 +12,13 @@ class LocalCoverService {
   static final LocalCoverService _instance = LocalCoverService._internal();
 
   factory LocalCoverService() => _instance;
-  LocalCoverService._internal();
+  LocalCoverService._internal() {
+    _dio = Dio();
+    BackendUserAgent.attachToDio(_dio);
+  }
 
   Directory? _coverDir;
-  final Dio _dio = Dio();
+  late final Dio _dio;
 
   /// 初始化目录
   Future<void> _init() async {

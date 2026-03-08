@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import 'package:novella/core/auth/auth_service.dart';
+import 'package:novella/core/network/backend_user_agent.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
@@ -17,6 +18,7 @@ class ApiClient {
         headers: {'Content-Type': 'application/json'},
       ),
     );
+    BackendUserAgent.attachToDio(_dio);
 
     // 添加 Auth 拦截器
     _dio.interceptors.add(

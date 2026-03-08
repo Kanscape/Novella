@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
+import 'package:novella/core/network/backend_user_agent.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:convert/convert.dart';
@@ -35,12 +36,15 @@ class FontCacheInfo {
 /// 转为 Flutter 可加载的 TTF 格式。
 class FontManager {
   static final FontManager _instance = FontManager._internal();
-  final Dio _dio = Dio();
+  late final Dio _dio;
   final Set<String> _loadedFonts = {};
   final Map<String, Set<int>> _invisibleCodepointsByFont = {};
 
   factory FontManager() => _instance;
-  FontManager._internal();
+  FontManager._internal() {
+    _dio = Dio();
+    BackendUserAgent.attachToDio(_dio);
+  }
 
   /// 获取字体缓存目录
   Future<Directory> _getCacheDir() async {
