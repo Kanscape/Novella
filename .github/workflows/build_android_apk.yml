@@ -41,8 +41,20 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
+      # 还原 Release Keystore
+      - name: Decode Keystore
+        env:
+          ENCODED_STRING: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$ENCODED_STRING" | base64 --decode > android/app/release.keystore
+
       # 构建 APK
       - name: Build Android APK
+        env:
+          KEYSTORE_FILE: release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: flutter build apk --release --verbose
 
       # 重命名 APK
