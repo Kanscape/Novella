@@ -5,30 +5,60 @@ import 'package:novella/data/models/book.dart';
 /// 位于右下角，样式类似排名角标
 class BookTypeBadge extends StatelessWidget {
   final BookCategory? category;
+  final bool visible;
+  final bool reserveSpaceWhenHidden;
+  final Duration duration;
 
-  const BookTypeBadge({super.key, this.category});
+  const BookTypeBadge({
+    super.key,
+    this.category,
+    this.visible = true,
+    this.reserveSpaceWhenHidden = false,
+    this.duration = const Duration(milliseconds: 180),
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (category == null || category!.shortName.isEmpty) {
+    final icon =
+        category == null || category!.shortName.isEmpty
+            ? null
+            : _getIcon(category!.shortName);
+    final color =
+        category == null || category!.color.isEmpty
+            ? null
+            : _parseColor(category!.color);
+    final hasBadge = icon != null;
+
+    if (!reserveSpaceWhenHidden && !hasBadge) {
       return const SizedBox.shrink();
     }
-
-    final icon = _getIcon(category!.shortName);
-    if (icon == null) return const SizedBox.shrink();
-
-    final color = _parseColor(category!.color);
 
     return Positioned(
       right: 4,
       bottom: 4,
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: color ?? Colors.grey.shade700,
-          borderRadius: BorderRadius.circular(8),
+      child: IgnorePointer(
+        ignoring: !visible || !hasBadge,
+        child: AnimatedOpacity(
+          opacity: visible && hasBadge ? 1 : 0,
+          duration: duration,
+          curve: Curves.easeOutCubic,
+          child: AnimatedScale(
+            scale: visible && hasBadge ? 1 : 0.92,
+            duration: duration,
+            curve: Curves.easeOutCubic,
+            child:
+                hasBadge
+                    ? Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: color ?? Colors.grey.shade700,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(icon, size: 14, color: Colors.white),
+                    )
+                    : const SizedBox(width: 22, height: 22),
+          ),
         ),
-        child: Icon(icon, size: 14, color: Colors.white),
       ),
     );
   }

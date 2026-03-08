@@ -4,16 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_reorderable_grid_view/widgets/widgets.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_mark_service.dart';
-import 'package:novella/data/services/book_service.dart';
+import 'package:novella/data/services/book_cover_hint_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/features/shelf/shelf_book_detail_queue.dart';
 import 'package:novella/features/settings/settings_provider.dart';
 import 'package:novella/features/shelf/shelf_folder_page.dart';
 import 'package:novella/features/shelf/widgets/shelf_edit_sheets.dart';
 import 'package:novella/features/shelf/widgets/shelf_grid_item.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class ShelfPage extends ConsumerStatefulWidget {
   const ShelfPage({super.key});
@@ -23,32 +26,40 @@ class ShelfPage extends ConsumerStatefulWidget {
 }
 
 class ShelfPageState extends ConsumerState<ShelfPage> {
-  static const int _pageSize = 24;
+  static const int _prefetchBehindCount = 3;
+  static const int _prefetchAheadCount = 9;
 
   final _logger = Logger('ShelfPage');
-  final _bookService = BookService();
   final _userService = UserService();
   final _bookMarkService = BookMarkService();
+  final _bookCoverHintService = BookCoverHintService();
   final _browseScrollController = ScrollController();
   final _sortScrollController = ScrollController();
   final _gridViewKey = GlobalKey();
+  late final ShelfBookDetailQueue _detailQueue;
 
   final Map<int, Book> _bookDetails = {};
   final Set<int> _selectedBookIds = {};
   final Set<String> _selectedFolderIds = {};
+  final Set<String> _visibleItemKeys = <String>{};
+  final Set<int> _pendingInitialDetailIds = <int>{};
+  final Set<String> _revealedBookCoverKeys = <String>{};
+  final Set<String> _revealedFolderPreviewKeys = <String>{};
   List<ShelfItem> _rootItems = [];
   List<ShelfItem> _allShelfBookItems = [];
   bool _loading = true;
-  bool _loadingMore = false;
+  bool _waitingForVisibleDetails = false;
   bool _isSortDragging = false;
   bool _isEditMode = false;
   bool _isSortMode = false;
   DateTime? _lastRefreshTime;
-  int _displayedCount = 0;
   int _selectedFilter = 0;
   int? _dragStartIndex;
   int? _dragTargetIndex;
   Set<int> _markedBookIds = {};
+  Timer? _visibleDetailsFallbackTimer;
+  bool _isTabActive = true;
+  int _requestEpoch = 0;
 
   bool get _hasSelection =>
       _selectedBookIds.isNotEmpty || _selectedFolderIds.isNotEmpty;
@@ -57,6 +68,11 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       _selectedBookIds.isEmpty && _selectedFolderIds.length == 1;
 
   bool get _usesDefaultGrid => _selectedFilter == 0;
+
+  bool get _hasLoadedContent =>
+      _rootItems.isNotEmpty ||
+      _allShelfBookItems.isNotEmpty ||
+      _bookDetails.isNotEmpty;
 
   int get _selectedImpactBookCount => _userService.getSelectedBookImpactCount(
     bookIds: _selectedBookIds,
@@ -69,42 +85,141 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
   @override
   void initState() {
     super.initState();
+    unawaited(_bookCoverHintService.ensureInitialized());
+    _detailQueue = ShelfBookDetailQueue(
+      hasBook: (id) => _bookDetails.containsKey(id),
+      onBooksLoaded: _handleBooksLoaded,
+      onError: (error) {
+        _logger.warning('Failed to fetch shelf book details: $error');
+        _releaseVisibleDetailsGate();
+      },
+    );
     _userService.addListener(_onShelfChanged);
-    _browseScrollController.addListener(_onScroll);
-    _sortScrollController.addListener(_onScroll);
     _fetchShelf();
   }
 
   @override
   void dispose() {
     _userService.removeListener(_onShelfChanged);
+    _detailQueue.dispose();
+    _visibleDetailsFallbackTimer?.cancel();
     _browseScrollController.dispose();
     _sortScrollController.dispose();
     super.dispose();
   }
 
   void refresh() {
-    _refreshGrid(force: true);
+    _fetchShelf(force: true, silentIfPossible: true);
   }
 
-  void _onScroll() {
-    final controller =
-        _usesDefaultGrid ? _sortScrollController : _browseScrollController;
-
-    if (!controller.hasClients || _isSortDragging) {
+  void setTabActive(bool active) {
+    if (_isTabActive == active) {
       return;
     }
 
-    if (controller.position.pixels >=
-        controller.position.maxScrollExtent - 200) {
-      _loadMoreItems();
+    _isTabActive = active;
+    _requestEpoch++;
+
+    if (!active) {
+      _detailQueue.cancelPending();
+      _visibleItemKeys.clear();
+      _pendingInitialDetailIds.clear();
+      _releaseVisibleDetailsGate();
+      return;
     }
+
+    if (_loading || _waitingForVisibleDetails) {
+      unawaited(_refreshGrid(silentIfPossible: true));
+      return;
+    }
+
+    final initialDetailIds = _collectInitialDetailIds(_allFilteredItems);
+    if (initialDetailIds.isNotEmpty) {
+      unawaited(_refreshGrid(silentIfPossible: true));
+    }
+  }
+
+  bool _canApplyRequest(int requestEpoch) {
+    return mounted && _isTabActive && requestEpoch == _requestEpoch;
+  }
+
+  void _beginVisibleDetailsGate() {
+    _visibleDetailsFallbackTimer?.cancel();
+
+    if (mounted) {
+      setState(() {
+        _waitingForVisibleDetails = true;
+      });
+    }
+
+    _visibleDetailsFallbackTimer = Timer(const Duration(milliseconds: 900), () {
+      _releaseVisibleDetailsGate();
+    });
+  }
+
+  void _releaseVisibleDetailsGate() {
+    _visibleDetailsFallbackTimer?.cancel();
+    if (!mounted || !_waitingForVisibleDetails) {
+      return;
+    }
+
+    setState(() {
+      _waitingForVisibleDetails = false;
+    });
+    _pendingInitialDetailIds.clear();
+  }
+
+  void _handleBooksLoaded(List<Book> books) {
+    if (!mounted || !_isTabActive) {
+      return;
+    }
+
+    var shouldReleaseGate = false;
+    setState(() {
+      for (final book in books) {
+        _bookDetails[book.id] = book;
+        _pendingInitialDetailIds.remove(book.id);
+      }
+      if (_waitingForVisibleDetails && _pendingInitialDetailIds.isEmpty) {
+        _waitingForVisibleDetails = false;
+        shouldReleaseGate = true;
+      }
+    });
+    if (shouldReleaseGate) {
+      _visibleDetailsFallbackTimer?.cancel();
+    }
+  }
+
+  Iterable<int> _detailIdsForItem(ShelfItem item) sync* {
+    if (item.type == ShelfItemType.book) {
+      yield item.id as int;
+      return;
+    }
+
+    yield* _folderPreviewBookIds(item.id as String);
+  }
+
+  void _trackVisibleItem(List<ShelfItem> items, int index) {
+    final item = items[index];
+    final itemKey = _itemKey(item);
+    if (!_visibleItemKeys.add(itemKey)) {
+      return;
+    }
+
+    final startIndex = (index - _prefetchBehindCount).clamp(0, items.length);
+    final endIndex = (index + _prefetchAheadCount + 1).clamp(0, items.length);
+    final ids = <int>{};
+    for (var i = startIndex; i < endIndex; i++) {
+      ids.addAll(_detailIdsForItem(items[i]));
+    }
+
+    _detailQueue.enqueue(ids);
   }
 
   void _onShelfChanged() {
     if (!mounted || _isSortDragging) return;
     _logger.info('Shelf update received, refreshing root shelf...');
-    _refreshGrid();
+    _refreshGrid(silentIfPossible: true);
   }
 
   List<ShelfItem> get _allFilteredItems {
@@ -117,14 +232,12 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
         .toList();
   }
 
-  List<ShelfItem> get _displayItems {
-    final items = _allFilteredItems;
-    final count =
-        _displayedCount > items.length ? items.length : _displayedCount;
-    return items.take(count).toList();
-  }
-
-  Future<void> _fetchShelf({bool force = false}) async {
+  Future<void> _fetchShelf({
+    bool force = false,
+    bool silentIfPossible = false,
+  }) async {
+    final requestEpoch = _requestEpoch;
+    final canSilentRefresh = silentIfPossible && _hasLoadedContent;
     if (!force &&
         _lastRefreshTime != null &&
         DateTime.now().difference(_lastRefreshTime!) <
@@ -132,33 +245,54 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       return;
     }
 
-    if (mounted) {
+    if (_canApplyRequest(requestEpoch) && !canSilentRefresh) {
       setState(() => _loading = true);
     }
 
     try {
-      await _userService.ensureInitialized();
-      await _refreshGrid(force: force);
+      await _userService.ensureInitialized(
+        requestScope: RequestScopes.shelf,
+        priority: RequestPriority.high,
+      );
+      if (!_canApplyRequest(requestEpoch)) {
+        return;
+      }
+      await _refreshGrid(force: force, silentIfPossible: canSilentRefresh);
     } catch (e) {
+      if (!_canApplyRequest(requestEpoch)) {
+        return;
+      }
       _logger.severe('Error fetching shelf: $e');
       if (!mounted) return;
 
+      if (canSilentRefresh) {
+        return;
+      }
+
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('加载书架失败')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('加载书架失败')));
     }
   }
 
-  Future<void> _refreshGrid({bool force = false}) async {
+  Future<void> _refreshGrid({
+    bool force = false,
+    bool silentIfPossible = false,
+  }) async {
+    final requestEpoch = _requestEpoch;
+    final canSilentRefresh = silentIfPossible && _hasLoadedContent;
     if (force) {
-      await _userService.getShelf(forceRefresh: true);
+      await _userService.getShelf(
+        forceRefresh: true,
+        requestScope: RequestScopes.shelf,
+        priority: RequestPriority.high,
+      );
+      if (!_canApplyRequest(requestEpoch)) {
+        return;
+      }
     }
 
-    final hadDisplayedItems = _displayedCount > 0;
-    final previousFilteredLength = _allFilteredItems.length;
-    final wasShowingAll =
-        hadDisplayedItems && _displayedCount >= previousFilteredLength;
     final rootItems = _userService.getShelfItemsByParents(const []);
     final allShelfBookItems = _userService.getAllBookItemsInDisplayOrder();
     final filteredItems =
@@ -167,16 +301,9 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
             : allShelfBookItems
                 .where((item) => _markedBookIds.contains(item.id as int))
                 .toList(growable: false);
-    final desiredCount =
-        !hadDisplayedItems
-            ? _pageSize
-            : wasShowingAll
-            ? filteredItems.length
-            : _displayedCount;
-    final nextDisplayedCount =
-        desiredCount > filteredItems.length
-            ? filteredItems.length
-            : desiredCount;
+    final initialDetailIds = _collectInitialDetailIds(filteredItems);
+    final needsVisibleDetails = initialDetailIds.isNotEmpty;
+    final shouldBlockForDetails = !canSilentRefresh && needsVisibleDetails;
     final visibleBookIds =
         (_selectedFilter == 0 ? rootItems : filteredItems)
             .where((item) => item.type == ShelfItemType.book)
@@ -190,14 +317,19 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                 .toSet()
             : <String>{};
 
-    if (!mounted) {
+    if (!_canApplyRequest(requestEpoch)) {
       return;
     }
+
+    _detailQueue.resetRetriableState();
+    _visibleItemKeys.clear();
+    _pendingInitialDetailIds
+      ..clear()
+      ..addAll(initialDetailIds);
 
     setState(() {
       _rootItems = rootItems;
       _allShelfBookItems = allShelfBookItems;
-      _displayedCount = nextDisplayedCount;
       _selectedBookIds.removeWhere(
         (bookId) => !visibleBookIds.contains(bookId),
       );
@@ -205,48 +337,19 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
         (folderId) => !visibleFolderIds.contains(folderId),
       );
       _loading = false;
+      _waitingForVisibleDetails = shouldBlockForDetails;
       _lastRefreshTime = DateTime.now();
     });
 
-    await _ensureBookDetails(_displayItems);
-  }
-
-  Future<void> _ensureBookDetails(List<ShelfItem> items) async {
-    final missingIds = <int>{};
-
-    for (final item in items) {
-      if (item.type == ShelfItemType.book) {
-        final bookId = item.id as int;
-        if (!_bookDetails.containsKey(bookId)) {
-          missingIds.add(bookId);
-        }
-        continue;
+    if (needsVisibleDetails) {
+      _detailQueue.enqueue(initialDetailIds);
+      if (shouldBlockForDetails) {
+        _beginVisibleDetailsGate();
+      } else {
+        _releaseVisibleDetailsGate();
       }
-
-      for (final previewId in _userService.getDirectChildBookIds(
-        item.id as String,
-      )) {
-        if (!_bookDetails.containsKey(previewId)) {
-          missingIds.add(previewId);
-        }
-      }
-    }
-
-    if (missingIds.isEmpty) {
-      return;
-    }
-
-    try {
-      final books = await _bookService.getBooksByIds(missingIds.toList());
-      if (!mounted) return;
-
-      setState(() {
-        for (final book in books) {
-          _bookDetails[book.id] = book;
-        }
-      });
-    } catch (e) {
-      _logger.warning('Failed to fetch shelf book details: $e');
+    } else {
+      _releaseVisibleDetailsGate();
     }
   }
 
@@ -265,10 +368,60 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     return previewBookDetails;
   }
 
+  Map<int, String> _folderPreviewBookHints(List<int> previewBookIds) {
+    final previewBookHints = <int, String>{};
+    for (final bookId in previewBookIds) {
+      if (_bookDetails.containsKey(bookId)) {
+        continue;
+      }
+
+      final coverUrl = _bookCoverHintService.getCoverUrl(bookId);
+      if (coverUrl != null) {
+        previewBookHints[bookId] = coverUrl;
+      }
+    }
+    return previewBookHints;
+  }
+
+  String? _bookTitleHint(int bookId, {String? shelfTitle}) {
+    if (shelfTitle?.isNotEmpty == true) {
+      return null;
+    }
+    return _bookCoverHintService.getTitle(bookId);
+  }
+
+  Set<int> _collectInitialDetailIds(List<ShelfItem> items) {
+    final detailIds = <int>{};
+    for (final item in items.take(12)) {
+      if (item.type == ShelfItemType.book) {
+        final bookId = item.id as int;
+        if (!_bookDetails.containsKey(bookId)) {
+          detailIds.add(bookId);
+        }
+        continue;
+      }
+
+      for (final previewId in _folderPreviewBookIds(item.id as String)) {
+        if (!_bookDetails.containsKey(previewId)) {
+          detailIds.add(previewId);
+        }
+      }
+    }
+    return detailIds;
+  }
+
   String _itemKey(ShelfItem item) {
     return item.type == ShelfItemType.folder
         ? 'folder_${item.id}'
         : 'book_${item.id}';
+  }
+
+  void _rememberBookCoverReveal(int bookId) {
+    _revealedBookCoverKeys.add('shelf_book_$bookId');
+  }
+
+  void _rememberFolderPreviewReveal(String revealKey) {
+    _revealedFolderPreviewKeys.add(revealKey);
   }
 
   List<ShelfItem> _reorderItems(
@@ -292,15 +445,31 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
   Widget _wrapGridItem({
     required ShelfItem item,
+    required List<ShelfItem> items,
+    required int index,
     required Widget child,
     required bool showSortHandle,
   }) {
-    return KeyedSubtree(key: ValueKey(_itemKey(item)), child: child);
+    final itemKey = _itemKey(item);
+    return KeyedSubtree(
+      key: ValueKey(itemKey),
+      child: VisibilityDetector(
+        key: ValueKey('shelf_visibility_$itemKey'),
+        onVisibilityChanged: (info) {
+          if (info.visibleFraction > 0) {
+            _trackVisibleItem(items, index);
+          }
+        },
+        child: child,
+      ),
+    );
   }
 
   Widget _buildGridItem(
     BuildContext context,
     ShelfItem item, {
+    required List<ShelfItem> items,
+    required int index,
     required bool showSortHandle,
   }) {
     if (item.type == ShelfItemType.folder) {
@@ -311,6 +480,9 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
         itemCount: _userService.getDirectChildCount(folderId),
         previewBookIds: previewBookIds,
         previewBookDetails: _folderPreviewBookDetails(previewBookIds),
+        previewBookHints: _folderPreviewBookHints(previewBookIds),
+        revealedPreviewKeys: _revealedFolderPreviewKeys,
+        onPreviewRevealed: _rememberFolderPreviewReveal,
         selected:
             _isEditMode &&
             !_isSortMode &&
@@ -321,6 +493,8 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
       return _wrapGridItem(
         item: item,
+        items: items,
+        index: index,
         child: child,
         showSortHandle: showSortHandle,
       );
@@ -331,8 +505,19 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       enabled: !showSortHandle,
       child: ShelfBookGridItem(
         book: _bookDetails[bookId],
+        coverUrlHint:
+            _bookDetails[bookId] == null
+                ? _bookCoverHintService.getCoverUrl(bookId)
+                : null,
+        shelfTitle: item.title,
+        titleHint:
+            _bookDetails[bookId] == null
+                ? _bookTitleHint(bookId, shelfTitle: item.title)
+                : null,
         bookId: bookId,
         heroTag: 'shelf_cover_$bookId',
+        coverRevealed: _revealedBookCoverKeys.contains('shelf_book_$bookId'),
+        onCoverRevealed: () => _rememberBookCoverReveal(bookId),
         selected:
             _isEditMode && !_isSortMode && _selectedBookIds.contains(bookId),
         sortMode: showSortHandle,
@@ -344,6 +529,8 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     return _wrapGridItem(
       item: item,
+      items: items,
+      index: index,
       child: child,
       showSortHandle: showSortHandle,
     );
@@ -363,28 +550,6 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     setState(() {
       _markedBookIds = markedIds;
-    });
-  }
-
-  void _loadMoreItems() {
-    final filteredItems = _allFilteredItems;
-    if (_loadingMore || _displayedCount >= filteredItems.length) {
-      return;
-    }
-
-    setState(() => _loadingMore = true);
-
-    Future.delayed(const Duration(milliseconds: 100), () async {
-      if (!mounted) return;
-
-      setState(() {
-        final nextCount = _displayedCount + _pageSize;
-        _displayedCount =
-            nextCount > filteredItems.length ? filteredItems.length : nextCount;
-        _loadingMore = false;
-      });
-
-      await _ensureBookDetails(_displayItems);
     });
   }
 
@@ -441,7 +606,6 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     setState(() {
       _selectedFilter = filterIndex;
-      _displayedCount = _pageSize;
       _selectedBookIds.clear();
       _selectedFolderIds.clear();
       _dragStartIndex = null;
@@ -455,15 +619,23 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     if (!mounted) return;
 
-    final filteredItems = _allFilteredItems;
-    setState(() {
-      _displayedCount =
-          _displayedCount > filteredItems.length
-              ? filteredItems.length
-              : _displayedCount;
-    });
+    _detailQueue.resetRetriableState();
+    _visibleItemKeys.clear();
+    final initialDetailIds = _collectInitialDetailIds(_allFilteredItems);
+    final needsVisibleDetails = initialDetailIds.isNotEmpty;
 
-    await _ensureBookDetails(_displayItems);
+    setState(() {
+      _pendingInitialDetailIds
+        ..clear()
+        ..addAll(initialDetailIds);
+      _waitingForVisibleDetails = needsVisibleDetails;
+    });
+    if (needsVisibleDetails) {
+      _detailQueue.enqueue(initialDetailIds);
+      _beginVisibleDetailsGate();
+    } else {
+      _releaseVisibleDetailsGate();
+    }
   }
 
   Future<void> _openFolder(ShelfItem item) async {
@@ -491,7 +663,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     if (_selectedFilter > 0) {
       await _refreshMarkedBookIds();
     }
-    await _refreshGrid();
+    await _refreshGrid(silentIfPossible: true);
   }
 
   Future<void> _openBook(ShelfItem item) async {
@@ -519,7 +691,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       ),
     );
 
-    await _refreshGrid();
+    await _refreshGrid(silentIfPossible: true);
     if (_selectedFilter > 0) {
       await _refreshMarkedBookIds();
     }
@@ -585,10 +757,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
           final folderId = folder.id as String;
           final pathTitles = _userService.getFolderTitles(folder.parents);
           return ShelfMoveDestination(
-            title:
-                folder.title.isEmpty
-                    ? '未命名文件夹'
-                    : folder.title,
+            title: folder.title.isEmpty ? '未命名文件夹' : folder.title,
             subtitle: pathTitles.isEmpty ? null : pathTitles.join(' / '),
             parents: [...folder.parents, folderId],
           );
@@ -620,8 +789,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
               : destinations.isEmpty
               ? '当前没有可移动的目标'
               : null,
-      renameDisabledReason:
-          '仅支持单选文件夹重命名',
+      renameDisabledReason: '仅支持单选文件夹重命名',
     );
 
     if (!mounted || action == null) {
@@ -692,7 +860,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     });
 
     await _refreshMarkedBookIds();
-    await _refreshGrid();
+    await _refreshGrid(silentIfPossible: true);
   }
 
   Future<void> _moveSelectedBooks(List<String> parents) async {
@@ -717,7 +885,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     });
 
     await _refreshMarkedBookIds();
-    await _refreshGrid();
+    await _refreshGrid(silentIfPossible: true);
   }
 
   Future<void> _renameSelectedFolder() async {
@@ -753,9 +921,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            '文件夹名称无效或已存在',
-          ),
+          content: Text('文件夹名称无效或已存在'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -764,9 +930,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          '已重命名文件夹：$trimmedName',
-        ),
+        content: Text('已重命名文件夹：$trimmedName'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -778,7 +942,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       _isEditMode = false;
     });
 
-    await _refreshGrid();
+    await _refreshGrid(silentIfPossible: true);
   }
 
   Future<void> _createFolder() async {
@@ -799,9 +963,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     if (folderId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            '文件夹名称无效或已存在',
-          ),
+          content: Text('文件夹名称无效或已存在'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -815,7 +977,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       ),
     );
 
-    await _refreshGrid();
+    await _refreshGrid(silentIfPossible: true);
   }
 
   IconData _getFilterIcon(int filterIndex) {
@@ -887,10 +1049,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                   color: _isSortMode ? colorScheme.primary : null,
                 ),
                 onPressed: _hasSelection ? null : _toggleSortMode,
-                tooltip:
-                    _isSortMode
-                        ? '退出拖拽排序'
-                        : '拖拽排序',
+                tooltip: _isSortMode ? '退出拖拽排序' : '拖拽排序',
               ),
             IconButton(
               icon: const Icon(Icons.close),
@@ -911,7 +1070,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
             ),
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: () => _fetchShelf(force: true),
+              onPressed: () => _fetchShelf(force: true, silentIfPossible: true),
               tooltip: '刷新',
             ),
           ],
@@ -921,12 +1080,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
   }
 
   Widget _buildFilterTabs(ColorScheme colorScheme) {
-    const labels = [
-      '默认',
-      '待读',
-      '在读',
-      '已读',
-    ];
+    const labels = ['默认', '待读', '在读', '已读'];
 
     return SizedBox(
       height: 40,
@@ -1013,11 +1167,10 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
   Widget _buildStandardGrid({
     required List<ShelfItem> displayItems,
-    required bool hasMore,
     required AppSettings settings,
   }) {
     return RefreshIndicator(
-      onRefresh: () => _fetchShelf(force: true),
+      onRefresh: () => _fetchShelf(force: true, silentIfPossible: true),
       child: GridView.builder(
         controller: _browseScrollController,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -1033,15 +1186,13 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
           crossAxisSpacing: 10,
           mainAxisSpacing: 12,
         ),
-        itemCount: displayItems.length + (hasMore && _loadingMore ? 3 : 0),
+        itemCount: displayItems.length,
         itemBuilder: (context, index) {
-          if (index >= displayItems.length) {
-            return const Center(child: M3ELoadingIndicator());
-          }
-
           return _buildGridItem(
             context,
             displayItems[index],
+            items: displayItems,
+            index: index,
             showSortHandle: false,
           );
         },
@@ -1051,11 +1202,10 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
   Widget _buildEditableGrid({
     required List<ShelfItem> displayItems,
-    required bool hasMore,
     required AppSettings settings,
   }) {
     return RefreshIndicator(
-      onRefresh: () => _fetchShelf(force: true),
+      onRefresh: () => _fetchShelf(force: true, silentIfPossible: true),
       child: ReorderableBuilder<ShelfItem>.builder(
         itemCount: displayItems.length,
         scrollController: _sortScrollController,
@@ -1085,16 +1235,14 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
               crossAxisSpacing: 10,
               mainAxisSpacing: 12,
             ),
-            itemCount: displayItems.length + (hasMore && _loadingMore ? 3 : 0),
+            itemCount: displayItems.length,
             itemBuilder: (context, index) {
-              if (index >= displayItems.length) {
-                return const Center(child: M3ELoadingIndicator());
-              }
-
               return itemBuilder(
                 _buildGridItem(
                   context,
                   displayItems[index],
+                  items: displayItems,
+                  index: index,
                   showSortHandle: _isSortMode,
                 ),
                 index,
@@ -1123,8 +1271,6 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
               child: Builder(
                 builder: (context) {
                   final allFilteredItems = _allFilteredItems;
-                  final displayItems = _displayItems;
-                  final hasMore = _displayedCount < allFilteredItems.length;
 
                   if (_loading) {
                     return const Center(child: M3ELoadingIndicator());
@@ -1134,15 +1280,17 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                     return _buildEmptyState(colorScheme, textTheme);
                   }
 
+                  if (_waitingForVisibleDetails) {
+                    return const Center(child: M3ELoadingIndicator());
+                  }
+
                   return _usesDefaultGrid
                       ? _buildEditableGrid(
-                        displayItems: displayItems,
-                        hasMore: hasMore,
+                        displayItems: allFilteredItems,
                         settings: settings,
                       )
                       : _buildStandardGrid(
-                        displayItems: displayItems,
-                        hasMore: hasMore,
+                        displayItems: allFilteredItems,
                         settings: settings,
                       );
                 },

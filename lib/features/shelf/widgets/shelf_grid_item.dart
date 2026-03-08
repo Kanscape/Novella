@@ -9,6 +9,9 @@ import 'package:novella/src/widgets/book_type_badge.dart';
 
 class ShelfBookGridItem extends ConsumerWidget {
   final Book? book;
+  final String? coverUrlHint;
+  final String? shelfTitle;
+  final String? titleHint;
   final int bookId;
   final String heroTag;
   final VoidCallback onTap;
@@ -17,10 +20,16 @@ class ShelfBookGridItem extends ConsumerWidget {
   final String badgeContext;
   final bool enableHero;
   final bool enablePreview;
+  final bool resolveHintCoverImage;
+  final bool coverRevealed;
+  final VoidCallback? onCoverRevealed;
 
   const ShelfBookGridItem({
     super.key,
     required this.book,
+    this.coverUrlHint,
+    this.shelfTitle,
+    this.titleHint,
     required this.bookId,
     required this.heroTag,
     required this.onTap,
@@ -29,12 +38,18 @@ class ShelfBookGridItem extends ConsumerWidget {
     this.badgeContext = 'shelf',
     this.enableHero = true,
     this.enablePreview = true,
+    this.resolveHintCoverImage = false,
+    this.coverRevealed = false,
+    this.onCoverRevealed,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final displayTitle =
+        book?.title ??
+        (shelfTitle?.isNotEmpty == true ? shelfTitle! : titleHint ?? '加载中');
 
     return GestureDetector(
       onTap: onTap,
@@ -51,15 +66,32 @@ class ShelfBookGridItem extends ConsumerWidget {
             height: 36,
             child: Padding(
               padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
-              child: Text(
-                book?.title ?? '',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface,
-                  height: 1.2,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  final slide = Tween<Offset>(
+                    begin: const Offset(0, 0.08),
+                    end: Offset.zero,
+                  ).animate(animation);
+
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(position: slide, child: child),
+                  );
+                },
+                child: Text(
+                  displayTitle,
+                  key: ValueKey(displayTitle),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurface,
+                    height: 1.2,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
               ),
             ),
           ),
@@ -70,6 +102,10 @@ class ShelfBookGridItem extends ConsumerWidget {
 
   Widget _buildCardContent(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
+    final resolvedCoverUrl = book?.cover ?? coverUrlHint ?? '';
+    final canResolveNetworkImage =
+        book != null ||
+        (resolveHintCoverImage && coverUrlHint?.isNotEmpty == true);
 
     return Stack(
       children: [
@@ -86,33 +122,40 @@ class ShelfBookGridItem extends ConsumerWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (book == null)
-                Container(
-                  color: colorScheme.surfaceContainerHighest,
-                  child: const Center(child: M3ELoadingIndicator()),
-                )
-              else if (enablePreview)
+              if (resolvedCoverUrl.isNotEmpty)
                 BookCoverPreviewer(
-                  coverUrl: book!.cover,
+                  coverUrl: resolvedCoverUrl,
                   child: BookCoverImage(
-                    imageUrl: book!.cover,
+                    imageUrl: resolvedCoverUrl,
                     width: double.infinity,
                     height: double.infinity,
+                    showLoading: !canResolveNetworkImage || enablePreview,
+                    resolveNetworkImage: canResolveNetworkImage,
+                    revealedBefore: coverRevealed,
+                    onRevealed: onCoverRevealed,
+                    animateSynchronouslyLoadedImage: book != null,
                   ),
                 )
               else
-                BookCoverImage(
-                  imageUrl: book!.cover,
-                  width: double.infinity,
-                  height: double.infinity,
+                ColoredBox(
+                  color: colorScheme.surfaceContainerHighest,
+                  child: Center(
+                    child: M3ELoadingIndicator(
+                      size: 28,
+                      color: colorScheme.primary,
+                    ),
+                  ),
                 ),
               _ShelfCardOverlay(selected: selected, sortMode: sortMode),
             ],
           ),
         ),
-        if (book != null &&
-            ref.watch(settingsProvider).isBookTypeBadgeEnabled(badgeContext))
-          BookTypeBadge(category: book!.category),
+        if (ref.watch(settingsProvider).isBookTypeBadgeEnabled(badgeContext))
+          BookTypeBadge(
+            category: book?.category,
+            visible: book != null,
+            reserveSpaceWhenHidden: true,
+          ),
       ],
     );
   }
@@ -124,6 +167,9 @@ class ShelfFolderGridItem extends ConsumerWidget {
   final VoidCallback onTap;
   final List<int> previewBookIds;
   final Map<int, Book> previewBookDetails;
+  final Map<int, String> previewBookHints;
+  final Set<String> revealedPreviewKeys;
+  final ValueChanged<String>? onPreviewRevealed;
   final bool selected;
   final bool sortMode;
   final String badgeContext;
@@ -135,6 +181,9 @@ class ShelfFolderGridItem extends ConsumerWidget {
     required this.onTap,
     this.previewBookIds = const [],
     this.previewBookDetails = const {},
+    this.previewBookHints = const {},
+    this.revealedPreviewKeys = const <String>{},
+    this.onPreviewRevealed,
     this.selected = false,
     this.sortMode = false,
     this.badgeContext = 'shelf',
@@ -192,6 +241,9 @@ class ShelfFolderGridItem extends ConsumerWidget {
                                     : _FolderPreviewGrid(
                                       previewBookIds: previewBookIds,
                                       previewBookDetails: previewBookDetails,
+                                      previewBookHints: previewBookHints,
+                                      revealedPreviewKeys: revealedPreviewKeys,
+                                      onPreviewRevealed: onPreviewRevealed,
                                     ),
                           ),
                         ),
@@ -268,10 +320,16 @@ class _ShelfCardOverlay extends StatelessWidget {
 class _FolderPreviewGrid extends StatelessWidget {
   final List<int> previewBookIds;
   final Map<int, Book> previewBookDetails;
+  final Map<int, String> previewBookHints;
+  final Set<String> revealedPreviewKeys;
+  final ValueChanged<String>? onPreviewRevealed;
 
   const _FolderPreviewGrid({
     required this.previewBookIds,
     required this.previewBookDetails,
+    required this.previewBookHints,
+    required this.revealedPreviewKeys,
+    required this.onPreviewRevealed,
   });
 
   @override
@@ -301,6 +359,9 @@ class _FolderPreviewGrid extends StatelessWidget {
                     child: _FolderPreviewSlot(
                       bookId: bookId,
                       books: previewBookDetails,
+                      coverHints: previewBookHints,
+                      revealedPreviewKeys: revealedPreviewKeys,
+                      onPreviewRevealed: onPreviewRevealed,
                     ),
                   ),
                 ),
@@ -315,12 +376,25 @@ class _FolderPreviewGrid extends StatelessWidget {
 class _FolderPreviewSlot extends StatelessWidget {
   final int? bookId;
   final Map<int, Book> books;
+  final Map<int, String> coverHints;
+  final Set<String> revealedPreviewKeys;
+  final ValueChanged<String>? onPreviewRevealed;
 
-  const _FolderPreviewSlot({required this.bookId, required this.books});
+  const _FolderPreviewSlot({
+    required this.bookId,
+    required this.books,
+    required this.coverHints,
+    required this.revealedPreviewKeys,
+    required this.onPreviewRevealed,
+  });
 
   @override
   Widget build(BuildContext context) {
     final book = bookId == null ? null : books[bookId];
+    final coverUrl =
+        book?.cover ?? (bookId == null ? null : coverHints[bookId!]);
+    final canResolveNetworkImage = book != null;
+    final revealKey = bookId == null ? null : 'shelf_folder_preview_$bookId';
 
     return ClipRRect(
       key: ValueKey('folder_preview_${bookId ?? 'empty'}'),
@@ -328,13 +402,22 @@ class _FolderPreviewSlot extends StatelessWidget {
       child:
           bookId == null
               ? const _FolderPreviewEmptySlot()
-              : book != null
+              : coverUrl?.isNotEmpty == true
               ? BookCoverImage(
-                imageUrl: book.cover,
+                imageUrl: coverUrl!,
                 width: double.infinity,
                 height: double.infinity,
                 memCacheWidth: 180,
-                showLoading: false,
+                showLoading: true,
+                resolveNetworkImage: canResolveNetworkImage,
+                revealedBefore:
+                    revealKey != null &&
+                    revealedPreviewKeys.contains(revealKey),
+                onRevealed:
+                    revealKey == null || onPreviewRevealed == null
+                        ? null
+                        : () => onPreviewRevealed!(revealKey),
+                animateSynchronouslyLoadedImage: book != null,
               )
               : const _FolderPreviewPlaceholder(),
     );
@@ -351,8 +434,9 @@ class _FolderPreviewPlaceholder extends StatelessWidget {
     return ColoredBox(
       color: colorScheme.surfaceContainerHigh,
       child: Center(
-        child: M3ELoadingIndicator(
-          size: 14,
+        child: Icon(
+          Icons.menu_book_outlined,
+          size: 16,
           color: colorScheme.onSurfaceVariant,
         ),
       ),

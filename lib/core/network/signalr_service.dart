@@ -89,7 +89,8 @@ class SignalRService {
 
   /// 标记进入前台恢复流程：在此期间 [`invoke()`](lib/core/network/signalr_service.dart:296) 会等待 gate 完成。
   void beginForegroundRecovery() {
-    if (_foregroundRecoveryGate == null || _foregroundRecoveryGate!.isCompleted) {
+    if (_foregroundRecoveryGate == null ||
+        _foregroundRecoveryGate!.isCompleted) {
       _foregroundRecoveryGate = Completer<void>();
       developer.log('Foreground recovery gate BEGIN', name: 'SIGNALR');
     }
@@ -212,7 +213,8 @@ class SignalRService {
     return msg.contains('unauthorized') ||
         msg.contains('no token') ||
         msg.contains('notoken') ||
-        msg.contains('token') && (msg.contains('401') || msg.contains('status')) ||
+        msg.contains('token') &&
+            (msg.contains('401') || msg.contains('status')) ||
         msg.contains('权限') ||
         msg.contains('凭据');
   }
@@ -222,7 +224,10 @@ class SignalRService {
     // 1) 强制刷新 token（如果注入了强刷提供者）
     try {
       final forced = await _getValidToken(forceRefresh: true);
-      developer.log('Forced token ready: ${forced.isNotEmpty}', name: 'SIGNALR');
+      developer.log(
+        'Forced token ready: ${forced.isNotEmpty}',
+        name: 'SIGNALR',
+      );
     } catch (e) {
       developer.log('Force refresh token failed: $e', name: 'SIGNALR');
     }
@@ -272,8 +277,7 @@ class SignalRService {
             .withUrl(
               hubUrl,
               options: HttpConnectionOptions(
-                accessTokenFactory:
-                    () async => await _getValidToken(),
+                accessTokenFactory: () async => await _getValidToken(),
                 requestTimeout: 30000, // 30秒请求超时
               ),
             )
@@ -321,10 +325,25 @@ class SignalRService {
     await init();
   }
 
-  Future<T> invoke<T>(String methodName, {List<Object>? args}) async {
-    return _requestQueue.enqueue(() async {
-      return await _invokeWithAutoRecover<T>(methodName, args: args);
-    });
+  void cancelPendingRequests(String scope) {
+    _requestQueue.cancelScope(scope);
+  }
+
+  Future<T> invoke<T>(
+    String methodName, {
+    List<Object>? args,
+    String? requestScope,
+    RequestPriority priority = RequestPriority.normal,
+    bool bypassQueue = false,
+  }) async {
+    return _requestQueue.enqueue(
+      () async {
+        return await _invokeWithAutoRecover<T>(methodName, args: args);
+      },
+      scope: requestScope,
+      priority: priority,
+      bypassQueue: bypassQueue,
+    );
   }
 
   Future<T> _invokeWithAutoRecover<T>(
@@ -343,29 +362,29 @@ class SignalRService {
     // 确保连接就绪（包含 _hubConnection==null 的场景）
     await ensureConnected();
 
-      // 若正在连接/重连，等待最多 15 秒
-      if (_hubConnection?.state == HubConnectionState.Connecting ||
-          _hubConnection?.state == HubConnectionState.Reconnecting) {
-        developer.log('Waiting for connection...', name: 'SIGNALR');
-        for (int i = 0; i < 30; i++) {
-          await Future.delayed(const Duration(milliseconds: 500));
-          if (_hubConnection?.state == HubConnectionState.Connected) {
-            break;
-          }
+    // 若正在连接/重连，等待最多 15 秒
+    if (_hubConnection?.state == HubConnectionState.Connecting ||
+        _hubConnection?.state == HubConnectionState.Reconnecting) {
+      developer.log('Waiting for connection...', name: 'SIGNALR');
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (_hubConnection?.state == HubConnectionState.Connected) {
+          break;
         }
       }
+    }
 
-      // 若断开连接，尝试重启一次
-      if (_hubConnection?.state == HubConnectionState.Disconnected) {
-        developer.log('Disconnected, attempting restart...', name: 'SIGNALR');
-        try {
-          await _hubConnection?.start();
-          developer.log('Restart successful', name: 'SIGNALR');
-        } catch (e) {
-          developer.log('Restart failed: $e', name: 'SIGNALR');
-          throw Exception('SignalR connection failed: $e');
-        }
+    // 若断开连接，尝试重启一次
+    if (_hubConnection?.state == HubConnectionState.Disconnected) {
+      developer.log('Disconnected, attempting restart...', name: 'SIGNALR');
+      try {
+        await _hubConnection?.start();
+        developer.log('Restart successful', name: 'SIGNALR');
+      } catch (e) {
+        developer.log('Restart failed: $e', name: 'SIGNALR');
+        throw Exception('SignalR connection failed: $e');
       }
+    }
 
     // 最终检查
     if (_hubConnection?.state != HubConnectionState.Connected) {

@@ -10,6 +10,7 @@ import 'package:novella/data/services/book_info_cache_service.dart';
 
 /// 设置状态模型
 class AppSettings {
+  final bool isLoaded;
   final double fontSize;
   final bool readerFirstLineIndent;
   final double readerLineHeight;
@@ -24,6 +25,7 @@ class AppSettings {
   final bool ignoreJapanese;
   final bool ignoreAI;
   final bool ignoreLevel6;
+  final int startupTabIndex;
   final List<String> homeModuleOrder;
   final List<String> enabledHomeModules;
   final bool bookDetailCacheEnabled;
@@ -66,6 +68,7 @@ class AppSettings {
   ];
 
   const AppSettings({
+    this.isLoaded = false,
     this.fontSize = 18.0,
     this.readerFirstLineIndent = false,
     this.readerLineHeight = 1.6,
@@ -80,6 +83,7 @@ class AppSettings {
     this.ignoreJapanese = false,
     this.ignoreAI = false,
     this.ignoreLevel6 = true, // 默认开启 - 隐藏 Level6 书籍
+    this.startupTabIndex = 0,
     this.homeModuleOrder = defaultModuleOrder,
     this.enabledHomeModules = defaultEnabledModules,
     this.bookDetailCacheEnabled = true,
@@ -107,6 +111,7 @@ class AppSettings {
   bool get useIOS18Style => iosDisplayStyle == 'ios18' && Platform.isIOS;
 
   AppSettings copyWith({
+    bool? isLoaded,
     double? fontSize,
     bool? readerFirstLineIndent,
     double? readerLineHeight,
@@ -121,6 +126,7 @@ class AppSettings {
     bool? ignoreJapanese,
     bool? ignoreAI,
     bool? ignoreLevel6,
+    int? startupTabIndex,
     List<String>? homeModuleOrder,
     List<String>? enabledHomeModules,
     bool? bookDetailCacheEnabled,
@@ -141,6 +147,7 @@ class AppSettings {
     String? ignoredUpdateVersion,
   }) {
     return AppSettings(
+      isLoaded: isLoaded ?? this.isLoaded,
       fontSize: fontSize ?? this.fontSize,
       readerFirstLineIndent:
           readerFirstLineIndent ?? this.readerFirstLineIndent,
@@ -156,6 +163,7 @@ class AppSettings {
       ignoreJapanese: ignoreJapanese ?? this.ignoreJapanese,
       ignoreAI: ignoreAI ?? this.ignoreAI,
       ignoreLevel6: ignoreLevel6 ?? this.ignoreLevel6,
+      startupTabIndex: startupTabIndex ?? this.startupTabIndex,
       homeModuleOrder: homeModuleOrder ?? this.homeModuleOrder,
       enabledHomeModules: enabledHomeModules ?? this.enabledHomeModules,
       bookDetailCacheEnabled:
@@ -192,6 +200,14 @@ class AppSettings {
 
 /// 基于 Riverpod 3.x Notifier API 的设置通知器
 class SettingsNotifier extends Notifier<AppSettings> {
+  int _normalizeStartupTabIndex(int? index) {
+    final safeIndex = index ?? 0;
+    if (safeIndex < 0 || safeIndex > 2) {
+      return 0;
+    }
+    return safeIndex;
+  }
+
   @override
   AppSettings build() {
     _loadSettings();
@@ -209,6 +225,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       name: 'Settings',
     );
     state = AppSettings(
+      isLoaded: true,
       fontSize: prefs.getDouble('setting_fontSize') ?? 18.0,
       readerFirstLineIndent:
           prefs.getBool('setting_readerFirstLineIndent') ?? false,
@@ -224,6 +241,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       ignoreJapanese: prefs.getBool('setting_ignoreJapanese') ?? false,
       ignoreAI: prefs.getBool('setting_ignoreAI') ?? false,
       ignoreLevel6: prefs.getBool('setting_ignoreLevel6') ?? true, // 默认开启
+      startupTabIndex: _normalizeStartupTabIndex(
+        prefs.getInt('setting_startupTabIndex'),
+      ),
       homeModuleOrder: List<String>.from(
         prefs.getStringList('setting_homeModuleOrder') ??
             AppSettings.defaultModuleOrder,
@@ -286,6 +306,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await prefs.setBool('setting_ignoreJapanese', state.ignoreJapanese);
     await prefs.setBool('setting_ignoreAI', state.ignoreAI);
     await prefs.setBool('setting_ignoreLevel6', state.ignoreLevel6);
+    await prefs.setInt('setting_startupTabIndex', state.startupTabIndex);
     await prefs.setStringList('setting_homeModuleOrder', state.homeModuleOrder);
     await prefs.setStringList(
       'setting_enabledHomeModules',
@@ -416,6 +437,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setIgnoreLevel6(bool value) {
     state = state.copyWith(ignoreLevel6: value);
+    _save();
+  }
+
+  void setStartupTabIndex(int index) {
+    state = state.copyWith(startupTabIndex: _normalizeStartupTabIndex(index));
     _save();
   }
 

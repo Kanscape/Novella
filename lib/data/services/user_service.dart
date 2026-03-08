@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:uuid/uuid.dart';
@@ -18,12 +19,19 @@ class UserService extends ChangeNotifier {
   bool _initialized = false;
   Future<void> _pendingShelfSync = Future.value();
 
-  Future<void> ensureInitialized() async {
+  Future<void> ensureInitialized({
+    String? requestScope,
+    RequestPriority priority = RequestPriority.normal,
+  }) async {
     if (_initialized) return;
-    await getShelf();
+    await getShelf(requestScope: requestScope, priority: priority);
   }
 
-  Future<List<ShelfItem>> getShelf({bool forceRefresh = true}) async {
+  Future<List<ShelfItem>> getShelf({
+    bool forceRefresh = true,
+    String? requestScope,
+    RequestPriority priority = RequestPriority.normal,
+  }) async {
     try {
       if (!forceRefresh && _initialized && _shelfCache.isNotEmpty) {
         return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
@@ -35,6 +43,8 @@ class UserService extends ChangeNotifier {
 
       final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
         'GetBookShelf',
+        requestScope: requestScope,
+        priority: priority,
         args: <Object>[
           {},
           {'UseGzip': true},
@@ -73,6 +83,7 @@ class UserService extends ChangeNotifier {
 
       return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
     } catch (e) {
+      if (isRequestCancelledError(e)) rethrow;
       _logger.severe('Failed to get shelf: $e');
       if (_initialized) {
         return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();

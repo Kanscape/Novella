@@ -7,12 +7,31 @@
  */
 
 import 'dart:async';
-import 'dart:collection';
 
-/// 单例请求队列，管理速率限制
-/// 限制 5秒内 5个请求，防止封号
+/// Scope labels used to deprioritize or cancel stale work when pages change.
+class RequestScopes {
+  static const String home = 'home';
+  static const String shelf = 'shelf';
+  static const String history = 'history';
+
+  const RequestScopes._();
+}
+
+enum RequestPriority { low, normal, high }
+
+class RequestCancelledException implements Exception {
+  final String scope;
+
+  const RequestCancelledException(this.scope);
+
+  @override
+  String toString() => 'RequestCancelledException(scope: $scope)';
+}
+
+bool isRequestCancelledError(Object error) =>
+    error is RequestCancelledException;
+
 class RequestQueue {
-  // 单例实例
   static final RequestQueue _instance = RequestQueue._internal();
 
   factory RequestQueue() {
@@ -21,74 +40,83 @@ class RequestQueue {
 
   RequestQueue._internal();
 
-  // 速率限制配置
   static const int _maxRequests = 10;
   static const Duration _windowDuration = Duration(milliseconds: 5500);
 
-  // 最近请求时间戳队列
-  final Queue<DateTime> _requestTimestamps = Queue<DateTime>();
+  final List<DateTime> _requestTimestamps = <DateTime>[];
+  final List<_PendingRequestBase> _pendingRequests = <_PendingRequestBase>[];
 
-  // 待处理请求队列
-  final Queue<_PendingRequest> _pendingRequests = Queue<_PendingRequest>();
-
-  // 顺序处理锁
   bool _isProcessing = false;
+  int _sequence = 0;
 
-  /// 请求入队
-  /// [bypassQueue] 为 true 时跳过速率限制（如 CDN 图片）
   Future<T> enqueue<T>(
     Future<T> Function() request, {
     bool bypassQueue = false,
+    String? scope,
+    RequestPriority priority = RequestPriority.normal,
   }) async {
     if (bypassQueue) {
       return await request();
     }
 
     final completer = Completer<T>();
-    _pendingRequests.add(_PendingRequest<T>(request, completer));
+    _pendingRequests.add(
+      _PendingRequest<T>(
+        request: request,
+        completer: completer,
+        scope: scope,
+        priority: priority,
+        sequence: _sequence++,
+      ),
+    );
     _processQueue();
     return completer.future;
   }
 
-  /// 处理队列中的待处理请求
+  void cancelScope(String scope) {
+    final canceled = <_PendingRequestBase>[];
+
+    _pendingRequests.removeWhere((pending) {
+      final shouldCancel = pending.scope == scope;
+      if (shouldCancel) {
+        canceled.add(pending);
+      }
+      return shouldCancel;
+    });
+
+    for (final pending in canceled) {
+      pending.cancel(RequestCancelledException(scope));
+    }
+  }
+
   Future<void> _processQueue() async {
     if (_isProcessing) return;
     _isProcessing = true;
 
     try {
       while (_pendingRequests.isNotEmpty) {
-        // 清理过期时间戳
         final now = DateTime.now();
-        while (_requestTimestamps.isNotEmpty &&
-            now.difference(_requestTimestamps.first) > _windowDuration) {
-          _requestTimestamps.removeFirst();
-        }
+        _requestTimestamps.removeWhere(
+          (timestamp) => now.difference(timestamp) > _windowDuration,
+        );
 
-        // 检查是否可发送请求
         if (_requestTimestamps.length < _maxRequests) {
-          final pending = _pendingRequests.removeFirst();
-
-          // 执行前记录时间戳（保守策略）
-          _requestTimestamps.add(DateTime.now());
-
-          // 执行请求
-          // 此处不等待结果，允许并发但受限于速率限制
-          // 仅在达到限制时阻塞
-
-          _executeRequest(pending);
-        } else {
-          // 达到限制，计算等待时间
-          if (_requestTimestamps.isNotEmpty) {
-            final firstRequestTime = _requestTimestamps.first;
-            final waitDuration =
-                _windowDuration - now.difference(firstRequestTime);
-            if (waitDuration > Duration.zero) {
-              await Future.delayed(waitDuration);
-            }
-          } else {
-            // 安全回退逻辑
-            await Future.delayed(const Duration(milliseconds: 100));
+          final pending = _takeNextPending();
+          if (pending == null) {
+            break;
           }
+
+          _requestTimestamps.add(DateTime.now());
+          _executeRequest(pending);
+        } else if (_requestTimestamps.isNotEmpty) {
+          final firstRequestTime = _requestTimestamps.first;
+          final waitDuration =
+              _windowDuration - now.difference(firstRequestTime);
+          if (waitDuration > Duration.zero) {
+            await Future.delayed(waitDuration);
+          }
+        } else {
+          await Future.delayed(const Duration(milliseconds: 100));
         }
       }
     } finally {
@@ -96,19 +124,81 @@ class RequestQueue {
     }
   }
 
-  Future<void> _executeRequest(_PendingRequest pending) async {
+  _PendingRequestBase? _takeNextPending() {
+    if (_pendingRequests.isEmpty) {
+      return null;
+    }
+
+    var bestIndex = 0;
+    for (var i = 1; i < _pendingRequests.length; i++) {
+      final current = _pendingRequests[i];
+      final best = _pendingRequests[bestIndex];
+      if (current.priority.index > best.priority.index ||
+          (current.priority == best.priority &&
+              current.sequence < best.sequence)) {
+        bestIndex = i;
+      }
+    }
+
+    return _pendingRequests.removeAt(bestIndex);
+  }
+
+  Future<void> _executeRequest(_PendingRequestBase pending) async {
     try {
-      final result = await pending.request();
-      pending.completer.complete(result);
+      await pending.execute();
     } catch (e, stack) {
-      pending.completer.completeError(e, stack);
+      pending.completeError(e, stack);
     }
   }
 }
 
-class _PendingRequest<T> {
+abstract class _PendingRequestBase {
+  String? get scope;
+  RequestPriority get priority;
+  int get sequence;
+
+  Future<void> execute();
+  void cancel(Object error);
+  void completeError(Object error, StackTrace stackTrace);
+}
+
+class _PendingRequest<T> implements _PendingRequestBase {
   final Future<T> Function() request;
   final Completer<T> completer;
+  @override
+  final String? scope;
+  @override
+  final RequestPriority priority;
+  @override
+  final int sequence;
 
-  _PendingRequest(this.request, this.completer);
+  _PendingRequest({
+    required this.request,
+    required this.completer,
+    required this.scope,
+    required this.priority,
+    required this.sequence,
+  });
+
+  @override
+  Future<void> execute() async {
+    final result = await request();
+    if (!completer.isCompleted) {
+      completer.complete(result);
+    }
+  }
+
+  @override
+  void cancel(Object error) {
+    if (!completer.isCompleted) {
+      completer.completeError(error);
+    }
+  }
+
+  @override
+  void completeError(Object error, StackTrace stackTrace) {
+    if (!completer.isCompleted) {
+      completer.completeError(error, stackTrace);
+    }
+  }
 }

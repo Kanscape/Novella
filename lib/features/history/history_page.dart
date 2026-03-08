@@ -1,15 +1,19 @@
-import 'package:novella/src/widgets/book_cover_image.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/network/request_queue.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/book.dart';
-import 'package:novella/data/services/book_service.dart';
+import 'package:novella/data/services/book_cover_hint_service.dart';
+import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
-import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/settings/settings_page.dart';
-import 'package:novella/src/widgets/book_type_badge.dart';
-import 'package:novella/src/widgets/book_cover_previewer.dart';
+import 'package:novella/features/shelf/shelf_book_detail_queue.dart';
+import 'package:novella/features/shelf/widgets/shelf_grid_item.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
@@ -18,115 +22,286 @@ class HistoryPage extends ConsumerStatefulWidget {
   ConsumerState<HistoryPage> createState() => HistoryPageState();
 }
 
-class HistoryPageState extends ConsumerState<HistoryPage>
-    with WidgetsBindingObserver {
+class HistoryPageState extends ConsumerState<HistoryPage> {
+  static const int _prefetchBehindCount = 3;
+  static const int _prefetchAheadCount = 9;
+
   final _logger = Logger('HistoryPage');
   final _userService = UserService();
-  final _bookService = BookService();
+  final _bookCoverHintService = BookCoverHintService();
+  final _progressService = ReadingProgressService();
   final _scrollController = ScrollController();
+  late final ShelfBookDetailQueue _detailQueue;
 
-  List<Book> _books = [];
+  final Map<int, Book> _bookDetails = <int, Book>{};
+  final Map<int, ReadPosition> _localReadPositions = <int, ReadPosition>{};
+  final Set<String> _visibleItemKeys = <String>{};
+  final Set<int> _pendingInitialDetailIds = <int>{};
+  final Set<String> _revealedBookCoverKeys = <String>{};
+  List<int> _bookIds = <int>[];
   bool _loading = true;
-  bool _loadingMore = false;
-  int _displayedCount = 0;
-  static const int _pageSize = 24;
+  bool _refreshing = false;
+  bool _waitingForVisibleDetails = false;
   String? _error;
+  Timer? _visibleDetailsFallbackTimer;
+  int _refreshEpoch = 0;
+  bool _isTabActive = true;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _scrollController.addListener(_onScroll);
+    unawaited(_bookCoverHintService.ensureInitialized());
+    _detailQueue = ShelfBookDetailQueue(
+      hasBook: (id) => _bookDetails.containsKey(id),
+      onBooksLoaded: _handleBooksLoaded,
+      onError: (error) {
+        _logger.warning('Failed to fetch history book details: $error');
+        _releaseVisibleDetailsGate();
+      },
+      requestScope: RequestScopes.history,
+      priority: RequestPriority.high,
+    );
     _fetchHistory();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    _detailQueue.dispose();
+    _visibleDetailsFallbackTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      _loadMoreItems();
+  void refresh() {
+    _fetchHistory(force: true, silentIfPossible: true);
+  }
+
+  void setTabActive(bool active) {
+    if (_isTabActive == active) {
+      return;
+    }
+
+    _isTabActive = active;
+    _refreshEpoch++;
+
+    if (!active) {
+      _detailQueue.cancelPending();
+      _visibleItemKeys.clear();
+      _pendingInitialDetailIds.clear();
+      _releaseVisibleDetailsGate();
+      return;
+    }
+
+    if (_loading || _waitingForVisibleDetails) {
+      unawaited(_fetchHistory(silentIfPossible: true));
     }
   }
 
-  /// 外部刷新历史方法
-  void refresh() {
-    _fetchHistory(force: true);
+  void _beginVisibleDetailsGate() {
+    _visibleDetailsFallbackTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _waitingForVisibleDetails = true;
+      });
+    }
+    _visibleDetailsFallbackTimer = Timer(const Duration(milliseconds: 900), () {
+      _releaseVisibleDetailsGate();
+    });
   }
 
-  Future<void> _fetchHistory({bool force = false}) async {
-    if (!force && !_loading) {
-      setState(() => _loading = true);
+  void _releaseVisibleDetailsGate() {
+    _visibleDetailsFallbackTimer?.cancel();
+    if (!mounted || !_waitingForVisibleDetails) {
+      return;
+    }
+
+    setState(() {
+      _waitingForVisibleDetails = false;
+    });
+    _pendingInitialDetailIds.clear();
+  }
+
+  void _handleBooksLoaded(List<Book> books) {
+    if (!mounted || !_isTabActive) {
+      return;
+    }
+
+    final activeBookIds = _bookIds.toSet();
+    var shouldReleaseGate = false;
+    setState(() {
+      for (final book in books) {
+        if (!activeBookIds.contains(book.id)) {
+          continue;
+        }
+        _bookDetails[book.id] = book;
+        _pendingInitialDetailIds.remove(book.id);
+      }
+      if (_waitingForVisibleDetails && _pendingInitialDetailIds.isEmpty) {
+        _waitingForVisibleDetails = false;
+        shouldReleaseGate = true;
+      }
+    });
+    if (shouldReleaseGate) {
+      _visibleDetailsFallbackTimer?.cancel();
+    }
+  }
+
+  Set<int> _collectInitialDetailIds(List<int> bookIds) {
+    final detailIds = <int>{};
+    for (final bookId in bookIds.take(12)) {
+      if (!_bookDetails.containsKey(bookId)) {
+        detailIds.add(bookId);
+      }
+    }
+    return detailIds;
+  }
+
+  void _trackVisibleItem(List<int> bookIds, int index) {
+    final bookId = bookIds[index];
+    final itemKey = 'history_book_$bookId';
+    if (!_visibleItemKeys.add(itemKey)) {
+      return;
+    }
+
+    final startIndex = (index - _prefetchBehindCount).clamp(0, bookIds.length);
+    final endIndex = (index + _prefetchAheadCount + 1).clamp(0, bookIds.length);
+    _detailQueue.enqueue(bookIds.sublist(startIndex, endIndex));
+  }
+
+  void _rememberBookCoverReveal(int bookId) {
+    _revealedBookCoverKeys.add('history_book_$bookId');
+  }
+
+  String? _bookTitleHint(int bookId) {
+    final localTitle = _localReadPositions[bookId]?.title;
+    if (localTitle?.isNotEmpty == true) {
+      return localTitle;
+    }
+    return _bookCoverHintService.getTitle(bookId);
+  }
+
+  String? _bookCoverHint(int bookId) {
+    final localCover = _localReadPositions[bookId]?.cover;
+    if (localCover?.isNotEmpty == true) {
+      return localCover;
+    }
+    return _bookCoverHintService.getCoverUrl(bookId);
+  }
+
+  Future<Map<int, ReadPosition>> _loadLocalReadPositions(
+    List<int> bookIds,
+  ) async {
+    final entries = await Future.wait(
+      bookIds.map((bookId) async {
+        final position = await _progressService.getLocalPosition(bookId);
+        return MapEntry(bookId, position);
+      }),
+    );
+
+    return <int, ReadPosition>{
+      for (final entry in entries)
+        if (entry.value != null) entry.key: entry.value!,
+    };
+  }
+
+  Future<void> _fetchHistory({
+    bool force = false,
+    bool silentIfPossible = false,
+  }) async {
+    if (_refreshing) {
+      return;
+    }
+
+    final requestEpoch = ++_refreshEpoch;
+    final canSilentRefresh =
+        silentIfPossible && (_bookIds.isNotEmpty || _bookDetails.isNotEmpty);
+
+    if (mounted && !canSilentRefresh) {
+      setState(() {
+        _loading = true;
+        _refreshing = force;
+        _error = null;
+      });
+    } else if (mounted) {
+      setState(() {
+        _refreshing = true;
+      });
     }
 
     try {
-      // 从历史记录获取书籍 ID
       final bookIds = await _userService.getReadHistory();
+      if (!mounted || !_isTabActive || requestEpoch != _refreshEpoch) {
+        return;
+      }
+
+      final localReadPositions = await _loadLocalReadPositions(bookIds);
+      if (!mounted || !_isTabActive || requestEpoch != _refreshEpoch) {
+        return;
+      }
+
+      final activeBookIds = bookIds.toSet();
+      final initialDetailIds = _collectInitialDetailIds(bookIds);
+      final needsVisibleDetails = initialDetailIds.isNotEmpty;
+      final shouldBlockForDetails = !canSilentRefresh && needsVisibleDetails;
+
+      _detailQueue.resetRetriableState();
+      _visibleItemKeys.clear();
+      _pendingInitialDetailIds
+        ..clear()
+        ..addAll(initialDetailIds);
+      _localReadPositions
+        ..clear()
+        ..addAll(localReadPositions);
+      _bookDetails.removeWhere((bookId, _) => !activeBookIds.contains(bookId));
+
+      if (!mounted || !_isTabActive || requestEpoch != _refreshEpoch) {
+        return;
+      }
+
+      setState(() {
+        _bookIds = bookIds;
+        _loading = false;
+        _refreshing = false;
+        _error = null;
+        _waitingForVisibleDetails = shouldBlockForDetails;
+      });
 
       if (bookIds.isEmpty) {
+        _releaseVisibleDetailsGate();
+        return;
+      }
+
+      if (needsVisibleDetails) {
+        _detailQueue.enqueue(initialDetailIds);
+        if (shouldBlockForDetails) {
+          _beginVisibleDetailsGate();
+        } else {
+          _releaseVisibleDetailsGate();
+        }
+      } else {
+        _releaseVisibleDetailsGate();
+      }
+    } catch (e) {
+      _logger.severe('Failed to fetch history: $e');
+      if (!mounted || !_isTabActive || requestEpoch != _refreshEpoch) {
+        return;
+      }
+
+      if (canSilentRefresh) {
         setState(() {
-          _books = [];
-          _loading = false;
-          _error = null;
+          _refreshing = false;
         });
         return;
       }
 
-      // 获取对应书籍详情
-      final books = await _bookService.getBooksByIds(bookIds);
-
-      // 按历史顺序排序（最近优先）
-      final sortedBooks = <Book>[];
-      for (final id in bookIds) {
-        final book = books.cast<Book?>().firstWhere(
-          (b) => b?.id == id,
-          orElse: () => null,
-        );
-        if (book != null) {
-          sortedBooks.add(book);
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _books = sortedBooks;
-          _displayedCount = _pageSize.clamp(0, sortedBooks.length);
-          _loading = false;
-          _error = null;
-        });
-      }
-    } catch (e) {
-      _logger.severe('Failed to fetch history: $e');
       if (mounted) {
         setState(() {
           _loading = false;
+          _refreshing = false;
           _error = e.toString();
         });
       }
     }
-  }
-
-  void _loadMoreItems() {
-    if (_loadingMore || _displayedCount >= _books.length) return;
-
-    setState(() => _loadingMore = true);
-
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        setState(() {
-          _displayedCount = (_displayedCount + _pageSize).clamp(
-            0,
-            _books.length,
-          );
-          _loadingMore = false;
-        });
-      }
-    });
   }
 
   Future<void> _clearHistory() async {
@@ -188,19 +363,30 @@ class HistoryPageState extends ConsumerState<HistoryPage>
       },
     );
 
-    if (confirmed == true) {
-      final success = await _userService.clearReadHistory();
-      if (success && mounted) {
-        setState(() {
-          _books = [];
-          _displayedCount = 0;
-          _error = null;
-        });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已清空历史记录')));
-      }
+    if (confirmed != true) {
+      return;
     }
+
+    final success = await _userService.clearReadHistory();
+    if (!mounted || !success) {
+      return;
+    }
+
+    _detailQueue.resetRetriableState();
+    _visibleItemKeys.clear();
+    _pendingInitialDetailIds.clear();
+    _localReadPositions.clear();
+    _bookDetails.clear();
+    _releaseVisibleDetailsGate();
+
+    setState(() {
+      _bookIds = <int>[];
+      _error = null;
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已清空历史记录')));
   }
 
   @override
@@ -214,12 +400,11 @@ class HistoryPageState extends ConsumerState<HistoryPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             _buildHeader(context, colorScheme, textTheme),
-            // Content
             Expanded(
               child: RefreshIndicator(
-                onRefresh: () => _fetchHistory(force: true),
+                onRefresh:
+                    () => _fetchHistory(force: true, silentIfPossible: true),
                 child: _buildContent(context, colorScheme),
               ),
             ),
@@ -247,16 +432,15 @@ class HistoryPageState extends ConsumerState<HistoryPage>
           ),
           Row(
             children: [
-              // Clear button (moved first)
-              if (_books.isNotEmpty)
+              if (_bookIds.isNotEmpty)
                 IconButton(
                   onPressed: _clearHistory,
                   icon: const Icon(Icons.delete_outline),
                   tooltip: '清空历史',
                 ),
-              // Refresh button (moved second)
               IconButton(
-                onPressed: () => _fetchHistory(force: true),
+                onPressed:
+                    () => _fetchHistory(force: true, silentIfPossible: true),
                 icon: const Icon(Icons.refresh),
                 tooltip: '刷新',
               ),
@@ -269,7 +453,12 @@ class HistoryPageState extends ConsumerState<HistoryPage>
 
   Widget _buildContent(BuildContext context, ColorScheme colorScheme) {
     final settings = ref.watch(settingsProvider);
+
     if (_loading) {
+      return const Center(child: M3ELoadingIndicator());
+    }
+
+    if (_waitingForVisibleDetails) {
       return const Center(child: M3ELoadingIndicator());
     }
 
@@ -291,7 +480,7 @@ class HistoryPageState extends ConsumerState<HistoryPage>
       );
     }
 
-    if (_books.isEmpty) {
+    if (_bookIds.isEmpty) {
       return LayoutBuilder(
         builder:
             (context, constraints) => SingleChildScrollView(
@@ -323,12 +512,10 @@ class HistoryPageState extends ConsumerState<HistoryPage>
       );
     }
 
-    // 书籍网格列表
-    final displayBooks = _books.take(_displayedCount).toList();
-    final hasMore = _displayedCount < _books.length;
-
+    final bookIds = _bookIds;
     return GridView.builder(
       controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
         12,
         12,
@@ -341,111 +528,57 @@ class HistoryPageState extends ConsumerState<HistoryPage>
         crossAxisSpacing: 10,
         mainAxisSpacing: 12,
       ),
-      itemCount: displayBooks.length + (hasMore && _loadingMore ? 3 : 0),
+      itemCount: bookIds.length,
       itemBuilder: (context, index) {
-        if (index >= displayBooks.length) {
-          return const Center(child: M3ELoadingIndicator());
-        }
-        return _buildBookItem(displayBooks[index]);
+        final bookId = bookIds[index];
+        return VisibilityDetector(
+          key: ValueKey('history_visibility_$bookId'),
+          onVisibilityChanged: (info) {
+            if (info.visibleFraction > 0) {
+              _trackVisibleItem(bookIds, index);
+            }
+          },
+          child: _buildBookItem(bookId),
+        );
       },
     );
   }
 
-  Widget _buildBookItem(Book book) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final heroTag = 'history_cover_${book.id}';
+  Widget _buildBookItem(int bookId) {
+    final book = _bookDetails[bookId];
+    final coverUrlHint = book == null ? _bookCoverHint(bookId) : null;
+    final titleHint = book == null ? _bookTitleHint(bookId) : null;
+    final heroTag = 'history_cover_$bookId';
 
-    return GestureDetector(
+    return ShelfBookGridItem(
+      book: book,
+      coverUrlHint: coverUrlHint,
+      titleHint: titleHint,
+      bookId: bookId,
+      heroTag: heroTag,
+      badgeContext: 'history',
+      resolveHintCoverImage: true,
+      coverRevealed: _revealedBookCoverKeys.contains('history_book_$bookId'),
+      onCoverRevealed: () => _rememberBookCoverReveal(bookId),
       onTap: () {
         Navigator.of(context)
             .push(
               MaterialPageRoute(
                 builder:
                     (_) => BookDetailPage(
-                      bookId: book.id,
-                      initialCoverUrl: book.cover,
-                      initialTitle: book.title,
+                      bookId: bookId,
+                      initialCoverUrl: book?.cover ?? coverUrlHint,
+                      initialTitle: book?.title ?? titleHint,
                       heroTag: heroTag,
                     ),
               ),
             )
             .then((_) {
-              // 从详情页返回时刷新
               if (mounted) {
-                _fetchHistory(force: true);
+                _fetchHistory(force: true, silentIfPossible: true);
               }
             });
       },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Cover
-          Expanded(
-            child: Hero(
-              tag: heroTag,
-              child: Stack(
-                children: [
-                  Card(
-                    elevation: 2,
-                    shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child:
-                        book.cover.isNotEmpty
-                            ? BookCoverPreviewer(
-                              coverUrl: book.cover,
-                              child: BookCoverImage(
-                                imageUrl: book.cover,
-                                width: double.infinity,
-                                height: double.infinity,
-                              ),
-                            )
-                            : Container(
-                              color: colorScheme.surfaceContainerHighest,
-                              child: Center(
-                                child: Icon(
-                                  Icons.book_outlined,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                  ),
-                  // 书籍类型角标（Hero 内部）
-                  Consumer(
-                    builder: (context, ref, _) {
-                      if (ref
-                          .watch(settingsProvider)
-                          .isBookTypeBadgeEnabled('history')) {
-                        return BookTypeBadge(category: book.category);
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // 标题 - 固定高度防止影响封面比例
-          SizedBox(
-            height: 36,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
-              child: Text(
-                book.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface,
-                  height: 1.2,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

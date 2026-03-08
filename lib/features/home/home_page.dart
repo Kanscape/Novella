@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/data/services/book_service.dart';
@@ -23,10 +25,10 @@ class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
   @override
-  ConsumerState<HomePage> createState() => _HomePageState();
+  ConsumerState<HomePage> createState() => HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> with RouteAware {
+class HomePageState extends ConsumerState<HomePage> with RouteAware {
   final _logger = Logger('HomePage');
   final _bookService = BookService();
   final _readingTimeService = ReadingTimeService();
@@ -53,6 +55,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   ReadPosition? _lastReadPosition;
   final _progressService = ReadingProgressService();
   final _cacheService = BookInfoCacheService();
+  bool _isTabActive = true;
+  int _requestEpoch = 0;
 
   @override
   void didChangeDependencies() {
@@ -73,6 +77,39 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     // 当从其他页面返回此页面时触发
     _loadReadingStats();
     _fetchContinueReading(internalLoading: false);
+  }
+
+  void setTabActive(bool active) {
+    if (_isTabActive == active) {
+      return;
+    }
+
+    _isTabActive = active;
+    _requestEpoch++;
+
+    if (!active) {
+      if (mounted && _loading && _hasIncompletePrimaryContent()) {
+        setState(() => _loading = false);
+      }
+      return;
+    }
+
+    if (mounted && (_loading || _hasIncompletePrimaryContent())) {
+      unawaited(_fetchData());
+    }
+  }
+
+  bool _canApplyRequest(int requestEpoch) {
+    return mounted && _isTabActive && requestEpoch == _requestEpoch;
+  }
+
+  bool _hasIncompletePrimaryContent() {
+    final settings = ref.read(settingsProvider);
+    final rankingMissing =
+        settings.isModuleEnabled('ranking') && _rankBooks.isEmpty;
+    final latestMissing =
+        settings.isModuleEnabled('recentlyUpdated') && _latestBooks.isEmpty;
+    return rankingMissing || latestMissing;
   }
 
   @override
@@ -143,8 +180,11 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   }
 
   Future<void> _fetchData() async {
+    final requestEpoch = _requestEpoch;
     final settings = ref.read(settingsProvider);
-    setState(() => _loading = true);
+    if (_canApplyRequest(requestEpoch)) {
+      setState(() => _loading = true);
+    }
 
     // 仅获取已启用模块的数据
     final futures = <Future<void>>[];
@@ -160,7 +200,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
 
     await Future.wait(futures);
 
-    if (mounted) {
+    if (_canApplyRequest(requestEpoch)) {
       setState(() {
         _loading = false;
       });
@@ -168,8 +208,11 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   }
 
   Future<void> _fetchContinueReading({bool internalLoading = true}) async {
+    final requestEpoch = _requestEpoch;
     try {
-      if (internalLoading) setState(() => _loading = true);
+      if (internalLoading && _canApplyRequest(requestEpoch)) {
+        setState(() => _loading = true);
+      }
 
       // 预热本地封面目录：确保后续 [`LocalShelfCover`](lib/features/home/home_page.dart:1068)
       // 在首次渲染“继续阅读”时就能同步命中本地文件，避免先显示网络封面再切换造成闪烁。
@@ -188,7 +231,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
             category: null,
             level: 0,
           );
-          if (mounted) {
+          if (_canApplyRequest(requestEpoch)) {
             setState(() {
               _lastReadPosition = lastPos;
               _lastReadBookInfo = book;
@@ -200,20 +243,29 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
 
         // 2. 尝试从内存缓存快速加载 (用于覆盖老旧无元数据的记录)
         final cachedInfo = _cacheService.get(lastPos.bookId);
-        if (cachedInfo != null && mounted && _lastReadBookInfo == null) {
+        if (cachedInfo != null &&
+            _canApplyRequest(requestEpoch) &&
+            _lastReadBookInfo == null) {
           _updateContinueReadingState(lastPos, cachedInfo);
         }
 
         // 3. 网络更新详情
         final networkUpdate = _bookService
-            .getBookInfo(lastPos.bookId)
+            .getBookInfo(
+              lastPos.bookId,
+              requestScope: RequestScopes.home,
+              priority: RequestPriority.low,
+            )
             .then((info) {
               _cacheService.set(lastPos.bookId, info);
-              if (mounted) {
+              if (_canApplyRequest(requestEpoch)) {
                 _updateContinueReadingState(lastPos, info);
               }
             })
             .catchError((e) {
+              if (isRequestCancelledError(e)) {
+                return;
+              }
               _logger.warning('Failed to update book info from network: $e');
               // 如果本地、缓存都没有，且网络失败，才打印警告
               if (_lastReadBookInfo == null && cachedInfo == null) {
@@ -229,7 +281,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
           await networkUpdate;
         }
       } else {
-        if (mounted) {
+        if (_canApplyRequest(requestEpoch)) {
           setState(() {
             _lastReadPosition = null;
             _lastReadBookInfo = null;
@@ -237,10 +289,17 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         }
       }
 
-      if (internalLoading && mounted) setState(() => _loading = false);
+      if (internalLoading && _canApplyRequest(requestEpoch)) {
+        setState(() => _loading = false);
+      }
     } catch (e) {
+      if (isRequestCancelledError(e)) {
+        return;
+      }
       _logger.warning('Failed to fetch continue reading: $e');
-      if (internalLoading && mounted) setState(() => _loading = false);
+      if (internalLoading && _canApplyRequest(requestEpoch)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -326,16 +385,23 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   }
 
   Future<void> _fetchRanking({bool internalLoading = true}) async {
+    final requestEpoch = _requestEpoch;
     final settings = ref.read(settingsProvider);
     final rankType = settings.homeRankType;
 
     try {
-      if (internalLoading) setState(() => _loading = true);
+      if (internalLoading && _canApplyRequest(requestEpoch)) {
+        setState(() => _loading = true);
+      }
 
       final days = _rankTypeToDay(rankType);
 
       // 排名也应用过滤规则
-      var books = await _bookService.getRank(days);
+      var books = await _bookService.getRank(
+        days,
+        requestScope: RequestScopes.home,
+        priority: RequestPriority.low,
+      );
       _logger.info('[Ranking] API returned ${books.length} books');
       // Client-side Level6 filter
       if (settings.ignoreLevel6) {
@@ -346,7 +412,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         );
       }
 
-      if (mounted) {
+      if (_canApplyRequest(requestEpoch)) {
         setState(() {
           _rankBooks = books;
           _lastRankType = rankType;
@@ -354,15 +420,23 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         });
       }
     } catch (e) {
+      if (isRequestCancelledError(e)) {
+        return;
+      }
       _logger.severe('Error fetching ranking: $e');
-      if (internalLoading && mounted) setState(() => _loading = false);
+      if (internalLoading && _canApplyRequest(requestEpoch)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _fetchLatestBooks({bool internalLoading = true}) async {
+    final requestEpoch = _requestEpoch;
     final settings = ref.read(settingsProvider);
     try {
-      if (internalLoading) setState(() => _loading = true);
+      if (internalLoading && _canApplyRequest(requestEpoch)) {
+        setState(() => _loading = true);
+      }
 
       // 使用 getBookList 替代 getLatestBooks，因为后者服务端固定只返回6本
       final result = await _bookService.getBookList(
@@ -371,6 +445,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         order: 'latest',
         ignoreJapanese: settings.ignoreJapanese,
         ignoreAI: settings.ignoreAI,
+        requestScope: RequestScopes.home,
+        priority: RequestPriority.low,
       );
       var books = result.books;
       _logger.info('[Recently Updated] API returned ${books.length} books');
@@ -383,15 +459,20 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         );
       }
 
-      if (mounted) {
+      if (_canApplyRequest(requestEpoch)) {
         setState(() {
           _latestBooks = books;
           if (internalLoading) _loading = false;
         });
       }
     } catch (e) {
+      if (isRequestCancelledError(e)) {
+        return;
+      }
       _logger.severe('Error fetching latest books: $e');
-      if (internalLoading && mounted) setState(() => _loading = false);
+      if (internalLoading && _canApplyRequest(requestEpoch)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
