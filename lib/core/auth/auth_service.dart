@@ -181,7 +181,7 @@ class AuthService {
     required String email,
     required String password,
     required String code,
-    required String inviteCode,
+    String? inviteCode,
   }) async {
     final passwordHash = sha256.convert(utf8.encode(password)).toString();
     try {

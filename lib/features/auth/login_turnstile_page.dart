@@ -748,11 +748,6 @@ class _LoginTurnstilePageState extends State<LoginTurnstilePage>
                 icon: Icons.card_giftcard_outlined,
               ),
               textInputAction: TextInputAction.next,
-              validator: (v) {
-                final value = (v ?? '').trim();
-                if (value.isEmpty) return '请输入邀请码';
-                return null;
-              },
             ),
             const SizedBox(height: 14),
             // 发送验证码 + 验证码输入（内嵌按钮）
