@@ -33,7 +33,7 @@ class UserService extends ChangeNotifier {
     RequestPriority priority = RequestPriority.normal,
   }) async {
     try {
-      if (!forceRefresh && _initialized && _shelfCache.isNotEmpty) {
+      if (!forceRefresh && _initialized) {
         return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
       }
 
@@ -56,11 +56,21 @@ class UserService extends ChangeNotifier {
         if (_initialized) {
           return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
         }
-        return [];
+        return _initializeEmptyShelf();
       }
 
       final data = result['data'] ?? result['Data'];
-      if (data == null || data is! List) {
+      if (data == null) {
+        _logger.warning(
+          'Null shelf payload from server, treating as empty shelf',
+        );
+        if (_initialized) {
+          return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
+        }
+        return _initializeEmptyShelf();
+      }
+
+      if (data is! List) {
         _logger.warning('Unexpected shelf data type: ${data?.runtimeType}');
         if (_initialized) {
           return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
@@ -694,6 +704,13 @@ class UserService extends ChangeNotifier {
 
   Future<void> _waitForPendingShelfSync() async {
     await _pendingShelfSync.catchError((_) {});
+  }
+
+  List<ShelfItem> _initializeEmptyShelf() {
+    _shelfCache = [];
+    _initialized = true;
+    notifyListeners();
+    return const <ShelfItem>[];
   }
 
   List<Map<String, dynamic>> _cloneShelfCache(
