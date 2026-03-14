@@ -321,6 +321,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   final _userService = UserService();
   final _bookMarkService = BookMarkService();
   final _cacheService = BookInfoCacheService();
+  final GlobalKey _coverHeroKey = GlobalKey();
   final _localCoverService = LocalCoverService(); // 封面物理持久化服务
 
   // 本地标记状态
@@ -1325,6 +1326,47 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     );
   }
 
+  Widget _buildCoverHero(String coverUrl, ColorScheme colorScheme) {
+    return Hero(
+      key: _coverHeroKey,
+      tag: widget.heroTag ?? 'cover_${widget.bookId}',
+      child: Container(
+        width: 100,
+        height: 150,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(60),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child:
+              coverUrl.isNotEmpty
+                  ? BookCoverPreviewer(
+                    borderRadius: 8.0,
+                    coverUrl: coverUrl,
+                    child: BookCoverImage(imageUrl: coverUrl, fit: BoxFit.cover),
+                  )
+                  : Container(
+                    color: colorScheme.surfaceContainerHighest,
+                    child: const Center(
+                      child: Icon(
+                        Icons.menu_book_rounded,
+                        size: 40,
+                        color: Color(0xFF888888),
+                      ),
+                    ),
+                  ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLoadingPreview(ColorScheme colorScheme) {
     final settings = ref.watch(settingsProvider);
     final isOled =
@@ -1404,47 +1446,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         // Cover
-                        Hero(
-                          tag: widget.heroTag ?? 'cover_${widget.bookId}',
-                          child: Container(
-                            width: 100,
-                            height: 150,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withAlpha(60),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child:
-                                  coverUrl.isNotEmpty
-                                      ? BookCoverPreviewer(
-                                        borderRadius: 8.0,
-                                        coverUrl: coverUrl,
-                                        child: BookCoverImage(
-                                          imageUrl: coverUrl,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      )
-                                      : Container(
-                                        color:
-                                            colorScheme.surfaceContainerHighest,
-                                        child: const Center(
-                                          child: Icon(
-                                            Icons.menu_book_rounded,
-                                            size: 40,
-                                            color: Color(0xFF888888),
-                                          ),
-                                        ),
-                                      ),
-                            ),
-                          ),
-                        ),
+                        _buildCoverHero(coverUrl, colorScheme),
                         const SizedBox(width: 16),
                         // Title
                         Expanded(
@@ -1682,46 +1684,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       // 浮动封面卡片
-                      Hero(
-                        tag: widget.heroTag ?? 'cover_${book.id}',
-                        child: Container(
-                          width: 100,
-                          height: 150,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(60),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child:
-                                coverUrl.isEmpty
-                                    ? Container(
-                                      color: const Color(0xFF3A3A3A),
-                                      child: const Center(
-                                        child: Icon(
-                                          Icons.menu_book_rounded,
-                                          size: 40,
-                                          color: Color(0xFF888888),
-                                        ),
-                                      ),
-                                    )
-                                    : BookCoverPreviewer(
-                                      borderRadius: 8.0,
-                                      coverUrl: coverUrl,
-                                      child: BookCoverImage(
-                                        imageUrl: coverUrl,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                          ),
-                        ),
-                      ),
+                      _buildCoverHero(coverUrl, colorScheme),
                       const SizedBox(width: 16),
                       // 标题与作者
                       Expanded(
