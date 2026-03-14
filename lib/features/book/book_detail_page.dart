@@ -431,8 +431,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       _tryRestoreCachedColors(isDark);
       if (!_colorsExtracted) {
         final coverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
-        if (coverUrl != null && coverUrl.isNotEmpty) {
-          _extractColors(coverUrl, isDark);
+        if (_hasCoverColorSeed(coverUrl)) {
+          _extractColors(coverUrl!, isDark);
         }
       }
     } else if (_currentBrightness != brightness) {
@@ -444,8 +444,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       _dynamicColorScheme = null;
       _colorsExtracted = false;
       final coverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
-      if (coverUrl != null && coverUrl.isNotEmpty) {
-        _extractColors(coverUrl, isDark);
+      if (_hasCoverColorSeed(coverUrl)) {
+        _extractColors(coverUrl!, isDark);
       }
     }
     _currentBrightness = brightness;
@@ -461,6 +461,10 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       _dynamicColorScheme = _schemeCache[cacheKey]!;
       _colorsExtracted = true;
     }
+  }
+
+  bool _hasCoverColorSeed(String? coverUrl) {
+    return CoverUrlUtils.extractBlurHash(coverUrl) != null;
   }
 
   /// 根据主题调整颜色以提升质感
@@ -507,6 +511,13 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
 
     // 从 BlurHash DC 分量同步提取主色
+    if (!_hasCoverColorSeed(coverUrl)) {
+      _logger.fine(
+        'Skip cover color extraction for book ${widget.bookId}: no blurhash in cover URL.',
+      );
+      return;
+    }
+
     final seedColor = CoverUrlUtils.extractSeedColor(coverUrl);
     if (seedColor == null) {
       return;
@@ -556,7 +567,10 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           setState(() => _loading = false);
         }
         // 必要时提取颜色
-        if (mounted && !_colorsExtracted && _gradientColors == null) {
+        if (mounted &&
+            !_colorsExtracted &&
+            _gradientColors == null &&
+            _hasCoverColorSeed(cached.cover)) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
           _extractColors(cached.cover, isDark);
         }
@@ -663,7 +677,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           _loading = false;
         });
         // 若未提取则提取颜色
-        if (!_colorsExtracted && _gradientColors == null) {
+        if (!_colorsExtracted &&
+            _gradientColors == null &&
+            _hasCoverColorSeed(info.cover)) {
           _extractColors(info.cover, isDark);
         }
         // 缓存书籍信息
@@ -1234,6 +1250,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         (widget.initialCoverUrl != null &&
             widget.initialCoverUrl!.isNotEmpty) ||
         (_bookInfo?.cover != null && _bookInfo!.cover.isNotEmpty);
+    final currentCoverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
+    final hasCoverColorSeed = _hasCoverColorSeed(currentCoverUrl);
 
     // 是否需要等待颜色提取
     // 1. 尚未提取完成
@@ -1245,6 +1263,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         !_colorsExtracted &&
         !_coverLoadFailed &&
         hasCover &&
+        hasCoverColorSeed &&
         !isOled &&
         settings.coverColorExtraction;
 
