@@ -22,25 +22,59 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
 /// 骨架屏加载效果组件
-class ShimmerBox extends StatefulWidget {
-  final double width;
-  final double height;
-  final double borderRadius;
 
-  const ShimmerBox({
-    super.key,
-    required this.width,
-    required this.height,
-    this.borderRadius = 4,
-  });
+/// 书籍详情信息
+class _LoadingShimmer extends StatefulWidget {
+  final Widget child;
+
+  const _LoadingShimmer({required this.child});
+
+  static _LoadingShimmerState? maybeOf(BuildContext context) {
+    final scope =
+        context.dependOnInheritedWidgetOfExactType<_LoadingShimmerScope>();
+    return scope?.state;
+  }
 
   @override
-  State<ShimmerBox> createState() => _ShimmerBoxState();
+  State<_LoadingShimmer> createState() => _LoadingShimmerState();
 }
 
-class _ShimmerBoxState extends State<ShimmerBox>
+class _LoadingShimmerState extends State<_LoadingShimmer>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late final AnimationController _controller;
+
+  AnimationController get controller => _controller;
+
+  bool get isSized {
+    final renderObject = context.findRenderObject();
+    return renderObject is RenderBox && renderObject.hasSize;
+  }
+
+  Size get size {
+    final renderObject = context.findRenderObject() as RenderBox;
+    return renderObject.size;
+  }
+
+  Offset getDescendantOffset(RenderBox descendant) {
+    final shimmerBox = context.findRenderObject() as RenderBox;
+    return descendant.localToGlobal(Offset.zero, ancestor: shimmerBox);
+  }
+
+  LinearGradient get gradient {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor =
+        isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+    final highlightColor =
+        isDark ? const Color(0xFF3A3A3A) : const Color(0xFFF5F5F5);
+
+    return LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [baseColor, baseColor, highlightColor, baseColor, baseColor],
+      stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
+      transform: _SlidingGradientTransform(slidePercent: _controller.value),
+    );
+  }
 
   @override
   void initState() {
@@ -59,38 +93,97 @@ class _ShimmerBoxState extends State<ShimmerBox>
 
   @override
   Widget build(BuildContext context) {
+    return _LoadingShimmerScope(state: this, child: widget.child);
+  }
+}
+
+class _LoadingShimmerScope extends InheritedWidget {
+  final _LoadingShimmerState state;
+
+  const _LoadingShimmerScope({required this.state, required super.child});
+
+  @override
+  bool updateShouldNotify(_LoadingShimmerScope oldWidget) =>
+      state != oldWidget.state;
+}
+
+class _SlidingGradientTransform extends GradientTransform {
+  final double slidePercent;
+
+  const _SlidingGradientTransform({required this.slidePercent});
+
+  @override
+  Matrix4 transform(Rect bounds, {TextDirection? textDirection}) {
+    return Matrix4.translationValues(
+      bounds.width * ((slidePercent * 3) - 1.5),
+      0,
+      0,
+    );
+  }
+}
+
+class _SynchronizedShimmerBox extends StatelessWidget {
+  final double width;
+  final double height;
+  final double borderRadius;
+
+  const _SynchronizedShimmerBox({
+    required this.width,
+    required this.height,
+    this.borderRadius = 4,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final shimmer = _LoadingShimmer.maybeOf(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseColor =
         isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
-    final highlightColor =
-        isDark ? const Color(0xFF3A3A3A) : const Color(0xFFF5F5F5);
+
+    final placeholder = Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: baseColor,
+        borderRadius: BorderRadius.circular(borderRadius),
+      ),
+    );
+
+    if (shimmer == null) {
+      return placeholder;
+    }
 
     return AnimatedBuilder(
-      animation: _controller,
+      animation: shimmer.controller,
+      child: placeholder,
       builder: (context, child) {
-        return Container(
-          width: widget.width,
-          height: widget.height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(widget.borderRadius),
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [baseColor, highlightColor, baseColor],
-              stops: [
-                (_controller.value - 0.3).clamp(0.0, 1.0),
-                _controller.value,
-                (_controller.value + 0.3).clamp(0.0, 1.0),
-              ],
-            ),
-          ),
+        if (!shimmer.isSized) {
+          return child!;
+        }
+
+        final renderObject = context.findRenderObject();
+        if (renderObject is! RenderBox || !renderObject.hasSize) {
+          return child!;
+        }
+
+        final offset = shimmer.getDescendantOffset(renderObject);
+        final shaderRect = Rect.fromLTWH(
+          -offset.dx,
+          -offset.dy,
+          shimmer.size.width,
+          shimmer.size.height,
+        );
+
+        return ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (_) => shimmer.gradient.createShader(shaderRect),
+          child: child,
         );
       },
     );
   }
 }
 
-/// 书籍详情信息
 class BookInfo {
   final int id;
   final String title;
@@ -1220,180 +1313,217 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     final coverUrl = widget.initialCoverUrl ?? '';
     final title = widget.initialTitle ?? '';
 
-    return CustomScrollView(
-      slivers: [
-        SliverAppBar(
-          expandedHeight: 280,
-          pinned: true,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          flexibleSpace: FlexibleSpaceBar(
-            collapseMode: CollapseMode.parallax,
-            background: Stack(
-              fit: StackFit.expand,
-              children: [
-                // 渐变背景或加载占位
-                if (!isOled &&
-                    _gradientColors != null &&
-                    settings.coverColorExtraction)
+    return _LoadingShimmer(
+      child: CustomScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 280,
+            pinned: true,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            flexibleSpace: FlexibleSpaceBar(
+              collapseMode: CollapseMode.parallax,
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 渐变背景或加载占位
+                  if (!isOled &&
+                      _gradientColors != null &&
+                      settings.coverColorExtraction)
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: _gradientColors!,
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      color:
+                          isOled
+                              ? Colors.black
+                              : Theme.of(context).scaffoldBackgroundColor,
+                    ),
+                  // Gradient overlay
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: _gradientColors!,
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Theme.of(
+                            context,
+                          ).scaffoldBackgroundColor.withAlpha(0),
+                          Theme.of(
+                            context,
+                          ).scaffoldBackgroundColor.withAlpha(0),
+                          Theme.of(
+                            context,
+                          ).scaffoldBackgroundColor.withAlpha(40),
+                          Theme.of(
+                            context,
+                          ).scaffoldBackgroundColor.withAlpha(120),
+                          Theme.of(
+                            context,
+                          ).scaffoldBackgroundColor.withAlpha(200),
+                          Theme.of(context).scaffoldBackgroundColor,
+                        ],
+                        stops: const [0.0, 0.3, 0.5, 0.7, 0.9, 1.0],
                       ),
                     ),
-                  )
-                else
-                  Container(
-                    color:
-                        isOled
-                            ? Colors.black
-                            : Theme.of(context).scaffoldBackgroundColor,
                   ),
-                // Gradient overlay
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Theme.of(context).scaffoldBackgroundColor.withAlpha(0),
-                        Theme.of(context).scaffoldBackgroundColor.withAlpha(0),
-                        Theme.of(context).scaffoldBackgroundColor.withAlpha(40),
-                        Theme.of(
-                          context,
-                        ).scaffoldBackgroundColor.withAlpha(120),
-                        Theme.of(
-                          context,
-                        ).scaffoldBackgroundColor.withAlpha(200),
-                        Theme.of(context).scaffoldBackgroundColor,
-                      ],
-                      stops: const [0.0, 0.3, 0.5, 0.7, 0.9, 1.0],
-                    ),
-                  ),
-                ),
-                // 封面标题预览
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 16,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      // Cover
-                      Hero(
-                        tag: widget.heroTag ?? 'cover_${widget.bookId}',
-                        child: Container(
-                          width: 100,
-                          height: 150,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(60),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
+                  // 封面标题预览
+                  Positioned(
+                    left: 20,
+                    right: 20,
+                    bottom: 16,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        // Cover
+                        Hero(
+                          tag: widget.heroTag ?? 'cover_${widget.bookId}',
+                          child: Container(
+                            width: 100,
+                            height: 150,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(60),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child:
+                                  coverUrl.isNotEmpty
+                                      ? BookCoverPreviewer(
+                                        borderRadius: 8.0,
+                                        coverUrl: coverUrl,
+                                        child: BookCoverImage(
+                                          imageUrl: coverUrl,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      )
+                                      : Container(
+                                        color:
+                                            colorScheme.surfaceContainerHighest,
+                                        child: const Center(
+                                          child: Icon(
+                                            Icons.menu_book_rounded,
+                                            size: 40,
+                                            color: Color(0xFF888888),
+                                          ),
+                                        ),
+                                      ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // Title
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (title.isNotEmpty)
+                                Text(
+                                  title,
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              const SizedBox(height: 8),
+                              // 作者加载骨架
+                              _SynchronizedShimmerBox(
+                                width: 80,
+                                height: 16,
+                                borderRadius: 4,
                               ),
                             ],
                           ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child:
-                                coverUrl.isNotEmpty
-                                    ? BookCoverPreviewer(
-                                      borderRadius: 8.0,
-                                      coverUrl: coverUrl,
-                                      child: BookCoverImage(
-                                        imageUrl: coverUrl,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    )
-                                    : Container(
-                                      color:
-                                          colorScheme.surfaceContainerHighest,
-                                      child: const Center(
-                                        child: Icon(
-                                          Icons.menu_book_rounded,
-                                          size: 40,
-                                          color: Color(0xFF888888),
-                                        ),
-                                      ),
-                                    ),
-                          ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      // Title
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (title.isNotEmpty)
-                              Text(
-                                title,
-                                style: Theme.of(context).textTheme.titleLarge
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            const SizedBox(height: 8),
-                            // 作者加载骨架
-                            ShimmerBox(width: 80, height: 16, borderRadius: 4),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // 内容骨架屏
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          sliver: SliverList(
-            delegate: SliverChildListDelegate([
-              // 元数据 Chips 骨架
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  ShimmerBox(width: 55, height: 26, borderRadius: 8),
-                  ShimmerBox(width: 70, height: 26, borderRadius: 8),
-                  ShimmerBox(width: 55, height: 26, borderRadius: 8),
-                ],
-              ),
-              const SizedBox(height: 20),
-              // 操作按钮骨架
-              Row(
-                children: [
-                  ShimmerBox(width: 56, height: 56, borderRadius: 16),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ShimmerBox(
-                      width: double.infinity,
-                      height: 56,
-                      borderRadius: 16,
+                      ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              // 简介骨架
-              ShimmerBox(width: double.infinity, height: 80, borderRadius: 16),
-              const SizedBox(height: 24),
-              // 列表区域骨架
-              // 匹配下方视觉权重
-              ShimmerBox(width: double.infinity, height: 300, borderRadius: 16),
-            ]),
+            ),
           ),
-        ),
-      ],
+          // 内容骨架屏
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                // 元数据 Chips 骨架
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _SynchronizedShimmerBox(
+                      width: 55,
+                      height: 26,
+                      borderRadius: 8,
+                    ),
+                    _SynchronizedShimmerBox(
+                      width: 55,
+                      height: 26,
+                      borderRadius: 8,
+                    ),
+                    _SynchronizedShimmerBox(
+                      width: 55,
+                      height: 26,
+                      borderRadius: 8,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // 操作按钮骨架
+                Row(
+                  children: [
+                    _SynchronizedShimmerBox(
+                      width: 56,
+                      height: 56,
+                      borderRadius: 16,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _SynchronizedShimmerBox(
+                        width: double.infinity,
+                        height: 56,
+                        borderRadius: 16,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                // 简介骨架
+                _SynchronizedShimmerBox(
+                  width: double.infinity,
+                  height: 80,
+                  borderRadius: 16,
+                ),
+                const SizedBox(height: 24),
+                // 列表区域骨架
+                // 匹配下方视觉权重
+                _SynchronizedShimmerBox(
+                  width: double.infinity,
+                  height: 300,
+                  borderRadius: 16,
+                ),
+              ]),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
