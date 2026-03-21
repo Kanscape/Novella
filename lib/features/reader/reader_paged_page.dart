@@ -66,7 +66,8 @@ class ReaderPagedPage extends ConsumerStatefulWidget {
   ConsumerState<ReaderPagedPage> createState() => _ReaderPagedPageState();
 }
 
-class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
+class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
+    with WidgetsBindingObserver {
   static const double _topBarButtonSize = 44;
   static const double _topBarHorizontalInset = 12;
   static const double _topBarVerticalInset = 8;
@@ -111,6 +112,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
   final _pageController = PageController();
   static final Map<String, ColorScheme> _schemeCache = {};
   final Map<String, String> _indentedBlockHtmlCache = {};
+  bool _exitInProgress = false;
   ChapterContent? _chapter;
   List<_ReaderBlock> _blocks = const [];
   Map<String, int> _indexByXPath = const {};
@@ -130,6 +132,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _targetSortNum = widget.sortNum;
     _loadChapter(widget.sortNum);
     _readingTimeService.startSession();
@@ -145,13 +148,40 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
 
   @override
   void dispose() {
-    unawaited(_savePosition(immediate: true));
+    final chapter = _chapter;
+    if (chapter != null) {
+      unawaited(
+        _progressService.saveLocalPosition(
+          bookId: widget.bid,
+          chapterId: chapter.id,
+          sortNum: chapter.sortNum,
+          xPath: _currentXPath,
+          title: widget.bookTitle,
+          cover: widget.coverUrl,
+          chapterTitle: chapter.title,
+          immediate: true,
+        ),
+      );
+    }
     _readingTimeService.endSession();
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
   }
 
-  Future<void> _savePosition({bool immediate = false, String? xPath}) async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      unawaited(_saveCurrentPosition());
+      _readingTimeService.endSession();
+    }
+    if (state == AppLifecycleState.resumed) {
+      _readingTimeService.startSession();
+    }
+  }
+
+  Future<void> _saveCurrentPosition({String? xPath}) async {
     final chapter = _chapter;
     if (chapter == null) return;
     final currentXPath = xPath ?? _currentXPath;
@@ -163,7 +193,6 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
       title: widget.bookTitle,
       cover: widget.coverUrl,
       chapterTitle: chapter.title,
-      immediate: immediate,
     );
     await _progressService.saveReadPosition(
       bookId: widget.bid,
@@ -172,9 +201,40 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
     );
   }
 
+  Future<void> _saveProgressForExit() async {
+    if (_exitInProgress) return;
+    _exitInProgress = true;
+
+    final chapter = _chapter;
+    if (chapter == null) return;
+
+    final currentXPath = _currentXPath;
+
+    try {
+      await _progressService.saveLocalPosition(
+        bookId: widget.bid,
+        chapterId: chapter.id,
+        sortNum: chapter.sortNum,
+        xPath: currentXPath,
+        title: widget.bookTitle,
+        cover: widget.coverUrl,
+        chapterTitle: chapter.title,
+        immediate: true,
+      );
+    } catch (_) {}
+
+    unawaited(
+      _progressService.saveReadPosition(
+        bookId: widget.bid,
+        chapterId: chapter.id,
+        xPath: currentXPath,
+      ),
+    );
+  }
+
   Future<void> _loadChapter(int sortNum) async {
     final version = ++_loadVersion;
-    if (_chapter != null) unawaited(_savePosition());
+    if (_chapter != null) unawaited(_saveCurrentPosition());
     setState(() {
       _loading = true;
       _error = null;
@@ -1350,7 +1410,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
         _currentXPath = xPath;
         _pendingRestoreXPath = null;
       });
-      await _savePosition(xPath: xPath);
+      await _saveCurrentPosition(xPath: xPath);
     });
   }
 
@@ -1625,7 +1685,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
 
   Future<void> _exitPagedReader(BuildContext context) async {
     final navigator = Navigator.of(context);
-    await _savePosition(immediate: true);
+    await _saveProgressForExit();
     if (mounted) {
       navigator.pop();
     }
@@ -1863,7 +1923,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
           return;
         }
         final navigator = Navigator.of(context);
-        await _savePosition(immediate: true);
+        await _saveProgressForExit();
         if (mounted) {
           navigator.pop(result);
         }
@@ -1946,7 +2006,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
                                           _currentPage = index;
                                           _currentXPath = xPath;
                                         });
-                                        unawaited(_savePosition(xPath: xPath));
+                                        unawaited(
+                                          _saveCurrentPosition(xPath: xPath),
+                                        );
                                       },
                                       itemBuilder: (context, index) {
                                         final page = pages[index];
