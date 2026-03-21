@@ -134,6 +134,7 @@ app.*.map.json
 **/ios/**/xcuserdata/
 **/ios/**/.generated/
 **/ios/**/xcshareddata/xcschemes/*.xcscheme
+!ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme
 **/macos/**/*.mode1v3
 **/macos/**/*.mode2v3
 **/macos/**/*.moved-aside
