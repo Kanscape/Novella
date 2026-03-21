@@ -110,6 +110,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
   final _readingTimeService = ReadingTimeService();
   final _pageController = PageController();
   static final Map<String, ColorScheme> _schemeCache = {};
+  final Map<String, String> _indentedBlockHtmlCache = {};
   ChapterContent? _chapter;
   List<_ReaderBlock> _blocks = const [];
   Map<String, int> _indexByXPath = const {};
@@ -216,6 +217,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
         _fontFamily = fontFamily;
         _blocks = blocks.$1;
         _indexByXPath = blocks.$2;
+        _indentedBlockHtmlCache.clear();
         _loading = false;
         _targetSortNum = sortNum;
         _currentXPath = _blocks.isEmpty ? '//*' : _blocks.first.xPath;
@@ -292,6 +294,139 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
 
   String _normalizeText(String text) {
     return normalizeReaderText(text);
+  }
+
+  String _getRenderedBlockHtml(_ReaderBlock block, AppSettings settings) {
+    if (!settings.readerFirstLineIndent) {
+      return block.html;
+    }
+
+    final cacheKey = '${_chapter?.id ?? 0}:${block.xPath}';
+    return _indentedBlockHtmlCache.putIfAbsent(
+      cacheKey,
+      () => _applyFirstLineIndent(block.html),
+    );
+  }
+
+  String _applyFirstLineIndent(String html) {
+    if (html.isEmpty) {
+      return html;
+    }
+
+    try {
+      final fragment = html_parser.parseFragment(html);
+      if (fragment.nodes.isEmpty) {
+        return html;
+      }
+
+      final root = fragment.nodes.firstWhere(
+        (node) => node is dom.Element,
+        orElse: () => fragment.nodes.first,
+      );
+      if (root is! dom.Element || !_canApplyFirstLineIndent(root)) {
+        return html;
+      }
+
+      final firstTextNode = _findFirstIndentableTextNode(root);
+      if (firstTextNode == null) {
+        return html;
+      }
+
+      firstTextNode.text = _prependFirstLineIndent(firstTextNode.text);
+      return _serializeFragmentNodes(fragment.nodes);
+    } catch (_) {
+      return html;
+    }
+  }
+
+  String _serializeFragmentNodes(List<dom.Node> nodes) {
+    final buffer = StringBuffer();
+    for (final node in nodes) {
+      if (node is dom.Element) {
+        buffer.write(node.outerHtml);
+      } else if (node is dom.Text) {
+        buffer.write(node.text);
+      }
+    }
+    return buffer.toString();
+  }
+
+  static const Set<String> _kNoFirstLineIndentClasses = {
+    'author',
+    'center',
+    'cut-line',
+    'left',
+    'meg',
+    'message',
+    'right',
+    'zin',
+  };
+
+  bool _canApplyFirstLineIndent(dom.Element element) {
+    const indentableTags = {'p', 'div', 'blockquote'};
+    if (!indentableTags.contains(element.localName)) {
+      return false;
+    }
+    if (element.getElementsByTagName('img').isNotEmpty) {
+      return false;
+    }
+
+    final rawText = _normalizeText(element.text);
+    if (rawText.isEmpty) {
+      return false;
+    }
+
+    final align = (element.attributes['align'] ?? '').toLowerCase();
+    final style = (element.attributes['style'] ?? '').toLowerCase();
+    if (element.classes.any(_kNoFirstLineIndentClasses.contains)) {
+      return false;
+    }
+    if (align == 'center' || align == 'right') {
+      return false;
+    }
+    if (style.contains('text-align:center') ||
+        style.contains('text-align: center') ||
+        style.contains('text-align:right') ||
+        style.contains('text-align: right') ||
+        style.contains('text-indent:0') ||
+        style.contains('text-indent: 0')) {
+      return false;
+    }
+
+    return true;
+  }
+
+  dom.Text? _findFirstIndentableTextNode(dom.Node node) {
+    if (node is dom.Text) {
+      return node.text.replaceAll('\u200B', '').trim().isEmpty ? null : node;
+    }
+    if (node is! dom.Element) {
+      return null;
+    }
+    if (node.localName == 'img' || node.localName == 'hr') {
+      return null;
+    }
+
+    for (final child in node.nodes) {
+      final textNode = _findFirstIndentableTextNode(child);
+      if (textNode != null) {
+        return textNode;
+      }
+    }
+
+    return null;
+  }
+
+  String _prependFirstLineIndent(String text) {
+    final trimmedLeft = text.trimLeft();
+    if (trimmedLeft.isEmpty || trimmedLeft.startsWith('\u3000\u3000')) {
+      return text;
+    }
+
+    final leadingLength = text.length - trimmedLeft.length;
+    final leadingWhitespace =
+        leadingLength > 0 ? text.substring(0, leadingLength) : '';
+    return '$leadingWhitespace\u3000\u3000$trimmedLeft';
   }
 
   bool _shouldUseAsBlock(dom.Element element) {
@@ -932,8 +1067,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
     Color textColor,
     Color linkColor,
   ) {
+    final renderedHtml = _getRenderedBlockHtml(block, settings);
     return HtmlWidget(
-      block.html,
+      renderedHtml,
       textStyle: TextStyle(
         fontFamily: _fontFamily,
         fontSize: settings.fontSize,
@@ -1027,9 +1163,6 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
 
         if (tag == 'p') {
           style.putIfAbsent('margin', () => '0 0 0.85em 0');
-          if (settings.readerFirstLineIndent) {
-            style.putIfAbsent('text-indent', () => '2em');
-          }
         } else if (_blockTags.contains(tag)) {
           style.putIfAbsent('margin', () => '0 0 0.85em 0');
         }

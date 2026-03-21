@@ -15,6 +15,9 @@ class ReadingSettingsPage extends ConsumerWidget {
       ReaderViewMode.scroll: '滑动翻页',
       ReaderViewMode.paged: '左右翻页',
     };
+    const convertTypeLabels = {'none': '关闭', 't2s': '繁转简', 's2t': '简转繁'};
+    final currentConvertTypeLabel =
+        convertTypeLabels[settings.convertType] ?? '关闭';
 
     return Scaffold(
       body: CustomScrollView(
@@ -85,28 +88,15 @@ class ReadingSettingsPage extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.translate),
                 title: const Text('繁简转换'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      const {'none': '关闭', 't2s': '繁转简', 's2t': '简转繁'}[settings
-                              .convertType] ??
-                          '关闭',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.secondary,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.chevron_right, size: 20),
-                  ],
-                ),
+                subtitle: Text(currentConvertTypeLabel),
+                trailing: const Icon(Icons.chevron_right, size: 20),
                 onTap:
                     () => SettingsUIHelper.showSelectionSheet<String>(
                       context: context,
                       title: '繁简转换',
                       subtitle: '阅读时自动转换文字',
                       currentValue: settings.convertType,
-                      options: const {'none': '关闭', 't2s': '繁转简', 's2t': '简转繁'},
+                      options: convertTypeLabels,
                       icons: const {
                         'none': Icons.close,
                         't2s': Icons.arrow_circle_down_outlined,
