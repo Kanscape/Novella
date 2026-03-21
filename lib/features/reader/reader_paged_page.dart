@@ -66,6 +66,13 @@ class ReaderPagedPage extends ConsumerStatefulWidget {
 }
 
 class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
+  static const double _topBarButtonSize = 44;
+  static const double _topBarHorizontalInset = 12;
+  static const double _topBarVerticalInset = 8;
+  static const double _topBarGap = 12;
+  static const double _contentTopGap = 20;
+  static const double _contentBottomGap = 36;
+  static const double _indicatorBottomGap = 12;
   static const _blockTags = {
     'p',
     'div',
@@ -1067,16 +1074,31 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
     return 0;
   }
 
-  double _pageContentHeight(BoxConstraints constraints) {
-    return (constraints.maxHeight - 60).clamp(220.0, double.infinity);
+  double _topContentPadding(BuildContext context) {
+    return MediaQuery.paddingOf(context).top +
+        _topBarVerticalInset +
+        _topBarButtonSize +
+        _contentTopGap;
+  }
+
+  double _bottomContentPadding(BuildContext context) {
+    return MediaQuery.paddingOf(context).bottom + _contentBottomGap;
+  }
+
+  double _pageContentHeight(BuildContext context, BoxConstraints constraints) {
+    return (constraints.maxHeight -
+            _topContentPadding(context) -
+            _bottomContentPadding(context))
+        .clamp(220.0, double.infinity);
   }
 
   List<_ReaderPageSlice> _buildPages(
+    BuildContext context,
     BoxConstraints constraints,
     AppSettings settings,
   ) {
     if (_blocks.isEmpty) return const [];
-    final budget = _pageContentHeight(constraints);
+    final budget = _pageContentHeight(context, constraints);
     final pages = <_ReaderPageSlice>[];
     var start = 0;
     var cost = 0.0;
@@ -1402,47 +1424,204 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
       );
   }
 
-  AdaptiveAppBar _buildAdaptiveAppBar(
+  Future<void> _exitPagedReader(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    await _savePosition(immediate: true);
+    if (mounted) {
+      navigator.pop();
+    }
+  }
+
+  void _handleTopMenuSelection(BuildContext context, String value) {
+    switch (value) {
+      case 'chapters':
+        _openChapterList(context);
+        return;
+      case 'background':
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const ReaderBackgroundPage()),
+        );
+        return;
+    }
+  }
+
+  Widget _buildBackButton(
     BuildContext context,
     AppSettings settings,
+    Color textColor,
   ) {
-    return AdaptiveAppBar(
-      title: _displayTitle(settings),
-      onTitleTap: () => _showFullTitleSnackBar(context),
-      useNativeToolbar: true,
-      leading: IconButton(
-        onPressed: () async {
-          final navigator = Navigator.of(context);
-          await _savePosition(immediate: true);
-          if (mounted) {
-            navigator.pop();
+    if (settings.useIOS26Style) {
+      return SizedBox(
+        width: _topBarButtonSize,
+        height: _topBarButtonSize,
+        child: AdaptiveButton.sfSymbol(
+          onPressed: () => _exitPagedReader(context),
+          sfSymbol: const SFSymbol('chevron.left', size: 20),
+          style: AdaptiveButtonStyle.glass,
+          borderRadius: BorderRadius.circular(1000),
+          useSmoothRectangleBorder: false,
+          padding: EdgeInsets.zero,
+        ),
+      );
+    }
+
+    if (PlatformInfo.isIOS) {
+      return SizedBox(
+        width: _topBarButtonSize,
+        height: _topBarButtonSize,
+        child: CupertinoButton(
+          padding: EdgeInsets.zero,
+          borderRadius: BorderRadius.circular(_topBarButtonSize / 2),
+          onPressed: () => _exitPagedReader(context),
+          child: Icon(CupertinoIcons.chevron_back, color: textColor, size: 22),
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: _topBarButtonSize,
+      height: _topBarButtonSize,
+      child: IconButton(
+        onPressed: () => _exitPagedReader(context),
+        icon: Icon(Icons.arrow_back, color: textColor),
+      ),
+    );
+  }
+
+  Widget _buildTopMenuButton(
+    BuildContext context,
+    AppSettings settings,
+    Color textColor,
+  ) {
+    if (PlatformInfo.isIOS || PlatformInfo.isMacOS) {
+      return AdaptivePopupMenuButton.icon<String>(
+        icon: settings.useIOS26Style ? 'ellipsis' : CupertinoIcons.ellipsis,
+        buttonStyle: PopupButtonStyle.glass,
+        items: [
+          AdaptivePopupMenuItem<String>(
+            label: '章节列表',
+            icon:
+                settings.useIOS26Style
+                    ? 'list.bullet'
+                    : CupertinoIcons.list_bullet,
+            value: 'chapters',
+          ),
+          AdaptivePopupMenuItem<String>(
+            label: '阅读背景',
+            icon:
+                settings.useIOS26Style
+                    ? 'paintbrush'
+                    : CupertinoIcons.paintbrush,
+            value: 'background',
+          ),
+        ],
+        onSelected: (index, item) {
+          final value = item.value;
+          if (value == null) {
+            return;
           }
+          _handleTopMenuSelection(context, value);
         },
-        icon: Icon(
-          PlatformInfo.isIOS ? CupertinoIcons.chevron_back : Icons.arrow_back,
+      );
+    }
+
+    return Builder(
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+        return PopupMenuButton<String>(
+          icon: Icon(Icons.more_horiz, color: textColor),
+          itemBuilder:
+              (context) => [
+                PopupMenuItem(
+                  value: 'chapters',
+                  child: Row(
+                    children: [
+                      Icon(Icons.list, color: colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 12),
+                      const Text('章节列表'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'background',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.palette_outlined,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 12),
+                      const Text('阅读背景'),
+                    ],
+                  ),
+                ),
+              ],
+          onSelected: (value) => _handleTopMenuSelection(context, value),
+        );
+      },
+    );
+  }
+
+  Widget _buildTitlePanel({
+    required BuildContext context,
+    required AppSettings settings,
+    required Color textColor,
+    Alignment alignment = Alignment.centerLeft,
+    double horizontalPadding = 0,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showFullTitleSnackBar(context),
+      child: SizedBox(
+        height: _topBarButtonSize,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: Align(
+            alignment: alignment,
+            child: _TitleMarqueeText(
+              text: _displayTitle(settings),
+              horizontalPadding: 0,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+          ),
         ),
       ),
-      actions: [
-        AdaptiveAppBarAction(
-          iosSymbol: 'list.bullet',
-          icon: PlatformInfo.isIOS ? CupertinoIcons.list_bullet : Icons.list,
-          onPressed: () => _openChapterList(context),
-        ),
-        AdaptiveAppBarAction(
-          iosSymbol: 'paintbrush',
-          icon:
-              PlatformInfo.isIOS
-                  ? CupertinoIcons.paintbrush
-                  : Icons.palette_outlined,
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const ReaderBackgroundPage(),
-              ),
-            );
-          },
-        ),
-      ],
+    );
+  }
+
+  Widget _buildTitleCard(
+    BuildContext context,
+    AppSettings settings,
+    Color textColor,
+  ) {
+    return _buildTitlePanel(
+      context: context,
+      settings: settings,
+      textColor: textColor,
+    );
+  }
+
+  Widget _buildTopOverlay(
+    BuildContext context,
+    AppSettings settings,
+    Color textColor,
+  ) {
+    return Positioned(
+      top: MediaQuery.paddingOf(context).top + _topBarVerticalInset,
+      left: _topBarHorizontalInset,
+      right: _topBarHorizontalInset,
+      child: Row(
+        children: [
+          _buildBackButton(context, settings, textColor),
+          const SizedBox(width: _topBarGap),
+          Expanded(child: _buildTitleCard(context, settings, textColor)),
+          const SizedBox(width: _topBarGap),
+          _buildTopMenuButton(context, settings, textColor),
+        ],
+      ),
     );
   }
 
@@ -1464,10 +1643,10 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
         }
       },
       child: AdaptiveScaffold(
-        appBar: _buildAdaptiveAppBar(context, settings),
         body: Container(
           color: backgroundColor,
-          child:
+          child: Stack(
+            children: [
               _loading
                   ? const Center(child: M3ELoadingIndicator())
                   : _error != null
@@ -1478,7 +1657,14 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
                           constraints.maxWidth >= 720 ? 48.0 : 24.0;
                       final contentWidth =
                           constraints.maxWidth - horizontalPadding * 2;
-                      final contentHeight = _pageContentHeight(constraints);
+                      final contentTopPadding = _topContentPadding(context);
+                      final contentBottomPadding = _bottomContentPadding(
+                        context,
+                      );
+                      final contentHeight = _pageContentHeight(
+                        context,
+                        constraints,
+                      );
                       final measureKey =
                           '${_chapter?.id}|${contentWidth.toStringAsFixed(1)}|'
                           '${settings.fontSize.toStringAsFixed(2)}|'
@@ -1489,7 +1675,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
                           _measuredBlockHeights.length == _blocks.length;
                       final pages =
                           measurementReady
-                              ? _buildPages(constraints, settings)
+                              ? _buildPages(context, constraints, settings)
                               : const <_ReaderPageSlice>[];
                       if (measurementReady && pages.isNotEmpty) {
                         _scheduleRestore(pages, constraints, settings);
@@ -1553,9 +1739,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
                                   child: Padding(
                                     padding: EdgeInsets.fromLTRB(
                                       horizontalPadding,
-                                      24,
+                                      contentTopPadding,
                                       horizontalPadding,
-                                      36,
+                                      contentBottomPadding,
                                     ),
                                     child:
                                         imageOnly && imageUrl != null
@@ -1582,7 +1768,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
                             Positioned(
                               left: 16,
                               right: 16,
-                              bottom: 12,
+                              bottom:
+                                  MediaQuery.paddingOf(context).bottom +
+                                  _indicatorBottomGap,
                               child: Row(
                                 children: [
                                   Expanded(
@@ -1624,6 +1812,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage> {
                       );
                     },
                   ),
+              _buildTopOverlay(context, settings, textColor),
+            ],
+          ),
         ),
       ),
     );
@@ -1664,5 +1855,183 @@ class _RenderMeasureSize extends RenderProxyBox {
     }
     _oldSize = newSize;
     WidgetsBinding.instance.addPostFrameCallback((_) => onChange(newSize));
+  }
+}
+
+class _TitleMarqueeText extends StatefulWidget {
+  final String text;
+  final TextStyle? style;
+  final double horizontalPadding;
+
+  const _TitleMarqueeText({
+    required this.text,
+    this.style,
+    this.horizontalPadding = 0,
+  });
+
+  @override
+  State<_TitleMarqueeText> createState() => _TitleMarqueeTextState();
+}
+
+class _TitleMarqueeTextState extends State<_TitleMarqueeText>
+    with SingleTickerProviderStateMixin {
+  static const double _gap = 48;
+  static const double _scrollSpeed = 30;
+  static const Duration _pauseDuration = Duration(seconds: 2);
+
+  late final AnimationController _controller;
+  Timer? _pauseTimer;
+  bool _disposed = false;
+  double _textWidth = 0;
+  double _textHeight = 0;
+  double _containerWidth = 0;
+  bool _needsScroll = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this);
+    _controller.addStatusListener(_onAnimationStatus);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TitleMarqueeText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text || oldWidget.style != widget.style) {
+      _stopAnimation();
+      _textWidth = 0;
+      _containerWidth = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _pauseTimer?.cancel();
+    _controller.removeStatusListener(_onAnimationStatus);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onAnimationStatus(AnimationStatus status) {
+    if (_disposed || !mounted) {
+      return;
+    }
+    if (status == AnimationStatus.completed) {
+      _controller.value = 0;
+      _pauseTimer = Timer(_pauseDuration, _startScroll);
+    }
+  }
+
+  void _measure(double containerWidth) {
+    if (_disposed || !mounted) {
+      return;
+    }
+
+    final textPainter = TextPainter(
+      text: TextSpan(text: widget.text, style: widget.style),
+      maxLines: 1,
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final textWidth = textPainter.width;
+    final textHeight = textPainter.height;
+    textPainter.dispose();
+
+    final shouldScroll =
+        textWidth > (containerWidth - 2 * widget.horizontalPadding);
+
+    if (textWidth != _textWidth || containerWidth != _containerWidth) {
+      _textWidth = textWidth;
+      _textHeight = textHeight;
+      _containerWidth = containerWidth;
+
+      _stopAnimation();
+      if (shouldScroll != _needsScroll) {
+        setState(() {
+          _needsScroll = shouldScroll;
+        });
+      }
+      if (shouldScroll) {
+        _pauseTimer = Timer(_pauseDuration, _startScroll);
+      }
+    }
+  }
+
+  void _stopAnimation() {
+    _pauseTimer?.cancel();
+    _pauseTimer = null;
+    _controller.stop();
+    _controller.value = 0;
+  }
+
+  void _startScroll() {
+    if (_disposed || !mounted || !_needsScroll) {
+      return;
+    }
+
+    final scrollDistance = _textWidth + _gap;
+    final durationMs = (scrollDistance / _scrollSpeed * 1000).round();
+    _controller.duration = Duration(milliseconds: durationMs);
+    _controller.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_disposed && mounted) {
+            _measure(constraints.maxWidth);
+          }
+        });
+
+        if (!_needsScroll) {
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: widget.horizontalPadding),
+            child: Text(
+              widget.text,
+              style: widget.style,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.left,
+            ),
+          );
+        }
+
+        final scrollDistance = _textWidth + _gap;
+
+        return SizedBox(
+          width: constraints.maxWidth,
+          height: _textHeight > 0 ? _textHeight : null,
+          child: ClipRect(
+            child: OverflowBox(
+              maxWidth: double.infinity,
+              alignment: Alignment.centerLeft,
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  final offset = _controller.value * scrollDistance;
+                  return Transform.translate(
+                    offset: Offset(-offset, 0),
+                    child: child,
+                  );
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(width: widget.horizontalPadding),
+                    Text(widget.text, style: widget.style, maxLines: 1),
+                    const SizedBox(width: _gap),
+                    Text(widget.text, style: widget.style, maxLines: 1),
+                    SizedBox(width: widget.horizontalPadding),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
