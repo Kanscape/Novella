@@ -1514,7 +1514,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                   title,
                                   style: Theme.of(context).textTheme.titleLarge
                                       ?.copyWith(fontWeight: FontWeight.bold),
-                                  maxLines: 2,
+                                  maxLines: 4,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               const SizedBox(height: 8),
@@ -1751,7 +1751,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                               book.title,
                               style: Theme.of(context).textTheme.titleLarge
                                   ?.copyWith(fontWeight: FontWeight.bold),
-                              maxLines: 2,
+                              maxLines: 4,
                               overflow: TextOverflow.ellipsis,
                             ),
                             if (book.author.isNotEmpty) ...[
