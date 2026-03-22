@@ -32,8 +32,15 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
     private let containerView: UIView
     private let channel: FlutterMethodChannel
     private var items: [[String: Any]] = []
-    private var foregroundColor: UIColor = .white
+    private var foregroundColor: UIColor?
     private var isDark: Bool = false
+    private var buttonHeight: CGFloat = 36
+    private var iconButtonWidth: CGFloat = 40
+    private var textButtonWidth: CGFloat = 68
+    private var iconSize: CGFloat = 18
+    private var itemSpacing: CGFloat = 0
+    private var showDividers: Bool = true
+    private var horizontalPadding: CGFloat = 12
     private var hostingController: UIViewController?
 
     init(
@@ -58,6 +65,25 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
                 foregroundColor = UIColor(argb: argb)
             }
             isDark = params["isDark"] as? Bool ?? false
+            if let value = params["buttonHeight"] as? Double {
+                buttonHeight = CGFloat(value)
+            }
+            if let value = params["iconButtonWidth"] as? Double {
+                iconButtonWidth = CGFloat(value)
+            }
+            if let value = params["textButtonWidth"] as? Double {
+                textButtonWidth = CGFloat(value)
+            }
+            if let value = params["iconSize"] as? Double {
+                iconSize = CGFloat(value)
+            }
+            if let value = params["itemSpacing"] as? Double {
+                itemSpacing = CGFloat(value)
+            }
+            showDividers = params["showDividers"] as? Bool ?? true
+            if let value = params["horizontalPadding"] as? Double {
+                horizontalPadding = CGFloat(value)
+            }
         }
 
         setupContainer()
@@ -78,7 +104,14 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
         if #available(iOS 26.0, *) {
             let rootView = IOS26ActionGroupRootView(
                 items: items,
-                foregroundColor: Color(uiColor: foregroundColor)
+                foregroundColor: foregroundColor.map { Color(uiColor: $0) },
+                buttonHeight: buttonHeight,
+                iconButtonWidth: iconButtonWidth,
+                textButtonWidth: textButtonWidth,
+                iconSize: iconSize,
+                itemSpacing: itemSpacing,
+                showDividers: showDividers,
+                horizontalPadding: horizontalPadding
             ) { [weak self] index in
                 self?.channel.invokeMethod("onItemTapped", arguments: ["index": index])
             }
@@ -124,7 +157,7 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.axis = .horizontal
         stackView.alignment = .center
-        stackView.spacing = 0
+        stackView.spacing = showDividers ? 0 : itemSpacing
 
         containerView.addSubview(blurView)
         blurView.contentView.addSubview(stackView)
@@ -134,8 +167,8 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
             blurView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             blurView.topAnchor.constraint(equalTo: containerView.topAnchor),
             blurView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            stackView.leadingAnchor.constraint(equalTo: blurView.contentView.leadingAnchor, constant: 12),
-            stackView.trailingAnchor.constraint(equalTo: blurView.contentView.trailingAnchor, constant: -12),
+            stackView.leadingAnchor.constraint(equalTo: blurView.contentView.leadingAnchor, constant: horizontalPadding),
+            stackView.trailingAnchor.constraint(equalTo: blurView.contentView.trailingAnchor, constant: -horizontalPadding),
             stackView.topAnchor.constraint(equalTo: blurView.contentView.topAnchor, constant: 6),
             stackView.bottomAnchor.constraint(equalTo: blurView.contentView.bottomAnchor, constant: -6),
         ])
@@ -145,7 +178,7 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
             if index != items.count - 1 {
                 let divider = UIView()
                 divider.translatesAutoresizingMaskIntoConstraints = false
-                divider.backgroundColor = foregroundColor.withAlphaComponent(isDark ? 0.18 : 0.24)
+                divider.backgroundColor = (foregroundColor ?? .label).withAlphaComponent(isDark ? 0.18 : 0.24)
                 NSLayoutConstraint.activate([
                     divider.widthAnchor.constraint(equalToConstant: 0.5),
                     divider.heightAnchor.constraint(equalToConstant: 22),
@@ -164,12 +197,12 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
             container.translatesAutoresizingMaskIntoConstraints = false
             let indicator = UIActivityIndicatorView(style: .medium)
             indicator.translatesAutoresizingMaskIntoConstraints = false
-            indicator.color = foregroundColor
+            indicator.color = foregroundColor ?? .label
             indicator.startAnimating()
             container.addSubview(indicator)
             NSLayoutConstraint.activate([
-                container.widthAnchor.constraint(equalToConstant: 40),
-                container.heightAnchor.constraint(equalToConstant: 36),
+                container.widthAnchor.constraint(equalToConstant: iconButtonWidth),
+                container.heightAnchor.constraint(equalToConstant: buttonHeight),
                 indicator.centerXAnchor.constraint(equalTo: container.centerXAnchor),
                 indicator.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             ])
@@ -179,12 +212,12 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.tag = index
-        button.tintColor = foregroundColor
+        button.tintColor = foregroundColor ?? .label
         button.isEnabled = enabled
 
         if #available(iOS 15.0, *) {
             var config = UIButton.Configuration.plain()
-            config.baseForegroundColor = foregroundColor
+            config.baseForegroundColor = foregroundColor ?? .label
             config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)
 
             if let title = item["title"] as? String, !title.isEmpty {
@@ -194,7 +227,7 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
                 config.attributedTitle = attributedTitle
             } else if let icon = item["icon"] as? String,
                       let image = UIImage(systemName: icon)?.applyingSymbolConfiguration(
-                        UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+                        UIImage.SymbolConfiguration(pointSize: iconSize, weight: .semibold)
                       ) {
                 config.image = image
             }
@@ -212,8 +245,8 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
 
         let hasTitle = (item["title"] as? String)?.isEmpty == false
         NSLayoutConstraint.activate([
-            button.heightAnchor.constraint(equalToConstant: 36),
-            button.widthAnchor.constraint(equalToConstant: hasTitle ? 68 : 40),
+            button.heightAnchor.constraint(equalToConstant: buttonHeight),
+            button.widthAnchor.constraint(equalToConstant: hasTitle ? textButtonWidth : iconButtonWidth),
         ])
 
         return button
@@ -227,23 +260,33 @@ class iOS26ActionGroupView: NSObject, FlutterPlatformView {
 @available(iOS 26.0, *)
 private struct IOS26ActionGroupRootView: View {
     let items: [[String: Any]]
-    let foregroundColor: Color
+    let foregroundColor: Color?
+    let buttonHeight: CGFloat
+    let iconButtonWidth: CGFloat
+    let textButtonWidth: CGFloat
+    let iconSize: CGFloat
+    let itemSpacing: CGFloat
+    let showDividers: Bool
+    let horizontalPadding: CGFloat
     let onTap: (Int) -> Void
 
     @Namespace private var glassNamespace
 
     private let unionId = "adaptive_action_group_union"
-    private let containerSpacing: CGFloat = 24
-    private let itemSpacing: CGFloat = 8
 
     var body: some View {
-        GlassEffectContainer(spacing: containerSpacing) {
-            HStack(spacing: itemSpacing) {
+        GlassEffectContainer(spacing: showDividers ? 0 : itemSpacing) {
+            HStack(spacing: showDividers ? 0 : itemSpacing) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     itemView(item, index: index)
+                    if showDividers && index != items.count - 1 {
+                        Rectangle()
+                            .fill((foregroundColor ?? .primary).opacity(0.22))
+                            .frame(width: 0.5, height: 22)
+                    }
                 }
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, horizontalPadding)
             .padding(.vertical, 6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -257,8 +300,8 @@ private struct IOS26ActionGroupRootView: View {
 
         if isLoading {
             ProgressView()
-                .tint(foregroundColor)
-                .frame(width: 40, height: 36)
+                .tint(foregroundColor ?? .primary)
+                .frame(width: iconButtonWidth, height: buttonHeight)
                 .glassEffect()
                 .glassEffectUnion(id: unionId, namespace: glassNamespace)
         } else {
@@ -272,11 +315,11 @@ private struct IOS26ActionGroupRootView: View {
                             .lineLimit(1)
                     } else if let icon = item["icon"] as? String, !icon.isEmpty {
                         Image(systemName: icon)
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.system(size: iconSize, weight: .semibold))
                     }
                 }
-                .foregroundStyle(foregroundColor)
-                .frame(width: itemWidth(item), height: 36)
+                .foregroundStyle(foregroundColor ?? .primary)
+                .frame(width: itemWidth(item), height: buttonHeight)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -289,8 +332,8 @@ private struct IOS26ActionGroupRootView: View {
 
     private func itemWidth(_ item: [String: Any]) -> CGFloat {
         if let title = item["title"] as? String, !title.isEmpty {
-            return 68
+            return textButtonWidth
         }
-        return 40
+        return iconButtonWidth
     }
 }

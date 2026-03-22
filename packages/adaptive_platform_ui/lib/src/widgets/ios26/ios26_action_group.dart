@@ -13,11 +13,25 @@ class IOS26ActionGroup extends StatefulWidget {
     required this.items,
     this.foregroundColor,
     this.height = 48,
+    this.buttonHeight = 36,
+    this.iconButtonWidth = 40,
+    this.textButtonWidth = 68,
+    this.iconSize = 18,
+    this.itemSpacing = 0,
+    this.showDividers = true,
+    this.horizontalPadding = 12,
   });
 
   final List<AdaptiveActionGroupItem> items;
   final Color? foregroundColor;
   final double height;
+  final double buttonHeight;
+  final double iconButtonWidth;
+  final double textButtonWidth;
+  final double iconSize;
+  final double itemSpacing;
+  final bool showDividers;
+  final double horizontalPadding;
 
   @override
   State<IOS26ActionGroup> createState() => _IOS26ActionGroupState();
@@ -80,20 +94,26 @@ class _IOS26ActionGroupState extends State<IOS26ActionGroup> {
       if (widget.foregroundColor != null)
         'foregroundColor': _colorToArgb(widget.foregroundColor!),
       'isDark': MediaQuery.platformBrightnessOf(context) == Brightness.dark,
+      'buttonHeight': widget.buttonHeight,
+      'iconButtonWidth': widget.iconButtonWidth,
+      'textButtonWidth': widget.textButtonWidth,
+      'iconSize': widget.iconSize,
+      'itemSpacing': widget.itemSpacing,
+      'showDividers': widget.showDividers,
+      'horizontalPadding': widget.horizontalPadding,
     };
   }
 
   double get _estimatedWidth {
-    const horizontalPadding = 12.0;
     const dividerWidth = 1.0;
-    var total = horizontalPadding * 2;
+    var total = widget.horizontalPadding * 2;
 
     for (var index = 0; index < widget.items.length; index++) {
       final item = widget.items[index];
       final hasText = (item.title?.isNotEmpty ?? false);
-      total += hasText ? 68.0 : 40.0;
+      total += hasText ? widget.textButtonWidth : widget.iconButtonWidth;
       if (index != widget.items.length - 1) {
-        total += dividerWidth;
+        total += widget.showDividers ? dividerWidth : widget.itemSpacing;
       }
     }
 

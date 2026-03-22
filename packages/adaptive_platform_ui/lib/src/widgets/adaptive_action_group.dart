@@ -21,6 +21,12 @@ class AdaptiveActionGroup extends StatelessWidget {
     this.blurStyle = BlurStyle.systemUltraThinMaterial,
     this.height = 48,
     this.buttonHeight = 36,
+    this.iconButtonWidth = 40,
+    this.textButtonWidth = 68,
+    this.iconSize = 18,
+    this.itemSpacing = 0,
+    this.showDividers = true,
+    this.horizontalPadding = 6,
     this.loadingBuilder,
   });
 
@@ -29,6 +35,12 @@ class AdaptiveActionGroup extends StatelessWidget {
   final BlurStyle blurStyle;
   final double height;
   final double buttonHeight;
+  final double iconButtonWidth;
+  final double textButtonWidth;
+  final double iconSize;
+  final double itemSpacing;
+  final bool showDividers;
+  final double horizontalPadding;
   final WidgetBuilder? loadingBuilder;
 
   @override
@@ -37,8 +49,15 @@ class AdaptiveActionGroup extends StatelessWidget {
       return IOS26ActionGroup(
         key: ValueKey(items.map((item) => item.hashCode).join('|')),
         items: items,
-        foregroundColor: foregroundColor ?? CupertinoColors.white,
+        foregroundColor: foregroundColor,
         height: height,
+        buttonHeight: buttonHeight,
+        iconButtonWidth: iconButtonWidth,
+        textButtonWidth: textButtonWidth,
+        iconSize: iconSize,
+        itemSpacing: itemSpacing,
+        showDividers: showDividers,
+        horizontalPadding: horizontalPadding,
       );
     }
 
@@ -48,7 +67,7 @@ class AdaptiveActionGroup extends StatelessWidget {
         child: AdaptiveGlassGroup(
           blurStyle: blurStyle,
           padding: EdgeInsets.symmetric(
-            horizontal: 6,
+            horizontal: horizontalPadding,
             vertical: (height - buttonHeight) / 2,
           ),
           children: _buildButtons(context),
@@ -71,7 +90,7 @@ class AdaptiveActionGroup extends StatelessWidget {
         ),
         child: Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: 6,
+            horizontal: horizontalPadding,
             vertical: (height - buttonHeight) / 2,
           ),
           child: Row(
@@ -91,12 +110,16 @@ class AdaptiveActionGroup extends StatelessWidget {
         continue;
       }
 
-      result.add(_buildDivider(context));
+      result.add(_buildSeparator(context));
     }
     return result;
   }
 
-  Widget _buildDivider(BuildContext context) {
+  Widget _buildSeparator(BuildContext context) {
+    if (!showDividers) {
+      return SizedBox(width: itemSpacing);
+    }
+
     final color =
         foregroundColor?.withValues(alpha: 0.2) ??
         (Theme.brightnessOf(context) == Brightness.dark
@@ -166,11 +189,11 @@ class AdaptiveActionGroup extends StatelessWidget {
 
   Widget _buildButtonContent(AdaptiveActionGroupItem item, Color color) {
     if (item.icon != null) {
-      return Icon(item.icon, size: 18, color: color);
+      return Icon(item.icon, size: iconSize, color: color);
     }
 
     if (PlatformInfo.isIOS && item.iosSymbol != null) {
-      return Icon(CupertinoIcons.circle, size: 18, color: color);
+      return Icon(CupertinoIcons.circle, size: iconSize, color: color);
     }
 
     return Text(
@@ -188,8 +211,8 @@ class AdaptiveActionGroup extends StatelessWidget {
 
   double _buttonWidth(AdaptiveActionGroupItem item) {
     if ((item.title?.isNotEmpty ?? false) && item.icon == null) {
-      return 68;
+      return textButtonWidth;
     }
-    return 40;
+    return iconButtonWidth;
   }
 }

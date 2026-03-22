@@ -14,6 +14,11 @@ import 'package:photo_view/photo_view.dart';
 import 'package:share_plus/share_plus.dart';
 
 const int _readerImagePreviewMaxZoomPercent = 600;
+const double _readerImagePreviewGroupWidth = 44;
+const double _readerImagePreviewGroupSpacing = 6;
+const double _readerImagePreviewGroupHeight = 48;
+const double _readerImagePreviewGroupButtonHeight = 40;
+const double _readerImagePreviewGroupIconSize = 20;
 const String _novellaAlbumName = 'Novella';
 const String _shareImageTitle = '\u5206\u4eab\u56fe\u7247';
 const String _galleryAccessDeniedMessage = '\u672a\u83b7\u5f97\u76f8\u518c\u8bbf\u95ee\u6743\u9650';
@@ -137,7 +142,17 @@ class _ReaderImagePreviewDialogState extends State<_ReaderImagePreviewDialog> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Center(
                   child: AdaptiveActionGroup(
-                    foregroundColor: Colors.white.withValues(alpha: 0.96),
+                    foregroundColor:
+                        PlatformInfo.isIOS26OrHigher()
+                            ? null
+                            : Colors.white.withValues(alpha: 0.96),
+                    height: _readerImagePreviewGroupHeight,
+                    buttonHeight: _readerImagePreviewGroupButtonHeight,
+                    iconButtonWidth: _readerImagePreviewGroupWidth,
+                    itemSpacing: _readerImagePreviewGroupSpacing,
+                    iconSize: _readerImagePreviewGroupIconSize,
+                    showDividers: false,
+                    horizontalPadding: 0,
                     loadingBuilder:
                         (context) =>
                             PlatformInfo.isIOS
