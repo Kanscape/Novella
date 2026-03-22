@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:logging/logging.dart';
 import 'package:novella/core/network/signalr_service.dart';
@@ -57,10 +58,15 @@ class ReadingProgressService {
   static final Logger _logger = Logger('ReadingProgressService');
   static final ReadingProgressService _instance =
       ReadingProgressService._internal();
+  static final StreamController<ReadPosition> _localPositionChangedController =
+      StreamController<ReadPosition>.broadcast();
   final SignalRService _signalRService = SignalRService();
 
   factory ReadingProgressService() => _instance;
   ReadingProgressService._internal();
+
+  Stream<ReadPosition> get localPositionChanged =>
+      _localPositionChangedController.stream;
 
   /// 保存阅读位置到服务器
   /// 参考 services/book/index.ts
@@ -145,6 +151,10 @@ class ReadingProgressService {
     // 本地写入则触发同步
     if (updatedAt == null) {
       SyncManager().triggerSync(immediate: immediate);
+    }
+
+    if (immediate) {
+      _localPositionChangedController.add(position);
     }
   }
 

@@ -12,6 +12,7 @@ import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/reader/reader_page.dart';
+import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/data/models/comment.dart';
 import 'package:novella/features/comment/comment_page.dart';
@@ -2251,10 +2252,11 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     required TextStyle baseStyle,
     int? maxLines,
   }) {
+    final normalizedHtml = sanitizeReaderHtmlTextNodes(html, const {});
     final lineHeight = baseStyle.height ?? 1.6;
 
     return HtmlWidget(
-      html,
+      normalizedHtml,
       textStyle: baseStyle,
       customWidgetBuilder:
           (element) => _buildIntroRubyWidget(element, baseStyle),
@@ -2320,7 +2322,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
             continue;
           }
           buffer.write(
-            const HtmlEscape(HtmlEscapeMode.element).convert(node.text),
+            const HtmlEscape(HtmlEscapeMode.element).convert(
+              decodeReaderHtmlTextEntities(node.text),
+            ),
           );
           justWroteBreak = false;
           continue;

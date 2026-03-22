@@ -57,6 +57,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   final _cacheService = BookInfoCacheService();
   bool _isTabActive = true;
   int _requestEpoch = 0;
+  StreamSubscription<ReadPosition>? _progressChangedSubscription;
 
   @override
   void didChangeDependencies() {
@@ -69,6 +70,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   void dispose() {
     // 取消注册路由观察者
     routeObserver.unsubscribe(this);
+    _progressChangedSubscription?.cancel();
     super.dispose();
   }
 
@@ -115,6 +117,15 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   @override
   void initState() {
     super.initState();
+    _progressChangedSubscription = _progressService.localPositionChanged.listen((
+      _,
+    ) {
+      if (!mounted || !_isTabActive) {
+        return;
+      }
+      _loadReadingStats();
+      unawaited(_fetchContinueReading(internalLoading: false));
+    });
     // 延迟以确保设置加载完成
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _readingTimeService.recoverSession(); // 恢复/清除过期会话

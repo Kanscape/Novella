@@ -45,6 +45,16 @@ class _ReaderPageSlice {
   const _ReaderPageSlice(this.start, this.end, this.xPath, this.html);
 }
 
+class _FootnoteProcessingResult {
+  final String html;
+  final Map<String, String> notesById;
+
+  const _FootnoteProcessingResult({
+    required this.html,
+    required this.notesById,
+  });
+}
+
 class ReaderPagedPage extends ConsumerStatefulWidget {
   final int bid;
   final int sortNum;
@@ -112,6 +122,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   final _pageController = PageController();
   static final Map<String, ColorScheme> _schemeCache = {};
   final Map<String, String> _indentedBlockHtmlCache = {};
+  Map<String, String> _footnoteNotesById = const {};
   bool _exitInProgress = false;
   ChapterContent? _chapter;
   List<_ReaderBlock> _blocks = const [];
@@ -148,6 +159,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
 
   @override
   void dispose() {
+    _FootnoteAnchor.dismissCurrent();
     final chapter = _chapter;
     if (chapter != null) {
       unawaited(
@@ -234,6 +246,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
 
   Future<void> _loadChapter(int sortNum) async {
     final version = ++_loadVersion;
+    _FootnoteAnchor.dismissCurrent();
     if (_chapter != null) unawaited(_saveCurrentPosition());
     setState(() {
       _loading = true;
@@ -244,6 +257,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       _lastLayoutKey = '';
       _lastMeasureKey = '';
       _measuredBlockHeights = const {};
+      _footnoteNotesById = const {};
     });
     try {
       final settings = ref.read(settingsProvider);
@@ -269,7 +283,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         chapter.content,
         invisibleCodepoints,
       );
-      final blocks = _buildBlocks(sanitizedContent);
+      final processed = _processFootnotes(sanitizedContent);
+      final blocks = _buildBlocks(processed.html);
       final localPosition = await _progressService.getLocalPosition(widget.bid);
       if (!mounted || version != _loadVersion) return;
       setState(() {
@@ -277,6 +292,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         _fontFamily = fontFamily;
         _blocks = blocks.$1;
         _indexByXPath = blocks.$2;
+        _footnoteNotesById = processed.notesById;
         _indentedBlockHtmlCache.clear();
         _loading = false;
         _targetSortNum = sortNum;
@@ -350,6 +366,120 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       add(wrapper, '//*');
     }
     return (blocks, indexByXPath);
+  }
+
+  _FootnoteProcessingResult _processFootnotes(String html) {
+    if (html.isEmpty) {
+      return const _FootnoteProcessingResult(html: '', notesById: {});
+    }
+
+    try {
+      final doc = html_parser.parse(html);
+      final notesById = <String, String>{};
+
+      String? attrValue(dom.Element element, String nameLower) {
+        for (final entry in element.attributes.entries) {
+          if (entry.key.toString().toLowerCase() == nameLower) {
+            return entry.value;
+          }
+        }
+        return null;
+      }
+
+      Iterable<dom.Element> walkElements(dom.Node node) sync* {
+        if (node is dom.Element) {
+          yield node;
+        }
+        for (final child in node.nodes) {
+          yield* walkElements(child);
+        }
+      }
+
+      int textScore(dom.Element element) {
+        return _normalizeText(element.text).length;
+      }
+
+      final idIndex = <String, List<dom.Element>>{};
+      final nameIndex = <String, List<dom.Element>>{};
+      final root = doc.documentElement ?? doc;
+      for (final element in walkElements(root)) {
+        final idValue = attrValue(element, 'id');
+        if (idValue != null && idValue.isNotEmpty) {
+          (idIndex[idValue] ??= <dom.Element>[]).add(element);
+        }
+        final nameValue = attrValue(element, 'name');
+        if (nameValue != null && nameValue.isNotEmpty) {
+          (nameIndex[nameValue] ??= <dom.Element>[]).add(element);
+        }
+      }
+
+      dom.Element? findBestNoteContainer(String id) {
+        final candidates = <dom.Element>[
+          ...(idIndex[id] ?? const <dom.Element>[]),
+          ...(nameIndex[id] ?? const <dom.Element>[]),
+        ];
+        if (candidates.isEmpty) {
+          return doc.getElementById(id);
+        }
+
+        var best = candidates.first;
+        var bestScore = textScore(best);
+        for (final candidate in candidates.skip(1)) {
+          final candidateScore = textScore(candidate);
+          if (candidateScore > bestScore) {
+            best = candidate;
+            bestScore = candidateScore;
+          }
+        }
+
+        if (best.localName == 'a') {
+          final parent = best.parent;
+          if (parent is dom.Element) {
+            const allowed = {'li', 'p', 'div', 'span', 'section', 'aside'};
+            if (allowed.contains(parent.localName) &&
+                textScore(parent) > textScore(best)) {
+              best = parent;
+            }
+          }
+        }
+
+        return best;
+      }
+
+      for (final anchor in doc.querySelectorAll('a.duokan-footnote')) {
+        final href = anchor.attributes['href'];
+        if (href == null || !href.startsWith('#') || href.length <= 1) {
+          continue;
+        }
+
+        final id = href.substring(1);
+        if (id.isEmpty) {
+          continue;
+        }
+
+        final noteElement = findBestNoteContainer(id);
+        if (noteElement != null) {
+          notesById.putIfAbsent(id, () => noteElement.innerHtml.trim());
+          final currentStyle = noteElement.attributes['style'] ?? '';
+          noteElement.attributes['style'] = '$currentStyle; display: none;';
+        }
+
+        anchor.attributes['data-footnote-id'] = id;
+        anchor.attributes.remove('href');
+        anchor.innerHtml = '';
+      }
+
+      for (final img in doc.querySelectorAll('img.footnote')) {
+        img.remove();
+      }
+
+      return _FootnoteProcessingResult(
+        html: doc.body?.innerHtml ?? html,
+        notesById: notesById,
+      );
+    } catch (_) {
+      return _FootnoteProcessingResult(html: html, notesById: const {});
+    }
   }
 
   String _normalizeText(String text) {
@@ -1229,10 +1359,34 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
 
         return style.isEmpty ? null : style;
       },
-      customWidgetBuilder:
-          (element) =>
-              _buildIllustrationContainerWidget(element, textColor) ??
-              _buildImageWidget(element, textColor),
+      customWidgetBuilder: (element) {
+        if (element.localName == 'a' &&
+            element.classes.contains('duokan-footnote')) {
+          final rawId =
+              element.attributes['data-footnote-id'] ??
+              (element.attributes['href']?.startsWith('#') == true
+                  ? element.attributes['href']!.substring(1)
+                  : null);
+
+          final footnoteId = (rawId ?? '').trim();
+          final noteHtml =
+              footnoteId.isNotEmpty ? _footnoteNotesById[footnoteId] : null;
+
+          return _FootnoteAnchor(
+            key: ValueKey('footnote_${footnoteId}_${_chapter?.id ?? 0}'),
+            footnoteId: footnoteId,
+            noteHtml: noteHtml,
+            baseFontSize: settings.fontSize,
+            lineHeight: settings.readerLineHeight,
+            fontFamily: _fontFamily,
+            readerBackgroundColor: _readerBackgroundColor(settings, context),
+            readerTextColor: textColor,
+          );
+        }
+
+        return _buildIllustrationContainerWidget(element, textColor) ??
+            _buildImageWidget(element, textColor);
+      },
       onTapUrl: (_) => true,
     );
   }
@@ -1492,6 +1646,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         if (sortNum == _targetSortNum) {
           return;
         }
+        _FootnoteAnchor.dismissCurrent();
         _loadChapter(sortNum);
       },
     );
@@ -2001,6 +2156,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                       controller: _pageController,
                                       itemCount: pages.length,
                                       onPageChanged: (index) {
+                                        _FootnoteAnchor.dismissCurrent();
                                         final xPath = pages[index].xPath;
                                         setState(() {
                                           _currentPage = index;
@@ -2031,6 +2187,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                                   curve: Curves.easeOutCubic,
                                                 );
                                               } else if (_targetSortNum > 1) {
+                                                _FootnoteAnchor.dismissCurrent();
                                                 _loadChapter(
                                                   _targetSortNum - 1,
                                                 );
@@ -2047,6 +2204,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                                 );
                                               } else if (_targetSortNum <
                                                   widget.totalChapters) {
+                                                _FootnoteAnchor.dismissCurrent();
                                                 _loadChapter(
                                                   _targetSortNum + 1,
                                                 );
@@ -2140,6 +2298,353 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                 ),
               );
             },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FootnoteAnchor extends StatefulWidget {
+  final String footnoteId;
+  final String? noteHtml;
+  final double baseFontSize;
+  final double lineHeight;
+  final String? fontFamily;
+  final Color readerBackgroundColor;
+  final Color readerTextColor;
+
+  const _FootnoteAnchor({
+    super.key,
+    required this.footnoteId,
+    required this.noteHtml,
+    required this.baseFontSize,
+    required this.lineHeight,
+    required this.fontFamily,
+    required this.readerBackgroundColor,
+    required this.readerTextColor,
+  });
+
+  static void dismissCurrent() {
+    _FootnoteAnchorState._currentOpen?._removeOverlay();
+  }
+
+  @override
+  State<_FootnoteAnchor> createState() => _FootnoteAnchorState();
+}
+
+class _FootnoteAnchorState extends State<_FootnoteAnchor>
+    with SingleTickerProviderStateMixin {
+  static _FootnoteAnchorState? _currentOpen;
+
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+  late final AnimationController _fadeController;
+  late final Animation<double> _fadeAnimation;
+  bool _isClosing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+      reverseDuration: const Duration(milliseconds: 120),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+  }
+
+  @override
+  void dispose() {
+    _removeOverlay(animate: false);
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    if (_overlayEntry != null) {
+      _removeOverlay();
+      return;
+    }
+
+    if (_currentOpen != null && _currentOpen != this) {
+      _currentOpen!._removeOverlay();
+    }
+    _currentOpen = this;
+    _showOverlay();
+  }
+
+  void _showOverlay() {
+    if (!mounted) {
+      return;
+    }
+
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) {
+      return;
+    }
+
+    final anchorTopLeft = renderBox.localToGlobal(Offset.zero);
+    final anchorSize = renderBox.size;
+    final media = MediaQuery.of(context);
+    final screenSize = media.size;
+    final paddingTop = media.padding.top;
+    final paddingBottom = media.padding.bottom;
+    final spaceBelow =
+        screenSize.height -
+        (anchorTopLeft.dy + anchorSize.height) -
+        paddingBottom;
+    final spaceAbove = anchorTopLeft.dy - paddingTop;
+    final showBelow = spaceBelow >= 140 || spaceBelow >= spaceAbove;
+    final maxWidth = (screenSize.width * 0.9).clamp(0.0, 420.0);
+    final maxHeight = (screenSize.height * 0.35).clamp(0.0, 320.0);
+    final anchorCenterX = anchorTopLeft.dx + anchorSize.width / 2;
+    final idealLeft = anchorCenterX - maxWidth / 2;
+    const horizontalMargin = 12.0;
+    final clampedLeft = idealLeft.clamp(
+      horizontalMargin,
+      screenSize.width - maxWidth - horizontalMargin,
+    );
+    final dx = clampedLeft - idealLeft;
+
+    _isClosing = false;
+    _fadeController.stop();
+    _fadeController.value = 0;
+
+    _overlayEntry = OverlayEntry(
+      builder: (overlayContext) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _removeOverlay,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            CompositedTransformFollower(
+              link: _layerLink,
+              showWhenUnlinked: false,
+              targetAnchor:
+                  showBelow ? Alignment.bottomCenter : Alignment.topCenter,
+              followerAnchor:
+                  showBelow ? Alignment.topCenter : Alignment.bottomCenter,
+              offset: Offset(dx, showBelow ? 8 : -8),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: Material(
+                  color: Colors.transparent,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: maxWidth,
+                        maxHeight: maxHeight,
+                      ),
+                      child: _buildPopoverContent(context),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    Overlay.of(context, rootOverlay: true).insert(_overlayEntry!);
+    _fadeController.forward();
+  }
+
+  String _normalizeFootnoteHtml(String html) {
+    try {
+      final doc = html_parser.parse('<div id="__root__">$html</div>');
+      final root = doc.getElementById('__root__');
+      if (root == null) {
+        return html;
+      }
+
+      for (final anchor in root.querySelectorAll('a')) {
+        if (anchor.text.trim().isEmpty && anchor.children.isEmpty) {
+          anchor.remove();
+        }
+      }
+
+      final items =
+          root
+              .querySelectorAll('li')
+              .map((element) => element.innerHtml.trim())
+              .where((html) => html.isNotEmpty)
+              .toList();
+      if (items.isNotEmpty) {
+        return items.map((html) => '<div>$html</div>').join();
+      }
+
+      return root.innerHtml.trim();
+    } catch (_) {
+      return html;
+    }
+  }
+
+  Widget _buildPopoverContent(BuildContext context) {
+    final bgColor = Color.alphaBlend(
+      widget.readerTextColor.withValues(alpha: 0.08),
+      widget.readerBackgroundColor,
+    );
+    final borderColor = widget.readerTextColor.withValues(alpha: 0.18);
+    final noteHtml = widget.noteHtml;
+    final normalizedHtml =
+        (noteHtml != null && noteHtml.trim().isNotEmpty)
+            ? _normalizeFootnoteHtml(noteHtml)
+            : null;
+    final content =
+        (normalizedHtml != null && normalizedHtml.trim().isNotEmpty)
+            ? HtmlWidget(
+              normalizedHtml,
+              textStyle: TextStyle(
+                fontFamily: widget.fontFamily,
+                fontSize: (widget.baseFontSize * 0.95).clamp(12.0, 18.0),
+                height: widget.lineHeight,
+                color: widget.readerTextColor,
+              ),
+              customStylesBuilder: (element) {
+                if (element.localName == 'ol' || element.localName == 'ul') {
+                  return {
+                    'list-style-type': 'none',
+                    'margin': '0',
+                    'padding': '0',
+                    'padding-left': '0',
+                  };
+                }
+                if (element.localName == 'li') {
+                  return {
+                    'list-style-type': 'none',
+                    'margin': '0',
+                    'padding': '0',
+                  };
+                }
+                if (element.localName == 'a') {
+                  final text = element.text.trim();
+                  if (text.isEmpty && element.children.isEmpty) {
+                    return {'display': 'none'};
+                  }
+                }
+                if (element.localName == 'p') {
+                  return {'margin': '0', 'padding': '0'};
+                }
+                return null;
+              },
+            )
+            : Text(
+              '未找到注释内容',
+              style: TextStyle(
+                fontFamily: widget.fontFamily,
+                fontSize: (widget.baseFontSize * 0.95).clamp(12.0, 18.0),
+                height: widget.lineHeight,
+                color: widget.readerTextColor.withValues(alpha: 0.7),
+              ),
+            );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor.withValues(alpha: 0.98),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor, width: 0.8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Scrollbar(
+          thumbVisibility: false,
+          child: SingleChildScrollView(child: content),
+        ),
+      ),
+    );
+  }
+
+  void _removeOverlay({bool animate = true}) {
+    final entry = _overlayEntry;
+    if (entry == null) {
+      return;
+    }
+
+    if (!animate) {
+      entry.remove();
+      _overlayEntry = null;
+      _isClosing = false;
+      _fadeController.stop();
+      _fadeController.value = 0;
+      if (_currentOpen == this) {
+        _currentOpen = null;
+      }
+      return;
+    }
+
+    if (_isClosing) {
+      return;
+    }
+    _isClosing = true;
+
+    _fadeController
+        .reverse()
+        .then((_) {
+          if (_overlayEntry == entry) {
+            entry.remove();
+            _overlayEntry = null;
+          } else {
+            try {
+              entry.remove();
+            } catch (_) {}
+          }
+          _isClosing = false;
+          if (_currentOpen == this) {
+            _currentOpen = null;
+          }
+        })
+        .catchError((_) {
+          if (_overlayEntry == entry) {
+            entry.remove();
+            _overlayEntry = null;
+          } else {
+            try {
+              entry.remove();
+            } catch (_) {}
+          }
+          _isClosing = false;
+          if (_currentOpen == this) {
+            _currentOpen = null;
+          }
+        });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final iconSize = (widget.baseFontSize * 0.85).clamp(12.0, 18.0).toDouble();
+    final iconColor = Theme.of(context).colorScheme.primary;
+
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggle,
+          child: Icon(
+            Icons.note_alt_outlined,
+            size: iconSize,
+            color: iconColor,
           ),
         ),
       ),

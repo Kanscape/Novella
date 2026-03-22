@@ -115,8 +115,36 @@ class ChapterService {
       final text = match.group(2)!; // Content
       final suffix = match.group(3)!; // <
       // 在所有非空白字符后插入 \u200B
-      final newText = text.split('').join('\u200B');
+      final newText = _injectZeroWidthSpaceIntoText(text);
       return '$prefix$newText$suffix';
     });
+  }
+
+  String _injectZeroWidthSpaceIntoText(String text) {
+    if (text.isEmpty) {
+      return text;
+    }
+
+    final buffer = StringBuffer();
+    final entityPattern = RegExp(r'&(#x?[0-9A-Fa-f]+|[A-Za-z]+);');
+    var index = 0;
+
+    while (index < text.length) {
+      final entityMatch = entityPattern.matchAsPrefix(text, index);
+      if (entityMatch != null) {
+        buffer.write(entityMatch.group(0));
+        index = entityMatch.end;
+        continue;
+      }
+
+      final character = text[index];
+      buffer.write(character);
+      if (!RegExp(r'\s').hasMatch(character)) {
+        buffer.write('\u200B');
+      }
+      index++;
+    }
+
+    return buffer.toString();
   }
 }
