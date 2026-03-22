@@ -24,21 +24,16 @@ class IOS26ActionGroup extends StatefulWidget {
 }
 
 class _IOS26ActionGroupState extends State<IOS26ActionGroup> {
-  static int _nextId = 0;
-  late final int _id;
-  late final MethodChannel _channel;
+  MethodChannel? _channel;
 
   @override
   void initState() {
     super.initState();
-    _id = _nextId++;
-    _channel = MethodChannel('adaptive_platform_ui/ios26_action_group_$_id');
-    _channel.setMethodCallHandler(_handleMethodCall);
   }
 
   @override
   void dispose() {
-    _channel.setMethodCallHandler(null);
+    _channel?.setMethodCallHandler(null);
     super.dispose();
   }
 
@@ -69,13 +64,18 @@ class _IOS26ActionGroupState extends State<IOS26ActionGroup> {
         viewType: 'adaptive_platform_ui/ios26_action_group',
         creationParams: _buildCreationParams(context),
         creationParamsCodec: const StandardMessageCodec(),
+        onPlatformViewCreated: _onPlatformViewCreated,
       ),
     );
   }
 
+  void _onPlatformViewCreated(int id) {
+    _channel = MethodChannel('adaptive_platform_ui/ios26_action_group_$id');
+    _channel!.setMethodCallHandler(_handleMethodCall);
+  }
+
   Map<String, dynamic> _buildCreationParams(BuildContext context) {
     return {
-      'id': _id,
       'items': widget.items.map((item) => item.toNativeMap()).toList(),
       if (widget.foregroundColor != null)
         'foregroundColor': _colorToArgb(widget.foregroundColor!),
