@@ -23,6 +23,7 @@ import 'package:novella/features/reader/reader_background_page.dart';
 import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
 import 'package:novella/features/reader/shared/reader_image_view.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
+import 'package:novella/features/reader/shared/reader_title_sheet.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -2844,12 +2845,17 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
                             // 章节标题（支持简化 + 长标题跑马灯滚动 + 点击显示完整标题）
                             GestureDetector(
                               onTap: () {
-                                final fullTitle = _chapter?.title;
-                                if (fullTitle != null && fullTitle.isNotEmpty) {
-                                  AdaptiveSnackBar.show(
-                                    context,
-                                    message: fullTitle,
-                                    duration: const Duration(seconds: 4),
+                                if ((_chapter?.title.trim().isNotEmpty ??
+                                        false) ||
+                                    (widget.bookTitle?.trim().isNotEmpty ??
+                                        false)) {
+                                  unawaited(
+                                    showReaderTitleSheet(
+                                      context,
+                                      bookId: widget.bid,
+                                      bookTitle: widget.bookTitle,
+                                      chapterTitle: _chapter?.title,
+                                    ),
                                   );
                                 }
                               },

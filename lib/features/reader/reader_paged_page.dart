@@ -19,6 +19,7 @@ import 'package:novella/features/reader/reader_background_page.dart';
 import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
 import 'package:novella/features/reader/shared/reader_image_view.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
+import 'package:novella/features/reader/shared/reader_title_sheet.dart';
 import 'package:novella/features/reader/shared/reader_title_utils.dart';
 import 'package:novella/features/settings/settings_provider.dart';
 
@@ -1803,30 +1804,14 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     );
   }
 
-  String? _fullTitle() {
-    final chapterTitle = _chapter?.title.trim();
-    if (chapterTitle != null && chapterTitle.isNotEmpty) {
-      return chapterTitle;
-    }
-
-    final bookTitle = widget.bookTitle?.trim();
-    if (bookTitle != null && bookTitle.isNotEmpty) {
-      return bookTitle;
-    }
-
-    return null;
-  }
-
-  void _showFullTitleSnackBar(BuildContext context) {
-    final fullTitle = _fullTitle();
-    if (fullTitle == null || fullTitle.isEmpty) {
-      return;
-    }
-
-    AdaptiveSnackBar.show(
-      context,
-      message: fullTitle,
-      duration: const Duration(seconds: 4),
+  void _showTitleSheet(BuildContext context) {
+    unawaited(
+      showReaderTitleSheet(
+        context,
+        bookId: widget.bid,
+        bookTitle: widget.bookTitle,
+        chapterTitle: _chapter?.title,
+      ),
     );
   }
 
@@ -2008,7 +1993,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _showFullTitleSnackBar(context),
+      onTap: () => _showTitleSheet(context),
       child: SizedBox(
         height: _topBarButtonSize,
         child: Padding(
