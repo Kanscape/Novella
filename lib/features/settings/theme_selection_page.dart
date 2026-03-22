@@ -97,12 +97,16 @@ class _ThemeSelectionPageState extends ConsumerState<ThemeSelectionPage> {
         if (_tempUseSystemColor &&
             lightDynamic != null &&
             darkDynamic != null) {
-          // 准确对齐 main.dart 的实现，当可获取时直接使用原生 harmonized 的系统调色盘效果最佳
-          effectiveSeedColor = lightDynamic.primary;
-          previewColorScheme =
+          // 仅使用系统主色作为 seed，再本地生成完整 ColorScheme，
+          // 避免部分 Android 设备的次色/中性色过于接近导致观感不稳定。
+          effectiveSeedColor =
               previewBrightness == Brightness.dark
-                  ? darkDynamic.harmonized()
-                  : lightDynamic.harmonized();
+                  ? darkDynamic.primary
+                  : lightDynamic.primary;
+          previewColorScheme = ColorScheme.fromSeed(
+            seedColor: effectiveSeedColor,
+            brightness: previewBrightness,
+          );
         } else if (_tempUseSystemColor) {
           // 第一帧异步请求还在路上的空窗期：
           // 如果发现原来本来就在用系统色，直接以当前外层正在显示的实际 Primary 做种子，杜绝默认红屏闪烁！

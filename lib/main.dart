@@ -292,9 +292,16 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         if (settings.useSystemColor &&
             lightDynamic != null &&
             darkDynamic != null) {
-          // 使用系统提供的配色方案 (包含变体信息)
-          lightScheme = lightDynamic.harmonized();
-          darkScheme = darkDynamic.harmonized();
+          // 仅使用系统主色作为 seed，再本地生成完整 ColorScheme，
+          // 让 secondary / tertiary / neutral 的表现更稳定。
+          lightScheme = ColorScheme.fromSeed(
+            seedColor: lightDynamic.primary,
+            brightness: Brightness.light,
+          );
+          darkScheme = ColorScheme.fromSeed(
+            seedColor: darkDynamic.primary,
+            brightness: Brightness.dark,
+          );
         } else {
           // 使用自定义种子色或回退逻辑
           final seedColor = Color(settings.seedColorValue);
