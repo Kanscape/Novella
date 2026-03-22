@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
@@ -26,11 +29,13 @@ class _DownloadedImageFile {
   final String filePath;
   final String fileName;
   final String mimeType;
+  final Uint8List bytes;
 
   const _DownloadedImageFile({
     required this.filePath,
     required this.fileName,
     required this.mimeType,
+    required this.bytes,
   });
 }
 
@@ -199,10 +204,18 @@ class _ReaderImagePreviewDialogState extends State<_ReaderImagePreviewDialog> {
       }
 
       final downloadedImage = await _downloadImageToTempFile();
-      await Gal.putImage(
-        downloadedImage.filePath,
-        album: _novellaAlbumName,
-      );
+      if (PlatformInfo.isIOS) {
+        await Gal.putImageBytes(
+          downloadedImage.bytes,
+          album: _novellaAlbumName,
+          name: downloadedImage.fileName,
+        );
+      } else {
+        await Gal.putImage(
+          downloadedImage.filePath,
+          album: _novellaAlbumName,
+        );
+      }
 
       _showMessage(messenger, _imageSavedMessage);
     } on GalException catch (error) {
@@ -289,21 +302,51 @@ class _ReaderImagePreviewDialogState extends State<_ReaderImagePreviewDialog> {
   Future<_DownloadedImageFile> _downloadImageToTempFile() async {
     final tempDir = await getTemporaryDirectory();
     final uri = Uri.tryParse(widget.imageUrl);
-    final extension = _resolveImageExtension(uri);
+    final response = await Dio().get<List<int>>(
+      widget.imageUrl,
+      options: Options(
+        responseType: ResponseType.bytes,
+        headers: const {'Accept': 'image/*'},
+      ),
+    );
+    final responseData = response.data;
+    if (responseData == null || responseData.isEmpty) {
+      throw StateError('Image download returned empty bytes.');
+    }
+
+    final bytes = Uint8List.fromList(responseData);
+    final mimeType = _resolveMimeType(
+      _resolveImageExtension(
+        uri,
+        contentType: response.headers.value(Headers.contentTypeHeader),
+      ),
+    );
+    final extension = _resolveImageExtension(
+      uri,
+      contentType: response.headers.value(Headers.contentTypeHeader),
+    );
     final fileName =
         'novella_image_${DateTime.now().microsecondsSinceEpoch}$extension';
     final filePath = p.join(tempDir.path, fileName);
 
-    await Dio().download(widget.imageUrl, filePath);
+    await File(filePath).writeAsBytes(bytes, flush: true);
 
     return _DownloadedImageFile(
       filePath: filePath,
       fileName: fileName,
-      mimeType: _resolveMimeType(extension),
+      mimeType: mimeType,
+      bytes: bytes,
     );
   }
 
-  String _resolveImageExtension(Uri? uri) {
+  String _resolveImageExtension(Uri? uri, {String? contentType}) {
+    final extensionFromContentType = _resolveExtensionFromContentType(
+      contentType,
+    );
+    if (extensionFromContentType != null) {
+      return extensionFromContentType;
+    }
+
     final rawExtension = uri == null ? '' : p.extension(uri.path);
     if (rawExtension.isEmpty) {
       return '.jpg';
@@ -321,6 +364,33 @@ class _ReaderImagePreviewDialogState extends State<_ReaderImagePreviewDialog> {
       '.heif',
     };
     return supportedExtensions.contains(normalized) ? normalized : '.jpg';
+  }
+
+  String? _resolveExtensionFromContentType(String? contentType) {
+    if (contentType == null || contentType.isEmpty) {
+      return null;
+    }
+
+    final normalized = contentType.split(';').first.trim().toLowerCase();
+    switch (normalized) {
+      case 'image/png':
+        return '.png';
+      case 'image/gif':
+        return '.gif';
+      case 'image/bmp':
+        return '.bmp';
+      case 'image/webp':
+        return '.webp';
+      case 'image/heic':
+        return '.heic';
+      case 'image/heif':
+        return '.heif';
+      case 'image/jpg':
+      case 'image/jpeg':
+        return '.jpg';
+      default:
+        return null;
+    }
   }
 
   String _resolveMimeType(String extension) {
