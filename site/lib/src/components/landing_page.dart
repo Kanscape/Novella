@@ -928,6 +928,11 @@ Component _buildFooter(SiteData siteData) {
                     'Discussions',
                     external: true,
                   ),
+                  _anchor(
+                    'https://www.lightnovel.app',
+                    'LightNovelShelf',
+                    external: true,
+                  ),
                 ],
               ),
               _el(
