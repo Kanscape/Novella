@@ -38,6 +38,8 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
 
   String? _lastRankType;
 
+  bool _needsContinueReadingRefresh = false;
+
   // 设置变更时标记需要刷新
   bool _needsRefresh = false;
 
@@ -56,6 +58,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   final _progressService = ReadingProgressService();
   final _cacheService = BookInfoCacheService();
   bool _isTabActive = true;
+  bool _isRouteVisible = true;
   int _requestEpoch = 0;
   StreamSubscription<ReadPosition>? _progressChangedSubscription;
 
@@ -76,9 +79,19 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
 
   @override
   void didPopNext() {
-    // 当从其他页面返回此页面时触发
-    _loadReadingStats();
-    _fetchContinueReading(internalLoading: false);
+    _isRouteVisible = true;
+    _needsContinueReadingRefresh = true;
+    _refreshSurfaceOnVisible();
+  }
+
+  @override
+  void didPush() {
+    _isRouteVisible = true;
+  }
+
+  @override
+  void didPushNext() {
+    _isRouteVisible = false;
   }
 
   void setTabActive(bool active) {
@@ -96,13 +109,30 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
       return;
     }
 
-    if (mounted && (_loading || _hasIncompletePrimaryContent())) {
-      unawaited(_fetchData());
-    }
+    _refreshSurfaceOnVisible(fetchPrimaryContent: true);
   }
 
   bool _canApplyRequest(int requestEpoch) {
     return mounted && _isTabActive && requestEpoch == _requestEpoch;
+  }
+
+  void _refreshSurfaceOnVisible({bool fetchPrimaryContent = false}) {
+    if (!mounted || !_isTabActive) {
+      return;
+    }
+
+    unawaited(_loadReadingStats());
+
+    if (_needsContinueReadingRefresh ||
+        _lastReadPosition == null ||
+        _lastReadBookInfo == null) {
+      _needsContinueReadingRefresh = false;
+      unawaited(_fetchContinueReading(internalLoading: false));
+    }
+
+    if (fetchPrimaryContent && (_loading || _hasIncompletePrimaryContent())) {
+      unawaited(_fetchData());
+    }
   }
 
   bool _hasIncompletePrimaryContent() {
@@ -117,15 +147,15 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   @override
   void initState() {
     super.initState();
-    _progressChangedSubscription = _progressService.localPositionChanged.listen((
-      _,
-    ) {
-      if (!mounted || !_isTabActive) {
-        return;
-      }
-      _loadReadingStats();
-      unawaited(_fetchContinueReading(internalLoading: false));
-    });
+    _progressChangedSubscription = _progressService.localPositionChanged.listen(
+      (_) {
+        _needsContinueReadingRefresh = true;
+        if (!mounted || !_isTabActive || !_isRouteVisible) {
+          return;
+        }
+        _refreshSurfaceOnVisible();
+      },
+    );
     // 延迟以确保设置加载完成
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _readingTimeService.recoverSession(); // 恢复/清除过期会话
