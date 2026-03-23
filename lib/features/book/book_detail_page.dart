@@ -1777,11 +1777,6 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           ),
           actions: [
             IconButton(
-              onPressed: _showUploaderInfoSheet,
-              icon: const Icon(Icons.contact_page_outlined),
-              tooltip: '上传者信息',
-            ),
-            IconButton(
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -1797,6 +1792,11 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
               },
               icon: const Icon(Icons.comment_outlined),
               tooltip: '评论',
+            ),
+            IconButton(
+              onPressed: _showUploaderInfoSheet,
+              icon: const Icon(Icons.contact_page_outlined),
+              tooltip: '上传者信息',
             ),
           ],
         ),

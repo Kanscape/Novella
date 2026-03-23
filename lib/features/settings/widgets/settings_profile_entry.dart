@@ -233,80 +233,65 @@ class _SettingsProfileEntryState extends State<SettingsProfileEntry> {
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest.withValues(
-                            alpha: 0.55,
-                          ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            _ProfileAvatar(
-                              avatarUrl: profile.avatar,
-                              name: profile.userName,
-                              radius: 28,
+                          onTap:
+                              () => _handleAvatarEditTap(profile, sheetContext),
+                          child: Ink(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _displayValue(profile.userName),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                            child: Row(
+                              children: [
+                                _ProfileAvatar(
+                                  avatarUrl: profile.avatar,
+                                  name: profile.userName,
+                                  radius: 28,
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _displayValue(profile.userName),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        profile.email.trim().isNotEmpty
+                                            ? profile.email.trim()
+                                            : _displayValue(profile.groupName),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: textTheme.bodySmall?.copyWith(
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    profile.email.trim().isNotEmpty
-                                        ? profile.email.trim()
-                                        : _displayValue(profile.groupName),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(width: 12),
+                                Icon(
+                                  Icons.chevron_right,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.image_outlined),
-                      title: const Text('修改头像'),
-                      subtitle: Text(_avatarSourceLabel(profile.avatar)),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        Navigator.pop(sheetContext);
-                        await Future<void>.delayed(
-                          const Duration(milliseconds: 180),
-                        );
-                        final changed = await _showAvatarEditSheet(profile);
-                        if (changed != true || !mounted) {
-                          return;
-                        }
-
-                        await _loadProfile(silent: true);
-                        if (!mounted) {
-                          return;
-                        }
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('头像已更新'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      },
                     ),
                     _ProfileInfoTile(
                       icon: Icons.badge_outlined,
@@ -375,6 +360,31 @@ class _SettingsProfileEntryState extends State<SettingsProfileEntry> {
     );
   }
 
+  Future<void> _handleAvatarEditTap(
+    UserProfile profile,
+    BuildContext sheetContext,
+  ) async {
+    Navigator.pop(sheetContext);
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+
+    final changed = await _showAvatarEditSheet(profile);
+    if (changed != true || !mounted) {
+      return;
+    }
+
+    await _loadProfile(silent: true);
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('头像已更新'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<bool?> _showAvatarEditSheet(UserProfile profile) {
     return showModalBottomSheet<bool>(
       context: context,
@@ -414,19 +424,6 @@ class _SettingsProfileEntryState extends State<SettingsProfileEntry> {
     final month = value.month.toString().padLeft(2, '0');
     final day = value.day.toString().padLeft(2, '0');
     return '$year-$month-$day';
-  }
-
-  String _avatarSourceLabel(String avatarUrl) {
-    if (_AvatarEditSheetState.qqAvatarReg.hasMatch(avatarUrl)) {
-      return 'QQ 头像';
-    }
-    if (_AvatarEditSheetState.qqGroupAvatarReg.hasMatch(avatarUrl)) {
-      return 'QQ 群头像';
-    }
-    if (avatarUrl.trim().isNotEmpty) {
-      return '普通 URL';
-    }
-    return '未设置';
   }
 
   @override
@@ -847,36 +844,35 @@ class _AvatarEditSheetState extends State<_AvatarEditSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ChoiceChip(
-                  label: const Text('普通 URL'),
-                  selected: _inputType == _AvatarInputType.directUrl,
-                  onSelected:
-                      _saving
-                          ? null
-                          : (_) => _switchInputType(_AvatarInputType.directUrl),
-                ),
-                ChoiceChip(
-                  label: const Text('QQ 头像'),
-                  selected: _inputType == _AvatarInputType.qqAvatar,
-                  onSelected:
-                      _saving
-                          ? null
-                          : (_) => _switchInputType(_AvatarInputType.qqAvatar),
-                ),
-                ChoiceChip(
-                  label: const Text('QQ 群头像'),
-                  selected: _inputType == _AvatarInputType.qqGroupAvatar,
-                  onSelected:
-                      _saving
-                          ? null
-                          : (_) =>
-                              _switchInputType(_AvatarInputType.qqGroupAvatar),
-                ),
-              ],
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<_AvatarInputType>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment<_AvatarInputType>(
+                    value: _AvatarInputType.directUrl,
+                    label: Text('普通 URL'),
+                  ),
+                  ButtonSegment<_AvatarInputType>(
+                    value: _AvatarInputType.qqAvatar,
+                    label: Text('QQ 头像'),
+                  ),
+                  ButtonSegment<_AvatarInputType>(
+                    value: _AvatarInputType.qqGroupAvatar,
+                    label: Text('QQ 群头像'),
+                  ),
+                ],
+                selected: <_AvatarInputType>{_inputType},
+                onSelectionChanged:
+                    _saving
+                        ? null
+                        : (selection) {
+                          if (selection.isEmpty) {
+                            return;
+                          }
+                          _switchInputType(selection.first);
+                        },
+              ),
             ),
             const SizedBox(height: 16),
             TextField(
