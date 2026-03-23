@@ -1263,7 +1263,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     final alt = element.attributes['alt'];
     final width = _parseDimension(element.attributes['width']);
     final height = _parseDimension(element.attributes['height']);
-    final aspectRatio = _resolvedImageAspectRatio(element);
+    final aspectRatio = _imageAspectRatio(width, height);
     final parentTag = element.parent?.localName;
     final insideTable = _isInsideTableStructure(element);
     final insideIllustration = _isInsideIllustrationContainer(element);
@@ -1271,20 +1271,6 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     final isPreviewable = _isPreviewableReaderImage(element);
 
     if (floating.isFloating) {
-      Widget child = ReaderRoundedNetworkImage(
-        imageUrl: src,
-        alt: alt,
-        width: width,
-        height: height,
-        errorColor: textColor,
-        borderRadius: 4,
-        previewable: isPreviewable,
-      );
-
-      if (aspectRatio != null) {
-        child = AspectRatio(aspectRatio: aspectRatio, child: child);
-      }
-
       return Align(
         alignment:
             floating.isFloatRight
@@ -1292,7 +1278,15 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                 : Alignment.centerLeft,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 160),
-          child: child,
+          child: ReaderRoundedNetworkImage(
+            imageUrl: src,
+            alt: alt,
+            width: width,
+            height: height,
+            errorColor: textColor,
+            borderRadius: 4,
+            previewable: isPreviewable,
+          ),
         ),
       );
     }
