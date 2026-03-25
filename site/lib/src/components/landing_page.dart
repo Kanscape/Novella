@@ -91,6 +91,77 @@ class ChangelogPage extends StatelessComponent {
 
 // ━━━ 页面外壳 ━━━
 
+class NotFoundPage extends StatelessComponent {
+  const NotFoundPage({required this.siteData, super.key});
+
+  final SiteData siteData;
+
+  @override
+  Component build(BuildContext context) {
+    return _siteShell(
+      currentPath: '',
+      siteData: siteData,
+      children: [
+        _section(
+          id: 'not-found',
+          child: _el(
+            'div',
+            attrs: {'class': 'min-h-[60vh] flex items-center justify-center'},
+            children: [
+              _el(
+                'div',
+                attrs: {
+                  'class':
+                      'card bg-base-200/60 border border-base-content/5 '
+                      'max-w-3xl w-full shadow-2xl',
+                },
+                children: [
+                  _el(
+                    'div',
+                    attrs: {'class': 'card-body p-8 lg:p-12 gap-6'},
+                    children: [
+                      _el(
+                        'span',
+                        attrs: {
+                          'class': 'badge badge-primary badge-outline w-fit',
+                        },
+                        children: [_text('404 Not Found')],
+                      ),
+                      _el(
+                        'h1',
+                        attrs: {
+                          'class':
+                              'text-4xl lg:text-6xl font-extrabold tracking-tight m-0',
+                        },
+                        children: [_text('这个页面不存在')],
+                      ),
+                      _el(
+                        'p',
+                        attrs: {
+                          'class':
+                              'text-base lg:text-lg text-base-content/65 m-0 leading-relaxed',
+                        },
+                        children: [_text('当前访问的路径没有对应的站点页面。')],
+                      ),
+                      _el(
+                        'div',
+                        attrs: {'class': 'flex flex-wrap gap-3'},
+                        children: [
+                          _anchor('/', '返回首页', classes: 'btn btn-primary'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 Component _siteShell({
   required String currentPath,
   required SiteData siteData,

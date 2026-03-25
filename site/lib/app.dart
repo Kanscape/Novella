@@ -13,6 +13,10 @@ class App extends StatelessComponent {
   @override
   Component build(BuildContext context) {
     return Router(
+      errorBuilder: (context, _) => Component.fragment([
+        Document.head(title: '404 - Novella'),
+        NotFoundPage(siteData: siteData),
+      ]),
       routes: [
         Route(
           path: '/',
@@ -21,7 +25,7 @@ class App extends StatelessComponent {
             changeFreq: ChangeFreq.daily,
             priority: 1.0,
           ),
-          builder: (context, state) =>
+          builder: (context, _) =>
               HomePage(siteData: siteData, releaseUrl: releaseUrl),
         ),
         Route(
@@ -31,7 +35,7 @@ class App extends StatelessComponent {
             changeFreq: ChangeFreq.daily,
             priority: 0.9,
           ),
-          builder: (context, state) => DownloadPage(siteData: siteData),
+          builder: (context, _) => DownloadPage(siteData: siteData),
         ),
         Route(
           path: '/changelog',
@@ -40,7 +44,7 @@ class App extends StatelessComponent {
             changeFreq: ChangeFreq.daily,
             priority: 0.8,
           ),
-          builder: (context, state) => ChangelogPage(siteData: siteData),
+          builder: (context, _) => ChangelogPage(siteData: siteData),
         ),
       ],
     );
