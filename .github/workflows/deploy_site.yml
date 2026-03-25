@@ -73,6 +73,10 @@ jobs:
         working-directory: site
         run: jaspr build --sitemap-domain "$SITE_URL"
 
+      - name: Finalize static fallback page
+        working-directory: site
+        run: dart run tool/finalize_static_site.dart
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

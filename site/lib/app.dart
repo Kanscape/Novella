@@ -10,13 +10,20 @@ class App extends StatelessComponent {
   final SiteData siteData;
   final String releaseUrl;
 
+  Component _buildNotFoundDocument() {
+    return Component.fragment([
+      Document.head(
+        title: '404 - Novella',
+        meta: {'robots': 'noindex'},
+      ),
+      NotFoundPage(siteData: siteData),
+    ]);
+  }
+
   @override
   Component build(BuildContext context) {
     return Router(
-      errorBuilder: (context, _) => Component.fragment([
-        Document.head(title: '404 - Novella'),
-        NotFoundPage(siteData: siteData),
-      ]),
+      errorBuilder: (context, _) => _buildNotFoundDocument(),
       routes: [
         Route(
           path: '/',
@@ -45,6 +52,15 @@ class App extends StatelessComponent {
             priority: 0.8,
           ),
           builder: (context, _) => ChangelogPage(siteData: siteData),
+        ),
+        Route(
+          path: '/_not-found-preview',
+          title: '404 - Novella',
+          settings: const RouteSettings(
+            changeFreq: ChangeFreq.never,
+            priority: 0.0,
+          ),
+          builder: (context, _) => _buildNotFoundDocument(),
         ),
       ],
     );
