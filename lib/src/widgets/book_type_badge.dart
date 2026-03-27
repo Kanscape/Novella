@@ -33,6 +33,7 @@ const _originalColor = Color(0xFF7B1FA2);
 const _japaneseColor = Color(0xFFC62828);
 const _aiColor = Color(0xFF2EAF5D);
 const _inProgressColor = Color(0xFF9E9E9E);
+const _level6Color = Color(0xFFE0A106);
 
 const List<BookTypeBadgeDefinition> bookTypeBadgeDefinitions = [
   BookTypeBadgeDefinition(
@@ -101,6 +102,21 @@ const List<BookTypeBadgeDefinition> bookTypeBadgeDefinitions = [
   ),
 ];
 
+const BookTypeBadgeDefinition level6BookBadgeDefinition =
+    BookTypeBadgeDefinition(
+      label: 'Level6',
+      meaning: '权限内容',
+      icon: Icons.token,
+      backgroundColor: _level6Color,
+      names: {},
+      shortNames: {},
+    );
+
+const List<BookTypeBadgeDefinition> bookBadgeLegendDefinitions = [
+  ...bookTypeBadgeDefinitions,
+  level6BookBadgeDefinition,
+];
+
 BookTypeBadgeDefinition? resolveBookTypeBadgeDefinition(BookCategory category) {
   for (final definition in bookTypeBadgeDefinitions) {
     if (definition.matches(category)) {
@@ -139,9 +155,38 @@ class BookTypeBadgeIcon extends StatelessWidget {
   }
 }
 
-/// Displays a book category badge at the bottom-right corner of the cover.
+class _AnimatedBookCornerBadge extends StatelessWidget {
+  final bool visible;
+  final Duration duration;
+  final Widget child;
+
+  const _AnimatedBookCornerBadge({
+    required this.visible,
+    required this.duration,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      opacity: visible ? 1 : 0,
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      child: AnimatedScale(
+        scale: visible ? 1 : 0.92,
+        duration: duration,
+        curve: Curves.easeOutCubic,
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Displays the book type badge at the bottom-right and the Level6 badge at
+/// the top-right of the cover.
 class BookTypeBadge extends StatelessWidget {
   final BookCategory? category;
+  final int? level;
   final bool visible;
   final bool reserveSpaceWhenHidden;
   final Duration duration;
@@ -149,6 +194,7 @@ class BookTypeBadge extends StatelessWidget {
   const BookTypeBadge({
     super.key,
     this.category,
+    this.level,
     this.visible = true,
     this.reserveSpaceWhenHidden = false,
     this.duration = const Duration(milliseconds: 180),
@@ -156,35 +202,55 @@ class BookTypeBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final definition =
+    final typeDefinition =
         category == null ? null : resolveBookTypeBadgeDefinition(category!);
-    final hasBadge = definition != null;
+    final hasTypeBadge = typeDefinition != null;
+    final hasLevel6Badge = level == 6;
+    final hasAnyBadge = hasTypeBadge || hasLevel6Badge;
 
-    if (!reserveSpaceWhenHidden && !hasBadge) {
+    if (!reserveSpaceWhenHidden && !hasAnyBadge) {
       return const SizedBox.shrink();
     }
 
-    return Positioned(
-      right: 4,
-      bottom: 4,
+    return Positioned.fill(
       child: IgnorePointer(
-        ignoring: !visible || !hasBadge,
-        child: AnimatedOpacity(
-          opacity: visible && hasBadge ? 1 : 0,
-          duration: duration,
-          curve: Curves.easeOutCubic,
-          child: AnimatedScale(
-            scale: visible && hasBadge ? 1 : 0.92,
-            duration: duration,
-            curve: Curves.easeOutCubic,
-            child:
-                hasBadge
-                    ? BookTypeBadgeIcon(
-                      icon: definition.icon,
-                      backgroundColor: definition.backgroundColor,
-                    )
-                    : const SizedBox(width: 22, height: 22),
-          ),
+        ignoring: !visible || !hasAnyBadge,
+        child: Stack(
+          children: [
+            if (hasLevel6Badge || reserveSpaceWhenHidden)
+              Positioned(
+                right: 4,
+                top: 4,
+                child: _AnimatedBookCornerBadge(
+                  visible: visible && hasLevel6Badge,
+                  duration: duration,
+                  child:
+                      hasLevel6Badge
+                          ? BookTypeBadgeIcon(
+                            icon: level6BookBadgeDefinition.icon,
+                            backgroundColor:
+                                level6BookBadgeDefinition.backgroundColor,
+                          )
+                          : const SizedBox(width: 22, height: 22),
+                ),
+              ),
+            if (hasTypeBadge || reserveSpaceWhenHidden)
+              Positioned(
+                right: 4,
+                bottom: 4,
+                child: _AnimatedBookCornerBadge(
+                  visible: visible && hasTypeBadge,
+                  duration: duration,
+                  child:
+                      hasTypeBadge
+                          ? BookTypeBadgeIcon(
+                            icon: typeDefinition.icon,
+                            backgroundColor: typeDefinition.backgroundColor,
+                          )
+                          : const SizedBox(width: 22, height: 22),
+                ),
+              ),
+          ],
         ),
       ),
     );

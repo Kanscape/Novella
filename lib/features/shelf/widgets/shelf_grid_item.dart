@@ -153,6 +153,7 @@ class ShelfBookGridItem extends ConsumerWidget {
         if (ref.watch(settingsProvider).isBookTypeBadgeEnabled(badgeContext))
           BookTypeBadge(
             category: book?.category,
+            level: book?.level,
             visible: book != null,
             reserveSpaceWhenHidden: true,
           ),

@@ -591,7 +591,7 @@ class ContentSettingsPage extends ConsumerWidget {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                       child: Text(
-                        '在封面右下角显示书籍类型徽章',
+                        '在封面显示书籍类型徽章',
                         style: textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
@@ -600,7 +600,7 @@ class ContentSettingsPage extends ConsumerWidget {
                     ListTile(
                       leading: const Icon(Icons.info_outline),
                       title: const Text('查看所有徽章释义'),
-                      subtitle: const Text('了解当前 APP 支持显示的全部类型'),
+                      subtitle: const Text('了解当前 APP 支持显示的全部封面徽章'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => _showBookTypeBadgeLegendSheet(context),
                     ),
@@ -696,7 +696,7 @@ class ContentSettingsPage extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: Text(
-                    '以下展示的是 APP 当前会显示的全部书籍类型徽章',
+                    '以下展示的是 APP 当前会显示的全部封面徽章',
                     style: textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -705,10 +705,10 @@ class ContentSettingsPage extends ConsumerWidget {
                 Expanded(
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                    itemCount: bookTypeBadgeDefinitions.length,
+                    itemCount: bookBadgeLegendDefinitions.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
-                      final definition = bookTypeBadgeDefinitions[index];
+                      final definition = bookBadgeLegendDefinitions[index];
                       return Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(

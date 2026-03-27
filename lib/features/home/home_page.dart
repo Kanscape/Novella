@@ -1185,7 +1185,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                       .isBookTypeBadgeEnabled(
                         source == 'rank' ? 'ranking' : 'recent',
                       ))
-                    BookTypeBadge(category: book.category),
+                    BookTypeBadge(category: book.category, level: book.level),
                 ],
               ),
             ),

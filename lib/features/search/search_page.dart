@@ -497,7 +497,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled('search'))
-                    BookTypeBadge(category: book.category),
+                    BookTypeBadge(category: book.category, level: book.level),
                 ],
               ),
             ),
