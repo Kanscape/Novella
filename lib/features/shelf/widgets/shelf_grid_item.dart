@@ -154,6 +154,7 @@ class ShelfBookGridItem extends ConsumerWidget {
           BookTypeBadge(
             category: book?.category,
             level: book?.level,
+            interiorLevel: book?.interiorLevel,
             visible: book != null,
             reserveSpaceWhenHidden: true,
           ),

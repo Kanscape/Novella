@@ -6,7 +6,11 @@ class BookTypeBadgeDefinition {
   final String label;
   final String meaning;
   final IconData icon;
+  final IconData? trailingIcon;
   final Color backgroundColor;
+  final Color iconColor;
+  final Color? borderColor;
+  final int? previewLevel;
   final Set<String> names;
   final Set<String> shortNames;
 
@@ -14,7 +18,11 @@ class BookTypeBadgeDefinition {
     required this.label,
     required this.meaning,
     required this.icon,
+    this.trailingIcon,
     required this.backgroundColor,
+    this.iconColor = Colors.white,
+    this.borderColor,
+    this.previewLevel,
     required this.names,
     required this.shortNames,
   });
@@ -104,10 +112,24 @@ const List<BookTypeBadgeDefinition> bookTypeBadgeDefinitions = [
 
 const BookTypeBadgeDefinition level6BookBadgeDefinition =
     BookTypeBadgeDefinition(
-      label: 'Level6',
-      meaning: '权限内容',
+      label: 'Level',
+      meaning: '权限内容\n图标会按实际 Level 显示',
       icon: Icons.token,
       backgroundColor: _level6Color,
+      previewLevel: 6,
+      names: {},
+      shortNames: {},
+    );
+
+const BookTypeBadgeDefinition interiorLevelBookBadgeDefinition =
+    BookTypeBadgeDefinition(
+      label: 'InteriorLevel',
+      meaning: '组内权限内容\n图标会按实际 InteriorLevel 显示',
+      icon: Icons.token,
+      backgroundColor: Colors.white,
+      iconColor: _level6Color,
+      borderColor: _level6Color,
+      previewLevel: 6,
       names: {},
       shortNames: {},
     );
@@ -115,6 +137,7 @@ const BookTypeBadgeDefinition level6BookBadgeDefinition =
 const List<BookTypeBadgeDefinition> bookBadgeLegendDefinitions = [
   ...bookTypeBadgeDefinitions,
   level6BookBadgeDefinition,
+  interiorLevelBookBadgeDefinition,
 ];
 
 BookTypeBadgeDefinition? resolveBookTypeBadgeDefinition(BookCategory category) {
@@ -126,9 +149,66 @@ BookTypeBadgeDefinition? resolveBookTypeBadgeDefinition(BookCategory category) {
   return null;
 }
 
+BookTypeBadgeDefinition? resolveBookLevelBadgeDefinition({
+  int? level,
+  int? interiorLevel,
+}) {
+  final effectiveInteriorLevel = interiorLevel ?? 0;
+  final effectiveLevel = level ?? 0;
+  if (effectiveInteriorLevel > 0) {
+    return BookTypeBadgeDefinition(
+      label: interiorLevelBookBadgeDefinition.label,
+      meaning: interiorLevelBookBadgeDefinition.meaning,
+      icon: interiorLevelBookBadgeDefinition.icon,
+      trailingIcon: interiorLevelBookBadgeDefinition.trailingIcon,
+      backgroundColor: interiorLevelBookBadgeDefinition.backgroundColor,
+      iconColor: interiorLevelBookBadgeDefinition.iconColor,
+      borderColor: interiorLevelBookBadgeDefinition.borderColor,
+      previewLevel: effectiveInteriorLevel.clamp(1, 6),
+      names: const <String>{},
+      shortNames: const <String>{},
+    );
+  }
+  if (effectiveLevel > 0) {
+    return BookTypeBadgeDefinition(
+      label: level6BookBadgeDefinition.label,
+      meaning: level6BookBadgeDefinition.meaning,
+      icon: level6BookBadgeDefinition.icon,
+      trailingIcon: level6BookBadgeDefinition.trailingIcon,
+      backgroundColor: level6BookBadgeDefinition.backgroundColor,
+      iconColor: level6BookBadgeDefinition.iconColor,
+      borderColor: level6BookBadgeDefinition.borderColor,
+      previewLevel: effectiveLevel.clamp(1, 6),
+      names: const <String>{},
+      shortNames: const <String>{},
+    );
+  }
+  return null;
+}
+
+IconData _resolveLevelIcon(int level) {
+  switch (level.clamp(1, 6)) {
+    case 1:
+      return Icons.filter_1;
+    case 2:
+      return Icons.filter_2;
+    case 3:
+      return Icons.filter_3;
+    case 4:
+      return Icons.filter_4;
+    case 5:
+      return Icons.filter_5;
+    case 6:
+    default:
+      return Icons.filter_6;
+  }
+}
+
 class BookTypeBadgeIcon extends StatelessWidget {
   final IconData icon;
   final Color backgroundColor;
+  final Color iconColor;
+  final Color? borderColor;
   final double iconSize;
   final EdgeInsetsGeometry padding;
   final double borderRadius;
@@ -137,6 +217,8 @@ class BookTypeBadgeIcon extends StatelessWidget {
     super.key,
     required this.icon,
     required this.backgroundColor,
+    this.iconColor = Colors.white,
+    this.borderColor,
     this.iconSize = 14,
     this.padding = const EdgeInsets.all(4),
     this.borderRadius = 8,
@@ -149,8 +231,56 @@ class BookTypeBadgeIcon extends StatelessWidget {
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(borderRadius),
+        border: borderColor == null ? null : Border.all(color: borderColor!),
       ),
-      child: Icon(icon, size: iconSize, color: Colors.white),
+      child: Icon(icon, size: iconSize, color: iconColor),
+    );
+  }
+}
+
+class BookLevelBadgeIcon extends StatelessWidget {
+  final IconData icon;
+  final IconData trailingIcon;
+  final Color backgroundColor;
+  final Color iconColor;
+  final Color? borderColor;
+  final double iconSize;
+  final double levelIconSize;
+  final EdgeInsetsGeometry padding;
+  final double borderRadius;
+  final double spacing;
+
+  const BookLevelBadgeIcon({
+    super.key,
+    required this.icon,
+    required this.trailingIcon,
+    required this.backgroundColor,
+    this.iconColor = Colors.white,
+    this.borderColor,
+    this.iconSize = 14,
+    this.levelIconSize = 16,
+    this.padding = const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+    this.borderRadius = 8,
+    this.spacing = 4,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: borderColor == null ? null : Border.all(color: borderColor!),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: iconSize, color: iconColor),
+          SizedBox(width: spacing),
+          Icon(trailingIcon, size: levelIconSize, color: iconColor),
+        ],
+      ),
     );
   }
 }
@@ -182,11 +312,13 @@ class _AnimatedBookCornerBadge extends StatelessWidget {
   }
 }
 
-/// Displays the book type badge at the bottom-right and the Level6 badge at
-/// the top-right of the cover.
+/// Displays the book type badge at the bottom-right and the book level badge
+/// at the top-right of the cover. InteriorLevel takes precedence over the
+/// public Level badge.
 class BookTypeBadge extends StatelessWidget {
   final BookCategory? category;
   final int? level;
+  final int? interiorLevel;
   final bool visible;
   final bool reserveSpaceWhenHidden;
   final Duration duration;
@@ -195,6 +327,7 @@ class BookTypeBadge extends StatelessWidget {
     super.key,
     this.category,
     this.level,
+    this.interiorLevel,
     this.visible = true,
     this.reserveSpaceWhenHidden = false,
     this.duration = const Duration(milliseconds: 180),
@@ -204,9 +337,13 @@ class BookTypeBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final typeDefinition =
         category == null ? null : resolveBookTypeBadgeDefinition(category!);
+    final levelDefinition = resolveBookLevelBadgeDefinition(
+      level: level,
+      interiorLevel: interiorLevel,
+    );
     final hasTypeBadge = typeDefinition != null;
-    final hasLevel6Badge = level == 6;
-    final hasAnyBadge = hasTypeBadge || hasLevel6Badge;
+    final hasLevelBadge = levelDefinition != null;
+    final hasAnyBadge = hasTypeBadge || hasLevelBadge;
 
     if (!reserveSpaceWhenHidden && !hasAnyBadge) {
       return const SizedBox.shrink();
@@ -217,19 +354,25 @@ class BookTypeBadge extends StatelessWidget {
         ignoring: !visible || !hasAnyBadge,
         child: Stack(
           children: [
-            if (hasLevel6Badge || reserveSpaceWhenHidden)
+            if (hasLevelBadge || reserveSpaceWhenHidden)
               Positioned(
                 right: 4,
                 top: 4,
                 child: _AnimatedBookCornerBadge(
-                  visible: visible && hasLevel6Badge,
+                  visible: visible && hasLevelBadge,
                   duration: duration,
                   child:
-                      hasLevel6Badge
-                          ? BookTypeBadgeIcon(
-                            icon: level6BookBadgeDefinition.icon,
-                            backgroundColor:
-                                level6BookBadgeDefinition.backgroundColor,
+                      hasLevelBadge
+                          ? BookLevelBadgeIcon(
+                            icon: levelDefinition.icon,
+                            trailingIcon:
+                                levelDefinition.trailingIcon ??
+                                _resolveLevelIcon(
+                                  levelDefinition.previewLevel ?? 6,
+                                ),
+                            backgroundColor: levelDefinition.backgroundColor,
+                            iconColor: levelDefinition.iconColor,
+                            borderColor: levelDefinition.borderColor,
                           )
                           : const SizedBox(width: 22, height: 22),
                 ),
@@ -246,6 +389,8 @@ class BookTypeBadge extends StatelessWidget {
                           ? BookTypeBadgeIcon(
                             icon: typeDefinition.icon,
                             backgroundColor: typeDefinition.backgroundColor,
+                            iconColor: typeDefinition.iconColor,
+                            borderColor: typeDefinition.borderColor,
                           )
                           : const SizedBox(width: 22, height: 22),
                 ),

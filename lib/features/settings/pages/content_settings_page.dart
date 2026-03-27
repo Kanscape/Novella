@@ -172,7 +172,7 @@ class ContentSettingsPage extends ConsumerWidget {
     final filters = <String>[];
     if (settings.ignoreJapanese) filters.add('日语');
     if (settings.ignoreAI) filters.add('AI');
-    if (settings.ignoreLevel6) filters.add('Level6');
+    if (settings.ignoreLevel6) filters.add('Level 6');
     if (filters.isEmpty) return '关闭';
     return filters.join(', ');
   }
@@ -696,7 +696,7 @@ class ContentSettingsPage extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: Text(
-                    '以下展示的是 APP 当前会显示的全部封面徽章',
+                    '以下展示的是 APP 支持的部分类型徽章',
                     style: textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -718,12 +718,40 @@ class ContentSettingsPage extends ConsumerWidget {
                         child: Row(
                           children: [
                             SizedBox(
-                              width: 44,
+                              width:
+                                  definition.previewLevel != null ||
+                                          definition.trailingIcon != null
+                                      ? 68
+                                      : 44,
                               child: Center(
-                                child: BookTypeBadgeIcon(
-                                  icon: definition.icon,
-                                  backgroundColor: definition.backgroundColor,
-                                ),
+                                child:
+                                    definition.previewLevel == null &&
+                                            definition.trailingIcon == null
+                                        ? BookTypeBadgeIcon(
+                                          icon: definition.icon,
+                                          backgroundColor:
+                                              definition.backgroundColor,
+                                          iconColor: definition.iconColor,
+                                          borderColor: definition.borderColor,
+                                        )
+                                        : BookLevelBadgeIcon(
+                                          icon: definition.icon,
+                                          trailingIcon:
+                                              definition.trailingIcon ??
+                                              switch (definition
+                                                  .previewLevel!) {
+                                                1 => Icons.filter_1,
+                                                2 => Icons.filter_2,
+                                                3 => Icons.filter_3,
+                                                4 => Icons.filter_4,
+                                                5 => Icons.filter_5,
+                                                _ => Icons.filter_6,
+                                              },
+                                          backgroundColor:
+                                              definition.backgroundColor,
+                                          iconColor: definition.iconColor,
+                                          borderColor: definition.borderColor,
+                                        ),
                               ),
                             ),
                             const SizedBox(width: 12),

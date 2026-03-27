@@ -272,7 +272,11 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled('recent'))
-                    BookTypeBadge(category: book.category, level: book.level),
+                    BookTypeBadge(
+                      category: book.category,
+                      level: book.level,
+                      interiorLevel: book.interiorLevel,
+                    ),
                 ],
               ),
             ),

@@ -269,7 +269,11 @@ class _RankingPageState extends ConsumerState<RankingPage>
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled('ranking'))
-                    BookTypeBadge(category: book.category, level: book.level),
+                    BookTypeBadge(
+                      category: book.category,
+                      level: book.level,
+                      interiorLevel: book.interiorLevel,
+                    ),
                 ],
               ),
             ),

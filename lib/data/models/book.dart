@@ -27,6 +27,7 @@ class Book {
   final DateTime lastUpdatedAt;
   final String? userName;
   final int? level;
+  final int? interiorLevel;
   final BookCategory? category;
 
   Book({
@@ -37,6 +38,7 @@ class Book {
     required this.lastUpdatedAt,
     this.userName,
     this.level,
+    this.interiorLevel,
     this.category,
   });
 
@@ -66,6 +68,7 @@ class Book {
       lastUpdatedAt: parseDate(json['LastUpdatedAt']),
       userName: json['UserName'] as String?,
       level: json['Level'] as int?,
+      interiorLevel: json['InteriorLevel'] as int?,
       category: category,
     );
   }
