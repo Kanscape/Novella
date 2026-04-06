@@ -62,37 +62,53 @@ class ReadingSettingsPage extends ConsumerWidget {
           ),
           SliverList(
             delegate: SliverChildListDelegate([
-              ListTile(
-                leading: const Icon(Icons.text_fields),
-                title: const Text('字体大小'),
-                subtitle: Text('${settings.fontSize.toInt()} px'),
-                trailing: SizedBox(
-                  width: 200,
-                  child: Slider(
-                    value: settings.fontSize,
-                    min: 12,
-                    max: 32,
-                    divisions: 20,
-                    label: '${settings.fontSize.toInt()}',
-                    onChanged: notifier.setFontSize,
-                  ),
-                ),
+              _buildSliderTile(
+                context: context,
+                icon: Icons.text_fields,
+                title: '字体大小',
+                subtitle: '${settings.fontSize.toInt()} px',
+                value: settings.fontSize,
+                min: 12,
+                max: 32,
+                divisions: 20,
+                label: '${settings.fontSize.toInt()}',
+                onChanged: notifier.setFontSize,
               ),
-              ListTile(
-                leading: const Icon(Icons.format_line_spacing),
-                title: const Text('行间距'),
-                subtitle: Text(settings.readerLineHeight.toStringAsFixed(1)),
-                trailing: SizedBox(
-                  width: 200,
-                  child: Slider(
-                    value: settings.readerLineHeight,
-                    min: 1.2,
-                    max: 2.4,
-                    divisions: 12,
-                    label: settings.readerLineHeight.toStringAsFixed(1),
-                    onChanged: notifier.setReaderLineHeight,
-                  ),
-                ),
+              _buildSliderTile(
+                context: context,
+                icon: Icons.format_line_spacing,
+                title: '行高',
+                subtitle: '${settings.readerLineHeight.toStringAsFixed(1)}x',
+                value: settings.readerLineHeight,
+                min: 1.2,
+                max: 2.4,
+                divisions: 12,
+                label: '${settings.readerLineHeight.toStringAsFixed(1)}x',
+                onChanged: notifier.setReaderLineHeight,
+              ),
+              _buildSliderTile(
+                context: context,
+                icon: Icons.format_align_center,
+                title: '左右边距',
+                subtitle: '${settings.readerSidePadding.toInt()} px',
+                value: settings.readerSidePadding,
+                min: 0,
+                max: 48,
+                divisions: 48,
+                label: '${settings.readerSidePadding.toInt()}',
+                onChanged: notifier.setReaderSidePadding,
+              ),
+              _buildSliderTile(
+                context: context,
+                icon: Icons.notes_rounded,
+                title: '额外行距',
+                subtitle: '${settings.readerParagraphSpacing.toInt()} px',
+                value: settings.readerParagraphSpacing,
+                min: 0,
+                max: 32,
+                divisions: 32,
+                label: '${settings.readerParagraphSpacing.toInt()}',
+                onChanged: notifier.setReaderParagraphSpacing,
               ),
               SwitchListTile(
                 secondary: const Icon(Icons.format_indent_increase),
@@ -249,6 +265,41 @@ class ReadingSettingsPage extends ConsumerWidget {
               isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
         );
     }
+  }
+
+  Widget _buildSliderTile({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required String label,
+    required ValueChanged<double> onChanged,
+  }) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: SizedBox(
+        width: 200,
+        child: SliderTheme(
+          data: SliderTheme.of(
+            context,
+          ).copyWith(tickMarkShape: SliderTickMarkShape.noTickMark),
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: divisions,
+            label: label,
+            onChanged: onChanged,
+          ),
+        ),
+      ),
+    );
   }
 
   void _showCleanChapterTitleScopeSheet(BuildContext context) {

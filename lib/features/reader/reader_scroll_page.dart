@@ -882,6 +882,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
   Widget? _buildIllustrationContainerWidget(
     dom.Element element,
     Color textColor,
+    double readerSidePadding,
   ) {
     if (!_isStandaloneIllustrationContainer(element)) {
       return null;
@@ -912,10 +913,9 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
 
     return Builder(
       builder: (context) {
-        final maxWidth = (MediaQuery.sizeOf(context).width - 32).clamp(
-          48.0,
-          double.infinity,
-        );
+        final maxWidth = (MediaQuery.sizeOf(context).width -
+                readerSidePadding * 2)
+            .clamp(48.0, double.infinity);
         Widget child = ReaderRoundedNetworkImage(
           imageUrl: src,
           alt: alt,
@@ -987,9 +987,56 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     return false;
   }
 
+  bool _usesReaderParagraphSpacing(String? tag) {
+    return tag == 'p' || tag == 'div' || tag == 'blockquote' || tag == 'center';
+  }
+
+  String _formatReaderPixelValue(double value) {
+    final normalized = value.clamp(0.0, 999.0);
+    if ((normalized - normalized.roundToDouble()).abs() < 0.01) {
+      return '${normalized.toInt()}px';
+    }
+    return '${normalized.toStringAsFixed(1)}px';
+  }
+
+  bool _blockUsesReaderParagraphSpacing(_ReaderBlock block) {
+    try {
+      final fragment = html_parser.parseFragment(block.html);
+      dom.Element? root;
+      for (final node in fragment.nodes) {
+        if (node is dom.Element) {
+          root = node;
+          break;
+        }
+      }
+      if (root == null) {
+        return false;
+      }
+
+      final tag = root.localName;
+      if (!_usesReaderParagraphSpacing(tag) ||
+          _shouldRenderAsIllustrationBlock(root)) {
+        return false;
+      }
+
+      final hasText = _normalizeReaderText(root.text).isNotEmpty;
+      if (hasText) {
+        return true;
+      }
+
+      final hasNonFootnoteImage = root
+          .getElementsByTagName('img')
+          .any((img) => !_isFootnoteMarkerImage(img));
+      return !hasNonFootnoteImage && _shouldPreserveExplicitBlankLine(root);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Map<String, String>? _buildReaderBlockTagStyles(
     dom.Element element,
     double readerLineHeight,
+    double readerSidePadding,
   ) {
     final tag = element.localName;
     if (tag == null) {
@@ -1032,8 +1079,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     switch (tag) {
       case 'h1':
         return {
-          'padding-left': '16px',
-          'padding-right': '16px',
+          'padding-left': _formatReaderPixelValue(readerSidePadding),
+          'padding-right': _formatReaderPixelValue(readerSidePadding),
           'font-size': '1.65em',
           'line-height': '120%',
           'text-align': 'center',
@@ -1043,8 +1090,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
         };
       case 'h2':
         return {
-          'padding-left': '16px',
-          'padding-right': '16px',
+          'padding-left': _formatReaderPixelValue(readerSidePadding),
+          'padding-right': _formatReaderPixelValue(readerSidePadding),
           'font-size': '1.25em',
           'line-height': '120%',
           'text-align': 'center',
@@ -1054,8 +1101,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
         };
       case 'h3':
         return {
-          'padding-left': '16px',
-          'padding-right': '16px',
+          'padding-left': _formatReaderPixelValue(readerSidePadding),
+          'padding-right': _formatReaderPixelValue(readerSidePadding),
           'font-size': '0.95em',
           'line-height': '120%',
           'text-align': 'center',
@@ -1066,8 +1113,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
         };
       case 'h4':
         return {
-          'padding-left': '16px',
-          'padding-right': '16px',
+          'padding-left': _formatReaderPixelValue(readerSidePadding),
+          'padding-right': _formatReaderPixelValue(readerSidePadding),
           'font-size': '1.5em',
           'font-weight': 'bold',
           'text-indent': '1.333em',
@@ -1076,18 +1123,16 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
         };
       case 'center':
         return {
-          'padding-left': '16px',
-          'padding-right': '16px',
-          'margin': '0',
+          'padding-left': _formatReaderPixelValue(readerSidePadding),
+          'padding-right': _formatReaderPixelValue(readerSidePadding),
           'line-height': readerLineHeight.toStringAsFixed(1),
           'text-align': 'center',
           'text-indent': '0',
         };
       default:
         return {
-          'padding-left': '16px',
-          'padding-right': '16px',
-          'margin': '0',
+          'padding-left': _formatReaderPixelValue(readerSidePadding),
+          'padding-right': _formatReaderPixelValue(readerSidePadding),
           'line-height': readerLineHeight.toStringAsFixed(1),
         };
     }
@@ -2015,6 +2060,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     final readerBackgroundColor = _getReaderBackgroundColor(settings);
     final readerTextColor = _getReaderTextColor(settings);
     final readerLineHeight = settings.readerLineHeight;
+    final readerParagraphSpacing = settings.readerParagraphSpacing;
+    final readerSidePadding = settings.readerSidePadding;
 
     // Route B：布局信息在加载章节时基于 blocks 预计算并缓存，避免 build 时反复 parse。
     final layoutInfo = _layoutInfo;
@@ -2115,8 +2162,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
 
         // 纯文本容器：添加两侧 padding
         final style = {
-          'padding-left': '16px',
-          'padding-right': '16px',
+          'padding-left': _formatReaderPixelValue(readerSidePadding),
+          'padding-right': _formatReaderPixelValue(readerSidePadding),
           'margin-bottom': '1em',
           'line-height': readerLineHeight.toStringAsFixed(1),
           'text-align': 'left', // 强制左对齐
@@ -2213,7 +2260,14 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       }
 
       final style = <String, String>{};
-      mergeStyle(style, _buildReaderBlockTagStyles(element, readerLineHeight));
+      mergeStyle(
+        style,
+        _buildReaderBlockTagStyles(
+          element,
+          readerLineHeight,
+          readerSidePadding,
+        ),
+      );
       mergeStyle(style, _buildReaderPresetClassStyles(element));
       return style.isEmpty ? null : style;
     }
@@ -2249,6 +2303,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       final illustrationWidget = _buildIllustrationContainerWidget(
         element,
         readerTextColor,
+        readerSidePadding,
       );
       if (illustrationWidget != null) {
         return illustrationWidget;
@@ -2319,7 +2374,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
               baseline: TextBaseline.alphabetic,
               child: Builder(
                 builder: (context) {
-                  final maxWidth = MediaQuery.sizeOf(context).width - 32;
+                  final maxWidth =
+                      MediaQuery.sizeOf(context).width - readerSidePadding * 2;
                   return Padding(
                     padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
                     child: ConstrainedBox(
@@ -2513,10 +2569,9 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
           if (isInsideTable) {
             return Builder(
               builder: (context) {
-                final maxWidth = (MediaQuery.sizeOf(context).width - 32).clamp(
-                  48.0,
-                  double.infinity,
-                );
+                final maxWidth = (MediaQuery.sizeOf(context).width -
+                        readerSidePadding * 2)
+                    .clamp(48.0, double.infinity);
                 return ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: maxWidth),
                   child: imageWidget,
@@ -2591,19 +2646,27 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
             itemBuilder: (context, index) {
               final block = blocks[index];
               final blockHtml = _getRenderedBlockHtml(block, settings);
+              final topSpacing =
+                  index > 0 &&
+                          _blockUsesReaderParagraphSpacing(blocks[index - 1])
+                      ? readerParagraphSpacing
+                      : 0.0;
 
-              return Align(
-                alignment: Alignment.topCenter,
-                child: HtmlWidget(
-                  blockHtml,
-                  textStyle: TextStyle(
-                    fontFamily: _fontFamily,
-                    fontSize: settings.fontSize,
-                    height: readerLineHeight,
-                    color: readerTextColor,
+              return Padding(
+                padding: EdgeInsets.only(top: topSpacing),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: HtmlWidget(
+                    blockHtml,
+                    textStyle: TextStyle(
+                      fontFamily: _fontFamily,
+                      fontSize: settings.fontSize,
+                      height: readerLineHeight,
+                      color: readerTextColor,
+                    ),
+                    customStylesBuilder: readerCustomStylesBuilder,
+                    customWidgetBuilder: customWidgetBuilder,
                   ),
-                  customStylesBuilder: readerCustomStylesBuilder,
-                  customWidgetBuilder: customWidgetBuilder,
                 ),
               );
             },

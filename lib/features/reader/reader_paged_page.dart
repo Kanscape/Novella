@@ -1192,6 +1192,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   Widget? _buildIllustrationContainerWidget(
     dom.Element element,
     Color textColor,
+    double readerSidePadding,
   ) {
     if (!_isStandaloneIllustrationContainer(element)) {
       return null;
@@ -1219,10 +1220,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
 
     return Builder(
       builder: (context) {
-        final maxWidth = (MediaQuery.sizeOf(context).width - 48).clamp(
-          48.0,
-          double.infinity,
-        );
+        final maxWidth = (MediaQuery.sizeOf(context).width -
+                readerSidePadding * 2)
+            .clamp(48.0, double.infinity);
         Widget child = ReaderRoundedNetworkImage(
           imageUrl: src,
           alt: alt,
@@ -1248,7 +1248,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     );
   }
 
-  Widget? _buildImageWidget(dom.Element element, Color textColor) {
+  Widget? _buildImageWidget(
+    dom.Element element,
+    Color textColor,
+    double readerSidePadding,
+  ) {
     if (element.localName != 'img') {
       return null;
     }
@@ -1331,10 +1335,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         baseline: TextBaseline.alphabetic,
         child: Builder(
           builder: (context) {
-            final maxWidth = (MediaQuery.sizeOf(context).width - 48).clamp(
-              48.0,
-              double.infinity,
-            );
+            final maxWidth = (MediaQuery.sizeOf(context).width -
+                    readerSidePadding * 2)
+                .clamp(48.0, double.infinity);
             return buildResponsiveImage(
               context,
               maxWidth: maxWidth,
@@ -1350,10 +1353,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         final maxWidth =
             insideTable
                 ? null
-                : (MediaQuery.sizeOf(context).width - 48).clamp(
-                  48.0,
-                  double.infinity,
-                );
+                : (MediaQuery.sizeOf(context).width - readerSidePadding * 2)
+                    .clamp(48.0, double.infinity);
         return buildResponsiveImage(
           context,
           maxWidth: maxWidth,
@@ -1378,6 +1379,52 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       depth++;
     }
     return false;
+  }
+
+  bool _usesReaderParagraphSpacing(String? tag) {
+    return tag == 'p' || tag == 'div' || tag == 'blockquote' || tag == 'center';
+  }
+
+  bool _blockUsesReaderParagraphSpacing(_ReaderBlock block) {
+    try {
+      final fragment = html_parser.parseFragment(block.html);
+      dom.Element? root;
+      for (final node in fragment.nodes) {
+        if (node is dom.Element) {
+          root = node;
+          break;
+        }
+      }
+      if (root == null) {
+        return false;
+      }
+
+      final tag = root.localName;
+      if (!_usesReaderParagraphSpacing(tag) ||
+          _shouldRenderAsIllustrationBlock(root)) {
+        return false;
+      }
+
+      if (_normalizeText(root.text).isNotEmpty) {
+        return true;
+      }
+
+      final hasNonFootnoteImage = root
+          .getElementsByTagName('img')
+          .any((img) => !_isFootnoteMarkerImage(img));
+      return !hasNonFootnoteImage && root.getElementsByTagName('br').isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  double _paragraphSpacingBeforeBlock(int blockIndex, AppSettings settings) {
+    if (blockIndex <= 0 || blockIndex >= _blocks.length) {
+      return 0;
+    }
+    return _blockUsesReaderParagraphSpacing(_blocks[blockIndex - 1])
+        ? settings.readerParagraphSpacing
+        : 0.0;
   }
 
   Map<String, String>? _buildReaderBlockTagStyles(
@@ -1461,7 +1508,6 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         };
       case 'center':
         return {
-          'margin': '0',
           'line-height': readerLineHeight.toStringAsFixed(1),
           'text-align': 'center',
           'text-indent': '0',
@@ -1724,9 +1770,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
               '#${linkColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
         }
 
-        if (tag == 'p') {
-          style.putIfAbsent('margin', () => '0 0 0.85em 0');
-        } else if (_blockTags.contains(tag)) {
+        if (!_usesReaderParagraphSpacing(tag) && _blockTags.contains(tag)) {
           style.putIfAbsent('margin', () => '0 0 0.85em 0');
         }
 
@@ -1757,8 +1801,12 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           );
         }
 
-        return _buildIllustrationContainerWidget(element, textColor) ??
-            _buildImageWidget(element, textColor);
+        return _buildIllustrationContainerWidget(
+              element,
+              textColor,
+              settings.readerSidePadding,
+            ) ??
+            _buildImageWidget(element, textColor, settings.readerSidePadding);
       },
       onTapUrl: (_) => true,
     );
@@ -1872,11 +1920,13 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     var start = 0;
     var cost = 0.0;
     for (var i = 0; i < _blocks.length; i++) {
-      final blockCost = (_measuredBlockHeights[i] ?? budget) + 4;
+      final blockHeight = _measuredBlockHeights[i] ?? budget;
+      final blockCost =
+          blockHeight + _paragraphSpacingBeforeBlock(i, settings) + 4;
       if (i > start && cost + blockCost > budget) {
         pages.add(_makePage(start, i));
         start = i;
-        cost = blockCost;
+        cost = blockHeight + 4;
       } else {
         cost += blockCost;
       }
@@ -2135,10 +2185,17 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     required Color textColor,
     required Color linkColor,
   }) {
-    final blockWidgets = <Widget>[
-      for (int i = page.start; i < page.end; i++)
+    final blockWidgets = <Widget>[];
+    for (int i = page.start; i < page.end; i++) {
+      final topSpacing =
+          i > page.start ? _paragraphSpacingBeforeBlock(i, settings) : 0.0;
+      if (topSpacing > 0) {
+        blockWidgets.add(SizedBox(height: topSpacing));
+      }
+      blockWidgets.add(
         _buildBlockWidget(_blocks[i], settings, textColor, linkColor),
-    ];
+      );
+    }
     final measuredHeight = List<double>.generate(
       page.end - page.start,
       (offset) => _measuredBlockHeights[page.start + offset] ?? 0,
@@ -2616,8 +2673,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                           )
                           : LayoutBuilder(
                             builder: (context, constraints) {
-                              final horizontalPadding =
-                                  constraints.maxWidth >= 720 ? 48.0 : 24.0;
+                              final horizontalPadding = settings
+                                  .readerSidePadding
+                                  .clamp(0.0, (constraints.maxWidth - 48) / 2);
                               final contentWidth =
                                   constraints.maxWidth - horizontalPadding * 2;
                               final contentTopPadding = _topContentPadding(
@@ -2633,6 +2691,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                   '${_chapter?.id}|${contentWidth.toStringAsFixed(1)}|'
                                   '${settings.fontSize.toStringAsFixed(2)}|'
                                   '${settings.readerLineHeight.toStringAsFixed(2)}|'
+                                  '${settings.readerParagraphSpacing.toStringAsFixed(1)}|'
+                                  '${settings.readerSidePadding.toStringAsFixed(1)}|'
                                   '${settings.readerFirstLineIndent}|${_fontFamily ?? ''}';
                               _activeMeasureKey = measureKey;
                               final measurementReady =
@@ -2656,8 +2716,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                               final layoutKey =
                                   '${_chapter?.id}|${constraints.maxWidth.toStringAsFixed(1)}|'
                                   '${constraints.maxHeight.toStringAsFixed(1)}|'
+                                  '${contentWidth.toStringAsFixed(1)}|'
                                   '${settings.fontSize.toStringAsFixed(2)}|'
                                   '${settings.readerLineHeight.toStringAsFixed(2)}|'
+                                  '${settings.readerParagraphSpacing.toStringAsFixed(1)}|'
+                                  '${settings.readerSidePadding.toStringAsFixed(1)}|'
                                   '${settings.readerFirstLineIndent}|$pageSignature';
                               final pageDisplayReady =
                                   measurementReady &&

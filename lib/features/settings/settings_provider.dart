@@ -19,6 +19,8 @@ class AppSettings {
   final double fontSize;
   final bool readerFirstLineIndent;
   final double readerLineHeight;
+  final double readerParagraphSpacing;
+  final double readerSidePadding;
   final ReaderViewMode readerViewMode;
   final ReaderBatteryIndicatorStyle readerBatteryIndicatorStyle;
   final String theme; // 'system'（系统）, 'light'（浅色）, 'dark'（深色）
@@ -88,6 +90,8 @@ class AppSettings {
     this.fontSize = 18.0,
     this.readerFirstLineIndent = false,
     this.readerLineHeight = 1.6,
+    this.readerParagraphSpacing = 0.0,
+    this.readerSidePadding = 30.0,
     this.readerViewMode = ReaderViewMode.paged,
     this.readerBatteryIndicatorStyle = ReaderBatteryIndicatorStyle.text,
     this.theme = 'system',
@@ -148,6 +152,8 @@ class AppSettings {
     double? fontSize,
     bool? readerFirstLineIndent,
     double? readerLineHeight,
+    double? readerParagraphSpacing,
+    double? readerSidePadding,
     ReaderViewMode? readerViewMode,
     ReaderBatteryIndicatorStyle? readerBatteryIndicatorStyle,
     String? theme,
@@ -191,6 +197,9 @@ class AppSettings {
       readerFirstLineIndent:
           readerFirstLineIndent ?? this.readerFirstLineIndent,
       readerLineHeight: readerLineHeight ?? this.readerLineHeight,
+      readerParagraphSpacing:
+          readerParagraphSpacing ?? this.readerParagraphSpacing,
+      readerSidePadding: readerSidePadding ?? this.readerSidePadding,
       readerViewMode: readerViewMode ?? this.readerViewMode,
       readerBatteryIndicatorStyle:
           readerBatteryIndicatorStyle ?? this.readerBatteryIndicatorStyle,
@@ -289,6 +298,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       readerFirstLineIndent:
           prefs.getBool('setting_readerFirstLineIndent') ?? false,
       readerLineHeight: prefs.getDouble('setting_readerLineHeight') ?? 1.6,
+      readerParagraphSpacing:
+          prefs.getDouble('setting_readerParagraphSpacing') ?? 0.0,
+      readerSidePadding: prefs.getDouble('setting_readerSidePadding') ?? 30.0,
       readerViewMode: _parseReaderViewMode(
         prefs.getString('setting_readerViewMode'),
       ),
@@ -364,6 +376,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
       state.readerFirstLineIndent,
     );
     await prefs.setDouble('setting_readerLineHeight', state.readerLineHeight);
+    await prefs.setDouble(
+      'setting_readerParagraphSpacing',
+      state.readerParagraphSpacing,
+    );
+    await prefs.setDouble('setting_readerSidePadding', state.readerSidePadding);
     await prefs.setString('setting_readerViewMode', state.readerViewMode.name);
     await prefs.setString(
       'setting_readerBatteryIndicatorStyle',
@@ -446,6 +463,20 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setReaderLineHeight(double value) {
     state = state.copyWith(readerLineHeight: value.clamp(1.2, 2.4).toDouble());
+    _save();
+  }
+
+  void setReaderParagraphSpacing(double value) {
+    state = state.copyWith(
+      readerParagraphSpacing: value.clamp(0.0, 32.0).toDouble(),
+    );
+    _save();
+  }
+
+  void setReaderSidePadding(double value) {
+    state = state.copyWith(
+      readerSidePadding: value.clamp(0.0, 48.0).toDouble(),
+    );
     _save();
   }
 
