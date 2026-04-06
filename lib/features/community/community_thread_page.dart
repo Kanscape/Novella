@@ -697,7 +697,9 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
                           anchorKey: _replyAnchorKey(reply.id),
                           reply: reply,
                           highlightedReplyId: _highlightedReplyId,
-                          onReply: () => _openReplySheet(reply: reply),
+                          onReply: (targetReply) {
+                            unawaited(_openReplySheet(reply: targetReply));
+                          },
                           onLike: () => _toggleReplyLike(reply),
                           childReplyKeyBuilder: _replyAnchorKey,
                           onLoadMoreChildren:
@@ -1136,7 +1138,7 @@ class _ReplyCard extends StatelessWidget {
   final GlobalKey anchorKey;
   final CommunityThreadReply reply;
   final int? highlightedReplyId;
-  final VoidCallback onReply;
+  final ValueChanged<CommunityThreadReply> onReply;
   final VoidCallback onLike;
   final GlobalKey Function(int replyId) childReplyKeyBuilder;
   final VoidCallback? onLoadMoreChildren;
@@ -1232,7 +1234,7 @@ class _ReplyCard extends StatelessWidget {
                 _ReplyActionChip(
                   icon: Icons.reply_rounded,
                   label: '回复',
-                  onTap: onReply,
+                  onTap: () => onReply(reply),
                 ),
               ],
             ),
@@ -1255,7 +1257,7 @@ class _ReplyCard extends StatelessWidget {
                         anchorKey: childReplyKeyBuilder(child.id),
                         reply: child,
                         highlighted: highlightedReplyId == child.id,
-                        onReply: onReply,
+                        onReply: () => onReply(child),
                       ),
                       if (child != reply.childReplies.last)
                         Divider(
