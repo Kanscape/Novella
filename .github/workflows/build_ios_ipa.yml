@@ -7,6 +7,7 @@ on:
     paths:
       - 'lib/**'
       - 'ios/**'
+      - 'macos/Novella.icon/**'
       - 'rust/**'
       - 'pubspec.yaml'
       - '.github/workflows/build_ios_ipa.yml'

@@ -77,6 +77,10 @@ jobs:
         working-directory: site
         run: dart run tool/finalize_static_site.dart
 
+      - name: Generate AltStore source
+        working-directory: site
+        run: dart run tool/generate_altstore_source.dart
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

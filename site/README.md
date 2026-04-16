@@ -36,6 +36,12 @@ npx @tailwindcss/cli -i src/input.css -o web/styles.css --minify
 jaspr serve
 ```
 
+6. 生成 AltStore 源
+
+```bash
+dart run tool/generate_altstore_source.dart
+```
+
 ## 构建
 
 ```bash
@@ -49,3 +55,8 @@ jaspr build --sitemap-domain https://novella.celia.sh
 - `SITE_URL`，默认 `https://novella.celia.sh`
 - `SITE_BASE_PATH`，默认 `/`
 - `SITE_DATA_PATH`，默认 `.generated/site_data.json`
+- `ALTSTORE_OUTPUT_PATH`，默认 `build/jaspr/altstore.json`
+- `ALTSTORE_ASSET_NAME_PATTERN`，默认 `\.ipa$`
+- `ALTSTORE_BUILD_VERSION`，默认跟 release 版本号一致
+- `ALTSTORE_ICON_PATH`，默认 `assets/brand/altstore-icon.png`
+- `ALTSTORE_SCREENSHOT_PATHS`，逗号分隔，默认使用站点内置的 6 张 AltStore 截图
