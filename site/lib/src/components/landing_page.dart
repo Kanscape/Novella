@@ -356,11 +356,13 @@ Component _buildHomeHero(SiteData siteData, List<ReleaseAsset> featured) {
                   _el(
                     'a',
                     attrs: {
-                      'href': '/changelog',
+                      'href': '/altstore.json',
                       'class':
                           'font-semibold text-base-content/80 hover:text-primary transition-colors',
+                      'target': '_blank',
+                      'rel': 'noreferrer noopener',
                     },
-                    children: [_text('GitHub Changelog →')],
+                    children: [_text('AltStore Source →')],
                   ),
                 ],
               ),

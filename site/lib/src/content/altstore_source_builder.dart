@@ -30,12 +30,12 @@ class AltStoreSourceBuilderConfig {
     return AltStoreSourceBuilderConfig(
       siteUrl: siteUrl,
       siteBasePath: environment['SITE_BASE_PATH'] ?? '/',
-      sourceName: environment['ALTSTORE_SOURCE_NAME'] ?? 'Novella',
+      sourceName: environment['ALTSTORE_SOURCE_NAME'] ?? 'Novella Repository',
       sourceIdentifier:
           environment['ALTSTORE_SOURCE_IDENTIFIER'] ??
           'sh.celia.novella.altstore',
       sourceSubtitle:
-          environment['ALTSTORE_SOURCE_SUBTITLE'] ?? 'Novella Repository',
+          environment['ALTSTORE_SOURCE_SUBTITLE'] ?? 'AltStore source for Novella',
       sourceWebsite: environment['ALTSTORE_SOURCE_WEBSITE'] ?? siteUrl,
       tintColor: environment['ALTSTORE_TINT_COLOR'] ?? '#f59393',
       appName: environment['ALTSTORE_APP_NAME'] ?? 'Novella',

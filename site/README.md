@@ -56,6 +56,8 @@ jaspr build --sitemap-domain https://novella.celia.sh
 - `SITE_BASE_PATH`，默认 `/`
 - `SITE_DATA_PATH`，默认 `.generated/site_data.json`
 - `ALTSTORE_OUTPUT_PATH`，默认 `build/jaspr/altstore.json`
+- `ALTSTORE_SOURCE_NAME`，默认 `Novella Repository`
+- `ALTSTORE_SOURCE_SUBTITLE`，默认 `AltStore source for Novella`
 - `ALTSTORE_ASSET_NAME_PATTERN`，默认 `\.ipa$`
 - `ALTSTORE_BUILD_VERSION`，默认跟 release 版本号一致
 - `ALTSTORE_ICON_PATH`，默认 `assets/brand/altstore-icon.png`
