@@ -7,18 +7,25 @@
           "fill-specializations" : [
             {
               "value" : {
-                "automatic-gradient" : "display-p3:0.96078,0.57647,0.57647,1.00000"
+                "automatic-gradient" : "srgb:0.96078,0.57647,0.57647,1.00000"
               }
             },
             {
               "appearance" : "dark",
               "value" : {
-                "automatic-gradient" : "display-p3:1.00000,0.46121,0.50733,1.00000"
+                "automatic-gradient" : "srgb:1.00000,0.47843,0.48235,1.00000"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "automatic-gradient" : "gray:1.00000,1.00000"
               }
             }
           ],
-          "image-name" : "icon.png",
-          "name" : "icon",
+          "hidden" : false,
+          "image-name" : "Novella.png",
+          "name" : "Novella",
           "position" : {
             "scale" : 0.1,
             "translation-in-points" : [
