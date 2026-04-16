@@ -4,6 +4,7 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/utils/app_ui_font_manager.dart';
 import 'package:novella/features/settings/settings_provider.dart';
 import 'package:novella/features/settings/theme_selection_page.dart';
@@ -223,10 +224,9 @@ class AppearanceSettingsPage extends ConsumerWidget {
                   ],
                 ),
                 onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const ThemeSelectionPage(),
-                    ),
+                  AppRouteLauncher.pushDetail(
+                    context,
+                    (context) => const ThemeSelectionPage(),
                   );
                 },
               ),

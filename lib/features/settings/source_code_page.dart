@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class SourceCodePage extends StatelessWidget {
@@ -42,10 +43,9 @@ class SourceCodePage extends StatelessWidget {
           Center(
             child: TextButton.icon(
               onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const AgplLicensePage(),
-                  ),
+                AppRouteLauncher.pushDetail(
+                  context,
+                  (context) => const AgplLicensePage(),
                 );
               },
               icon: const Icon(Icons.description_outlined),

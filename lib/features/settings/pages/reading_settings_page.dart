@@ -117,6 +117,20 @@ class ReadingSettingsPage extends ConsumerWidget {
                 value: settings.readerFirstLineIndent,
                 onChanged: notifier.setReaderFirstLineIndent,
               ),
+              SwitchListTile(
+                secondary: const Icon(Icons.animation_outlined),
+                title: const Text('无翻页动画'),
+                subtitle: Text(
+                  settings.readerViewMode == ReaderViewMode.paged
+                      ? '翻页时直接切换页面，适合墨水屏设备'
+                      : '仅“左右翻页”模式可调整',
+                ),
+                value: settings.readerPagedNoAnimation,
+                onChanged:
+                    settings.readerViewMode == ReaderViewMode.paged
+                        ? notifier.setReaderPagedNoAnimation
+                        : null,
+              ),
               ListTile(
                 leading: Icon(
                   settings.readerViewMode == ReaderViewMode.paged

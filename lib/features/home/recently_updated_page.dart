@@ -4,6 +4,8 @@ import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/layout/app_window_class.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
@@ -198,17 +200,23 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
                   slivers: [
                     SliverPadding(
                       padding: const EdgeInsets.all(12),
-                      sliver: SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              childAspectRatio: 0.58,
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 12,
+                      sliver: SliverLayoutBuilder(
+                        builder: (context, constraints) {
+                          return SliverGrid(
+                            gridDelegate: appBookGridDelegateForWidth(
+                              constraints.crossAxisExtent,
                             ),
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          return _buildBookCard(context, displayBooks[index]);
-                        }, childCount: displayBooks.length),
+                            delegate: SliverChildBuilderDelegate((
+                              context,
+                              index,
+                            ) {
+                              return _buildBookCard(
+                                context,
+                                displayBooks[index],
+                              );
+                            }, childCount: displayBooks.length),
+                          );
+                        },
                       ),
                     ),
                     if (_shouldShowPagination)
@@ -232,15 +240,13 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
 
     return GestureDetector(
       onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder:
-                (_) => BookDetailPage(
-                  bookId: book.id,
-                  initialCoverUrl: book.cover,
-                  initialTitle: book.title,
-                  heroTag: heroTag,
-                ),
+        AppRouteLauncher.pushDetail(
+          context,
+          (_) => BookDetailPage(
+            bookId: book.id,
+            initialCoverUrl: book.cover,
+            initialTitle: book.title,
+            heroTag: heroTag,
           ),
         );
       },

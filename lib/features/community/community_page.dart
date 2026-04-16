@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/utils/time_utils.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -70,11 +71,11 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   }
 
   Future<void> _openComposePage() async {
-    final createdThread = await Navigator.of(
-      context,
-    ).push<CommunityThreadDetail>(
-      MaterialPageRoute(builder: (_) => const CommunityComposePage()),
-    );
+    final createdThread =
+        await AppRouteLauncher.pushDetail<CommunityThreadDetail>(
+          context,
+          (_) => const CommunityComposePage(),
+        );
     if (!mounted || createdThread == null) {
       return;
     }
@@ -84,8 +85,9 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   }
 
   Future<void> _openNotificationPage() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CommunityNotificationPage()),
+    await AppRouteLauncher.pushDetail(
+      context,
+      (_) => const CommunityNotificationPage(),
     );
     if (!mounted) {
       return;
@@ -96,11 +98,9 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   }
 
   Future<void> _openThread(int threadId, String title) {
-    return Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (_) => CommunityThreadPage(threadId: threadId, initialTitle: title),
-      ),
+    return AppRouteLauncher.pushDetail(
+      context,
+      (_) => CommunityThreadPage(threadId: threadId, initialTitle: title),
     );
   }
 

@@ -132,9 +132,8 @@ void main() async {
       developer.log('WindowManager Initialized', name: 'Flutter');
 
       WindowOptions windowOptions = const WindowOptions(
-        size: Size(450, 850),
-        minimumSize: Size(400, 800),
-        maximumSize: Size(500, 1000), // 原型窗口大小限制
+        size: Size(1180, 860),
+        minimumSize: Size(420, 760),
         center: true,
         backgroundColor: Colors.transparent,
         skipTaskbar: false,

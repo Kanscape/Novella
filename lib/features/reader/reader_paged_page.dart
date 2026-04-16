@@ -12,6 +12,7 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
+import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:novella/core/utils/font_manager.dart';
 import 'package:novella/core/utils/time_utils.dart';
@@ -51,6 +52,28 @@ class _ReaderPageSlice {
   final String xPath;
   final String html;
   const _ReaderPageSlice(this.start, this.end, this.xPath, this.html);
+}
+
+class _ReaderPageSpread {
+  final _ReaderPageSlice primary;
+  final _ReaderPageSlice? secondary;
+
+  const _ReaderPageSpread(this.primary, [this.secondary]);
+
+  String get xPath => secondary?.xPath ?? primary.xPath;
+
+  bool containsBlockIndex(int blockIndex) {
+    final inPrimary = blockIndex >= primary.start && blockIndex < primary.end;
+    if (inPrimary) {
+      return true;
+    }
+
+    final extra = secondary;
+    if (extra == null) {
+      return false;
+    }
+    return blockIndex >= extra.start && blockIndex < extra.end;
+  }
 }
 
 class _FootnoteProcessingResult {
@@ -93,8 +116,10 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   static const double _topBarVerticalInset = 8;
   static const double _topBarGap = 12;
   static const double _contentTopGap = 20;
-  static const double _contentBottomGap = 36;
+  static const double _contentBottomGap = 56;
   static const double _indicatorBottomGap = 12;
+  static const double _doublePageGap = 24;
+  static const double _manualPageTurnTriggerDistance = 48;
   static const _blockTags = {
     'p',
     'div',
@@ -165,6 +190,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   String _activeMeasureKey = '';
   String _pendingMeasureKey = '';
   String _measurementLayerCacheKey = '';
+  double _manualPageDragOffset = 0;
   Widget? _cachedMeasurementLayer;
 
   @override
@@ -1935,6 +1961,24 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     return pages;
   }
 
+  List<_ReaderPageSpread> _buildPageSpreads(
+    List<_ReaderPageSlice> pages, {
+    required bool useDoublePage,
+  }) {
+    if (!useDoublePage) {
+      return pages
+          .map((page) => _ReaderPageSpread(page))
+          .toList(growable: false);
+    }
+
+    final spreads = <_ReaderPageSpread>[];
+    for (var index = 0; index < pages.length; index += 2) {
+      final secondary = index + 1 < pages.length ? pages[index + 1] : null;
+      spreads.add(_ReaderPageSpread(pages[index], secondary));
+    }
+    return spreads;
+  }
+
   _ReaderPageSlice _makePage(int start, int end) {
     final html = _blocks
         .sublist(start, end)
@@ -1964,6 +2008,36 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     return fragment.querySelector('img')?.attributes['src'];
   }
 
+  Widget _buildReaderPageContent({
+    required _ReaderPageSlice page,
+    required double contentWidth,
+    required double contentHeight,
+    required AppSettings settings,
+    required Color textColor,
+    required Color linkColor,
+  }) {
+    final imageOnly = _isImageOnlyPage(page);
+    final imageUrl = _extractPrimaryImageSrc(page);
+    return imageOnly && imageUrl != null
+        ? _buildImageOnlyPage(
+          page: page,
+          imageUrl: imageUrl,
+          width: contentWidth,
+          maxHeight: contentHeight,
+          settings: settings,
+          textColor: textColor,
+          linkColor: linkColor,
+        )
+        : _buildHtmlPage(
+          page: page,
+          width: contentWidth,
+          maxHeight: contentHeight,
+          settings: settings,
+          textColor: textColor,
+          linkColor: linkColor,
+        );
+  }
+
   bool _isStandaloneImageBlock(_ReaderBlock block) {
     if (block.imageCount != 1 || block.textLength != 0) {
       return false;
@@ -1990,11 +2064,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     }
   }
 
-  void _scheduleRestore(List<_ReaderPageSlice> pages, String layoutKey) {
+  void _scheduleRestore(List<_ReaderPageSpread> spreads, String layoutKey) {
     if (_lastLayoutKey == layoutKey) return;
     _lastLayoutKey = layoutKey;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || pages.isEmpty) return;
+      if (!mounted || spreads.isEmpty) return;
       if (!_pageController.hasClients) {
         if (!mounted) return;
         setState(() {
@@ -2002,16 +2076,16 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         });
         return;
       }
-      var targetPage = _currentPage.clamp(0, pages.length - 1);
+      var targetPage = _currentPage.clamp(0, spreads.length - 1);
       if (_pendingRestoreXPath != null && _pendingRestoreXPath!.isNotEmpty) {
         final blockIndex = _resolveBlockIndex(_pendingRestoreXPath!);
-        targetPage = pages.indexWhere(
-          (page) => blockIndex >= page.start && blockIndex < page.end,
+        targetPage = spreads.indexWhere(
+          (spread) => spread.containsBlockIndex(blockIndex),
         );
         if (targetPage < 0) targetPage = 0;
       }
       _pageController.jumpToPage(targetPage);
-      final xPath = pages[targetPage].xPath;
+      final xPath = spreads[targetPage].xPath;
       if (!mounted) return;
       setState(() {
         _currentPage = targetPage;
@@ -2021,6 +2095,79 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       });
       await _saveCurrentPosition(xPath: xPath);
     });
+  }
+
+  void _goToPage(int pageIndex, {required bool animated}) {
+    if (!_pageController.hasClients) {
+      return;
+    }
+
+    if (animated) {
+      _pageController.animateToPage(
+        pageIndex,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+
+    _pageController.jumpToPage(pageIndex);
+  }
+
+  void _goToPreviousPage({required bool animated}) {
+    if (_currentPage > 0) {
+      _goToPage(_currentPage - 1, animated: animated);
+      return;
+    }
+
+    if (_targetSortNum > 1) {
+      _FootnoteAnchor.dismissCurrent();
+      _loadChapter(
+        _targetSortNum - 1,
+        openPosition: _ReaderChapterOpenPosition.end,
+      );
+    }
+  }
+
+  void _goToNextPage({required int pageCount, required bool animated}) {
+    if (_currentPage < pageCount - 1) {
+      _goToPage(_currentPage + 1, animated: animated);
+      return;
+    }
+
+    if (_targetSortNum < widget.totalChapters) {
+      _FootnoteAnchor.dismissCurrent();
+      _loadChapter(
+        _targetSortNum + 1,
+        openPosition: _ReaderChapterOpenPosition.start,
+      );
+    }
+  }
+
+  void _handleManualPageDragStart(DragStartDetails details) {
+    _manualPageDragOffset = 0;
+  }
+
+  void _handleManualPageDragUpdate(DragUpdateDetails details) {
+    _manualPageDragOffset += details.primaryDelta ?? 0;
+  }
+
+  void _handleManualPageDragCancel() {
+    _manualPageDragOffset = 0;
+  }
+
+  void _handleManualPageDragEnd({required int pageCount}) {
+    final dragOffset = _manualPageDragOffset;
+    _manualPageDragOffset = 0;
+
+    if (dragOffset >= _manualPageTurnTriggerDistance) {
+      _goToPreviousPage(animated: false);
+      return;
+    }
+
+    if (dragOffset <= -_manualPageTurnTriggerDistance) {
+      _goToNextPage(pageCount: pageCount, animated: false);
+    }
   }
 
   void _extractColors() {
@@ -2160,16 +2307,18 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     final block = _blocks[page.start];
 
     return SizedBox.expand(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: width, maxHeight: maxHeight),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.center,
-            child: SizedBox(
-              key: ValueKey('image_only_$imageUrl'),
-              width: width,
-              child: _buildBlockWidget(block, settings, textColor, linkColor),
+      child: ClipRect(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: width, maxHeight: maxHeight),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: SizedBox(
+                key: ValueKey('image_only_$imageUrl'),
+                width: width,
+                child: _buildBlockWidget(block, settings, textColor, linkColor),
+              ),
             ),
           ),
         ),
@@ -2222,7 +2371,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       );
     }
 
-    return SizedBox.expand(child: content);
+    return SizedBox.expand(child: ClipRect(child: content));
   }
 
   Widget _buildMeasurementLayer({
@@ -2673,11 +2822,21 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                           )
                           : LayoutBuilder(
                             builder: (context, constraints) {
+                              final useDoublePage =
+                                  context.appWindowClass ==
+                                  AppWindowClass.expanded;
+                              final pageViewportWidth =
+                                  useDoublePage
+                                      ? ((constraints.maxWidth -
+                                                  _doublePageGap) /
+                                              2)
+                                          .clamp(240.0, double.infinity)
+                                      : constraints.maxWidth;
                               final horizontalPadding = settings
                                   .readerSidePadding
-                                  .clamp(0.0, (constraints.maxWidth - 48) / 2);
+                                  .clamp(0.0, (pageViewportWidth - 48) / 2);
                               final contentWidth =
-                                  constraints.maxWidth - horizontalPadding * 2;
+                                  pageViewportWidth - horizontalPadding * 2;
                               final contentTopPadding = _topContentPadding(
                                 context,
                               );
@@ -2693,7 +2852,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                   '${settings.readerLineHeight.toStringAsFixed(2)}|'
                                   '${settings.readerParagraphSpacing.toStringAsFixed(1)}|'
                                   '${settings.readerSidePadding.toStringAsFixed(1)}|'
-                                  '${settings.readerFirstLineIndent}|${_fontFamily ?? ''}';
+                                  '${settings.readerFirstLineIndent}|'
+                                  '${useDoublePage ? 'double' : 'single'}|'
+                                  '${_fontFamily ?? ''}';
                               _activeMeasureKey = measureKey;
                               final measurementReady =
                                   _lastMeasureKey == measureKey &&
@@ -2707,6 +2868,13 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                         settings,
                                       )
                                       : const <_ReaderPageSlice>[];
+                              final spreads =
+                                  measurementReady
+                                      ? _buildPageSpreads(
+                                        pages,
+                                        useDoublePage: useDoublePage,
+                                      )
+                                      : const <_ReaderPageSpread>[];
                               final pageSignature = pages
                                   .map(
                                     (page) =>
@@ -2721,13 +2889,15 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                   '${settings.readerLineHeight.toStringAsFixed(2)}|'
                                   '${settings.readerParagraphSpacing.toStringAsFixed(1)}|'
                                   '${settings.readerSidePadding.toStringAsFixed(1)}|'
-                                  '${settings.readerFirstLineIndent}|$pageSignature';
+                                  '${settings.readerFirstLineIndent}|'
+                                  '${useDoublePage ? 'double' : 'single'}|'
+                                  '$pageSignature';
                               final pageDisplayReady =
                                   measurementReady &&
-                                  pages.isNotEmpty &&
+                                  spreads.isNotEmpty &&
                                   _restoredLayoutKey == layoutKey;
-                              if (measurementReady && pages.isNotEmpty) {
-                                _scheduleRestore(pages, layoutKey);
+                              if (measurementReady && spreads.isNotEmpty) {
+                                _scheduleRestore(spreads, layoutKey);
                               }
                               return Stack(
                                 children: [
@@ -2743,113 +2913,138 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                       ignoring: !pageDisplayReady,
                                       child: Opacity(
                                         opacity: pageDisplayReady ? 1 : 0,
-                                        child: PageView.builder(
-                                          controller: _pageController,
-                                          itemCount: pages.length,
-                                          onPageChanged: (index) {
-                                            _FootnoteAnchor.dismissCurrent();
-                                            final xPath = pages[index].xPath;
-                                            setState(() {
-                                              _currentPage = index;
-                                              _currentXPath = xPath;
-                                            });
-                                            unawaited(
-                                              _saveCurrentPosition(
-                                                xPath: xPath,
-                                              ),
-                                            );
-                                          },
-                                          itemBuilder: (context, index) {
-                                            final page = pages[index];
-                                            final imageOnly = _isImageOnlyPage(
-                                              page,
-                                            );
-                                            final imageUrl =
-                                                _extractPrimaryImageSrc(page);
-                                            return GestureDetector(
-                                              behavior: HitTestBehavior.opaque,
-                                              onTapUp: (details) {
-                                                final dx =
-                                                    details.localPosition.dx;
-                                                if (dx <=
-                                                    constraints.maxWidth *
-                                                        0.35) {
-                                                  if (_currentPage > 0) {
-                                                    _pageController
-                                                        .previousPage(
-                                                          duration:
-                                                              const Duration(
-                                                                milliseconds:
-                                                                    220,
-                                                              ),
-                                                          curve:
-                                                              Curves
-                                                                  .easeOutCubic,
-                                                        );
-                                                  } else if (_targetSortNum >
-                                                      1) {
-                                                    _FootnoteAnchor.dismissCurrent();
-                                                    _loadChapter(
-                                                      _targetSortNum - 1,
-                                                      openPosition:
-                                                          _ReaderChapterOpenPosition
-                                                              .end,
-                                                    );
-                                                  }
-                                                } else if (dx >=
-                                                    constraints.maxWidth *
-                                                        0.65) {
-                                                  if (_currentPage <
-                                                      pages.length - 1) {
-                                                    _pageController.nextPage(
-                                                      duration: const Duration(
-                                                        milliseconds: 220,
-                                                      ),
-                                                      curve:
-                                                          Curves.easeOutCubic,
-                                                    );
-                                                  } else if (_targetSortNum <
-                                                      widget.totalChapters) {
-                                                    _FootnoteAnchor.dismissCurrent();
-                                                    _loadChapter(
-                                                      _targetSortNum + 1,
-                                                      openPosition:
-                                                          _ReaderChapterOpenPosition
-                                                              .start,
-                                                    );
-                                                  }
-                                                }
+                                        child: Builder(
+                                          builder: (context) {
+                                            final disablePageTurnAnimation =
+                                                settings.readerPagedNoAnimation;
+                                            final pageView = PageView.builder(
+                                              controller: _pageController,
+                                              physics:
+                                                  disablePageTurnAnimation
+                                                      ? const NeverScrollableScrollPhysics()
+                                                      : null,
+                                              itemCount: spreads.length,
+                                              onPageChanged: (index) {
+                                                _FootnoteAnchor.dismissCurrent();
+                                                final xPath =
+                                                    spreads[index].xPath;
+                                                setState(() {
+                                                  _currentPage = index;
+                                                  _currentXPath = xPath;
+                                                });
+                                                unawaited(
+                                                  _saveCurrentPosition(
+                                                    xPath: xPath,
+                                                  ),
+                                                );
                                               },
-                                              child: Padding(
-                                                padding: EdgeInsets.fromLTRB(
-                                                  horizontalPadding,
-                                                  contentTopPadding,
-                                                  horizontalPadding,
-                                                  contentBottomPadding,
-                                                ),
-                                                child:
-                                                    imageOnly &&
-                                                            imageUrl != null
-                                                        ? _buildImageOnlyPage(
+                                              itemBuilder: (context, index) {
+                                                final spread = spreads[index];
+
+                                                Widget buildSpreadPage(
+                                                  _ReaderPageSlice page,
+                                                ) {
+                                                  return Padding(
+                                                    padding:
+                                                        EdgeInsets.fromLTRB(
+                                                          horizontalPadding,
+                                                          contentTopPadding,
+                                                          horizontalPadding,
+                                                          contentBottomPadding,
+                                                        ),
+                                                    child:
+                                                        _buildReaderPageContent(
                                                           page: page,
-                                                          imageUrl: imageUrl,
-                                                          width: contentWidth,
-                                                          maxHeight:
-                                                              contentHeight,
-                                                          settings: settings,
-                                                          textColor: textColor,
-                                                          linkColor: linkColor,
-                                                        )
-                                                        : _buildHtmlPage(
-                                                          page: page,
-                                                          width: contentWidth,
-                                                          maxHeight:
+                                                          contentWidth:
+                                                              contentWidth,
+                                                          contentHeight:
                                                               contentHeight,
                                                           settings: settings,
                                                           textColor: textColor,
                                                           linkColor: linkColor,
                                                         ),
-                                              ),
+                                                  );
+                                                }
+
+                                                return GestureDetector(
+                                                  behavior:
+                                                      HitTestBehavior.opaque,
+                                                  onTapUp: (details) {
+                                                    final dx =
+                                                        details
+                                                            .localPosition
+                                                            .dx;
+                                                    if (dx <=
+                                                        constraints.maxWidth *
+                                                            0.35) {
+                                                      _goToPreviousPage(
+                                                        animated:
+                                                            !disablePageTurnAnimation,
+                                                      );
+                                                    } else if (dx >=
+                                                        constraints.maxWidth *
+                                                            0.65) {
+                                                      _goToNextPage(
+                                                        pageCount:
+                                                            spreads.length,
+                                                        animated:
+                                                            !disablePageTurnAnimation,
+                                                      );
+                                                    }
+                                                  },
+                                                  child:
+                                                      useDoublePage
+                                                          ? Row(
+                                                            children: [
+                                                              Expanded(
+                                                                child: buildSpreadPage(
+                                                                  spread
+                                                                      .primary,
+                                                                ),
+                                                              ),
+                                                              const SizedBox(
+                                                                width:
+                                                                    _doublePageGap,
+                                                              ),
+                                                              Expanded(
+                                                                child:
+                                                                    spread.secondary !=
+                                                                            null
+                                                                        ? buildSpreadPage(
+                                                                          spread
+                                                                              .secondary!,
+                                                                        )
+                                                                        : const SizedBox.shrink(),
+                                                              ),
+                                                            ],
+                                                          )
+                                                          : buildSpreadPage(
+                                                            spread.primary,
+                                                          ),
+                                                );
+                                              },
+                                            );
+
+                                            if (!disablePageTurnAnimation) {
+                                              return pageView;
+                                            }
+
+                                            return GestureDetector(
+                                              behavior:
+                                                  HitTestBehavior.translucent,
+                                              onHorizontalDragStart:
+                                                  _handleManualPageDragStart,
+                                              onHorizontalDragUpdate:
+                                                  _handleManualPageDragUpdate,
+                                              onHorizontalDragCancel:
+                                                  _handleManualPageDragCancel,
+                                              onHorizontalDragEnd:
+                                                  (_) =>
+                                                      _handleManualPageDragEnd(
+                                                        pageCount:
+                                                            spreads.length,
+                                                      ),
+                                              child: pageView,
                                             );
                                           },
                                         ),
@@ -2910,7 +3105,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                                 ),
                                                 const SizedBox(width: 6),
                                                 Text(
-                                                  '${_currentPage + 1}/${pages.length}',
+                                                  '${_currentPage + 1}/${spreads.length}',
                                                   style: Theme.of(context)
                                                       .textTheme
                                                       .bodySmall

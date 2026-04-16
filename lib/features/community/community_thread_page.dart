@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/utils/time_utils.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/community.dart';
@@ -738,13 +739,11 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
                         _RelatedThreadCard(
                           item: related,
                           onTap:
-                              () => Navigator.of(context).pushReplacement(
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => CommunityThreadPage(
-                                        threadId: related.id,
-                                        initialTitle: related.title,
-                                      ),
+                              () => AppRouteLauncher.pushReplacementDetail(
+                                context,
+                                (_) => CommunityThreadPage(
+                                  threadId: related.id,
+                                  initialTitle: related.title,
                                 ),
                               ),
                         ),

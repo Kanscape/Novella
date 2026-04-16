@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/data/models/app_notification.dart';
 import 'package:novella/data/services/notification_service.dart';
@@ -121,26 +122,22 @@ class _CommunityNotificationPageState
 
     switch (item.objectType) {
       case AppNotificationObjectType.communityThread:
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder:
-                (_) => CommunityThreadPage(
-                  threadId: objectId,
-                  initialTitle: item.extra.objectTitle,
-                  replyId: item.extra.replyId,
-                  parentReplyId: item.extra.parentReplyId,
-                ),
+        await AppRouteLauncher.pushDetail(
+          context,
+          (_) => CommunityThreadPage(
+            threadId: objectId,
+            initialTitle: item.extra.objectTitle,
+            replyId: item.extra.replyId,
+            parentReplyId: item.extra.parentReplyId,
           ),
         );
         return;
       case AppNotificationObjectType.book:
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder:
-                (_) => BookDetailPage(
-                  bookId: objectId,
-                  initialTitle: item.extra.objectTitle,
-                ),
+        await AppRouteLauncher.pushDetail(
+          context,
+          (_) => BookDetailPage(
+            bookId: objectId,
+            initialTitle: item.extra.objectTitle,
           ),
         );
         return;

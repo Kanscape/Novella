@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/config/app_build_info.dart';
 import 'package:novella/main.dart' show rustLibInitialized, rustLibInitError;
@@ -75,10 +76,9 @@ class AboutSettingsPage extends ConsumerWidget {
                 title: const Text('源代码'),
                 trailing: const Icon(Icons.chevron_right, size: 20),
                 onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const SourceCodePage(),
-                    ),
+                  AppRouteLauncher.pushDetail(
+                    context,
+                    (context) => const SourceCodePage(),
                   );
                 },
               ),
@@ -89,10 +89,9 @@ class AboutSettingsPage extends ConsumerWidget {
                 title: const Text('调试日志'),
                 trailing: const Icon(Icons.chevron_right, size: 20),
                 onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const LogViewerPage(),
-                    ),
+                  AppRouteLauncher.pushDetail(
+                    context,
+                    (context) => const LogViewerPage(),
                   );
                 },
               ),
@@ -217,7 +216,10 @@ class AboutSettingsPage extends ConsumerWidget {
 
                                   // 跳转到登录页
                                   if (context.mounted) {
-                                    Navigator.of(context).pushAndRemoveUntil(
+                                    Navigator.of(
+                                      context,
+                                      rootNavigator: true,
+                                    ).pushAndRemoveUntil(
                                       MaterialPageRoute(
                                         builder: (_) => const LoginPage(),
                                       ),

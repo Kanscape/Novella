@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/network/request_queue.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_cover_hint_service.dart';
@@ -513,32 +515,34 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     }
 
     final bookIds = _bookIds;
-    return GridView.builder(
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(
-        12,
-        12,
-        12,
-        settings.useIOS26Style ? 86 : 24,
-      ),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 0.58,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: bookIds.length,
-      itemBuilder: (context, index) {
-        final bookId = bookIds[index];
-        return VisibilityDetector(
-          key: ValueKey('history_visibility_$bookId'),
-          onVisibilityChanged: (info) {
-            if (info.visibleFraction > 0) {
-              _trackVisibleItem(bookIds, index);
-            }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return GridView.builder(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            12,
+            12,
+            12,
+            appBottomContentPadding(
+              context,
+              useIOS26Style: settings.useIOS26Style,
+            ),
+          ),
+          gridDelegate: appBookGridDelegateForWidth(constraints.maxWidth - 24),
+          itemCount: bookIds.length,
+          itemBuilder: (context, index) {
+            final bookId = bookIds[index];
+            return VisibilityDetector(
+              key: ValueKey('history_visibility_$bookId'),
+              onVisibilityChanged: (info) {
+                if (info.visibleFraction > 0) {
+                  _trackVisibleItem(bookIds, index);
+                }
+              },
+              child: _buildBookItem(bookId),
+            );
           },
-          child: _buildBookItem(bookId),
         );
       },
     );
@@ -561,23 +565,19 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       coverRevealed: _revealedBookCoverKeys.contains('history_book_$bookId'),
       onCoverRevealed: () => _rememberBookCoverReveal(bookId),
       onTap: () {
-        Navigator.of(context)
-            .push(
-              MaterialPageRoute(
-                builder:
-                    (_) => BookDetailPage(
-                      bookId: bookId,
-                      initialCoverUrl: book?.cover ?? coverUrlHint,
-                      initialTitle: book?.title ?? titleHint,
-                      heroTag: heroTag,
-                    ),
-              ),
-            )
-            .then((_) {
-              if (mounted) {
-                _fetchHistory(force: true, silentIfPossible: true);
-              }
-            });
+        AppRouteLauncher.pushDetail(
+          context,
+          (_) => BookDetailPage(
+            bookId: bookId,
+            initialCoverUrl: book?.cover ?? coverUrlHint,
+            initialTitle: book?.title ?? titleHint,
+            heroTag: heroTag,
+          ),
+        ).then((_) {
+          if (mounted) {
+            _fetchHistory(force: true, silentIfPossible: true);
+          }
+        });
       },
     );
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:novella/core/layout/app_window_class.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/features/settings/settings_provider.dart';
 import 'package:novella/features/settings/pages/reading_settings_page.dart';
 import 'package:novella/features/settings/pages/content_settings_page.dart';
@@ -66,7 +68,12 @@ class SettingsPage extends ConsumerWidget {
             ),
           ),
           SliverPadding(
-            padding: EdgeInsets.only(bottom: settings.useIOS26Style ? 86 : 24),
+            padding: EdgeInsets.only(
+              bottom: appBottomContentPadding(
+                context,
+                useIOS26Style: settings.useIOS26Style,
+              ),
+            ),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 // 阅读设置
@@ -76,10 +83,9 @@ class SettingsPage extends ConsumerWidget {
                   subtitle: const Text('简单的阅读页设置'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const ReadingSettingsPage(),
-                      ),
+                    AppRouteLauncher.pushDetail(
+                      context,
+                      (context) => const ReadingSettingsPage(),
                     );
                   },
                 ),
@@ -91,10 +97,9 @@ class SettingsPage extends ConsumerWidget {
                   subtitle: const Text('所见即所得'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const ContentSettingsPage(),
-                      ),
+                    AppRouteLauncher.pushDetail(
+                      context,
+                      (context) => const ContentSettingsPage(),
                     );
                   },
                 ),
@@ -106,10 +111,9 @@ class SettingsPage extends ConsumerWidget {
                   subtitle: const Text('搭配颜色，选择界面样式'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const AppearanceSettingsPage(),
-                      ),
+                    AppRouteLauncher.pushDetail(
+                      context,
+                      (context) => const AppearanceSettingsPage(),
                     );
                   },
                 ),
@@ -121,10 +125,9 @@ class SettingsPage extends ConsumerWidget {
                   subtitle: const Text('加载策略与存储空间'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const CacheSettingsPage(),
-                      ),
+                    AppRouteLauncher.pushDetail(
+                      context,
+                      (context) => const CacheSettingsPage(),
                     );
                   },
                 ),
@@ -136,10 +139,9 @@ class SettingsPage extends ConsumerWidget {
                   subtitle: const Text('数据备份与跨设备'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const SyncSettingsPage(),
-                      ),
+                    AppRouteLauncher.pushDetail(
+                      context,
+                      (context) => const SyncSettingsPage(),
                     );
                   },
                 ),
@@ -151,10 +153,9 @@ class SettingsPage extends ConsumerWidget {
                   subtitle: const Text('查看更多信息'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const AboutSettingsPage(),
-                      ),
+                    AppRouteLauncher.pushDetail(
+                      context,
+                      (context) => const AboutSettingsPage(),
                     );
                   },
                 ),

@@ -22,6 +22,7 @@ class AppSettings {
   final double readerParagraphSpacing;
   final double readerSidePadding;
   final ReaderViewMode readerViewMode;
+  final bool readerPagedNoAnimation;
   final ReaderBatteryIndicatorStyle readerBatteryIndicatorStyle;
   final String theme; // 'system'（系统）, 'light'（浅色）, 'dark'（深色）
   final String appFontFamily;
@@ -93,6 +94,7 @@ class AppSettings {
     this.readerParagraphSpacing = 0.0,
     this.readerSidePadding = 30.0,
     this.readerViewMode = ReaderViewMode.paged,
+    this.readerPagedNoAnimation = false,
     this.readerBatteryIndicatorStyle = ReaderBatteryIndicatorStyle.text,
     this.theme = 'system',
     this.appFontFamily = '',
@@ -155,6 +157,7 @@ class AppSettings {
     double? readerParagraphSpacing,
     double? readerSidePadding,
     ReaderViewMode? readerViewMode,
+    bool? readerPagedNoAnimation,
     ReaderBatteryIndicatorStyle? readerBatteryIndicatorStyle,
     String? theme,
     String? appFontFamily,
@@ -201,6 +204,8 @@ class AppSettings {
           readerParagraphSpacing ?? this.readerParagraphSpacing,
       readerSidePadding: readerSidePadding ?? this.readerSidePadding,
       readerViewMode: readerViewMode ?? this.readerViewMode,
+      readerPagedNoAnimation:
+          readerPagedNoAnimation ?? this.readerPagedNoAnimation,
       readerBatteryIndicatorStyle:
           readerBatteryIndicatorStyle ?? this.readerBatteryIndicatorStyle,
       theme: theme ?? this.theme,
@@ -304,6 +309,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       readerViewMode: _parseReaderViewMode(
         prefs.getString('setting_readerViewMode'),
       ),
+      readerPagedNoAnimation:
+          prefs.getBool('setting_readerPagedNoAnimation') ?? false,
       readerBatteryIndicatorStyle: _parseReaderBatteryIndicatorStyle(
         prefs.getString('setting_readerBatteryIndicatorStyle'),
       ),
@@ -382,6 +389,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     );
     await prefs.setDouble('setting_readerSidePadding', state.readerSidePadding);
     await prefs.setString('setting_readerViewMode', state.readerViewMode.name);
+    await prefs.setBool(
+      'setting_readerPagedNoAnimation',
+      state.readerPagedNoAnimation,
+    );
     await prefs.setString(
       'setting_readerBatteryIndicatorStyle',
       state.readerBatteryIndicatorStyle.name,
@@ -482,6 +493,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setReaderViewMode(ReaderViewMode value) {
     state = state.copyWith(readerViewMode: value);
+    _save();
+  }
+
+  void setReaderPagedNoAnimation(bool value) {
+    state = state.copyWith(readerPagedNoAnimation: value);
     _save();
   }
 

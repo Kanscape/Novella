@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
+import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -915,35 +917,31 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
     if (!mounted) return;
 
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute(
-            builder:
-                (_) => ReaderPage(
-                  bid: widget.bookId,
-                  sortNum: sortNum,
-                  totalChapters: _bookInfo!.chapters.length,
-                  coverUrl: coverUrl,
-                  bookTitle: _bookInfo?.title ?? widget.initialTitle,
-                  allowServerOverrideOnOpen: allowServerOverrideOnOpen,
-                ),
-          ),
-        )
-        .then((_) {
-          if (!mounted) return;
+    AppRouteLauncher.pushTopLevel(
+      context,
+      (_) => ReaderPage(
+        bid: widget.bookId,
+        sortNum: sortNum,
+        totalChapters: _bookInfo!.chapters.length,
+        coverUrl: coverUrl,
+        bookTitle: _bookInfo?.title ?? widget.initialTitle,
+        allowServerOverrideOnOpen: allowServerOverrideOnOpen,
+      ),
+    ).then((_) {
+      if (!mounted) return;
 
-          // 1) 先用本地进度即时刷新按钮（同设备刚读完的反馈）
-          // 2) 短暂抑制服务端章节号覆盖，避免服务端进度延迟造成“按钮不更新/又回退”
-          _suppressServerPositionUntil = DateTime.now().add(
-            const Duration(seconds: 8),
-          );
+      // 1) 先用本地进度即时刷新按钮（同设备刚读完的反馈）
+      // 2) 短暂抑制服务端章节号覆盖，避免服务端进度延迟造成“按钮不更新/又回退”
+      _suppressServerPositionUntil = DateTime.now().add(
+        const Duration(seconds: 8),
+      );
 
-          _refreshReadingProgressPreferLocal();
+      _refreshReadingProgressPreferLocal();
 
-          // 静默拉取一次最新服务端数据（用于更新详情信息/服务端章节号）
-          // ignore: unawaited_futures
-          Future.microtask(() => _fetchServerDataInBackground());
-        });
+      // 静默拉取一次最新服务端数据（用于更新详情信息/服务端章节号）
+      // ignore: unawaited_futures
+      Future.microtask(() => _fetchServerDataInBackground());
+    });
   }
 
   /// 从阅读器返回时优先采用本地进度（即时更新 UI）
@@ -1429,178 +1427,194 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         settings.oledBlack && Theme.of(context).brightness == Brightness.dark;
     final coverUrl = widget.initialCoverUrl ?? '';
     final title = widget.initialTitle ?? '';
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = appCenteredContentHorizontalPaddingForWidth(
+          constraints.maxWidth,
+          maxContentWidth: 640,
+        );
 
-    return _LoadingShimmer(
-      child: CustomScrollView(
-        physics: const NeverScrollableScrollPhysics(),
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 280,
-            pinned: true,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            flexibleSpace: FlexibleSpaceBar(
-              collapseMode: CollapseMode.parallax,
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 渐变背景或加载占位
-                  if (!isOled &&
-                      _gradientColors != null &&
-                      settings.coverColorExtraction)
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: _gradientColors!,
+        return _LoadingShimmer(
+          child: CustomScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            slivers: [
+              SliverAppBar(
+                expandedHeight: 280,
+                pinned: true,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                flexibleSpace: FlexibleSpaceBar(
+                  collapseMode: CollapseMode.parallax,
+                  background: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // 渐变背景或加载占位
+                      if (!isOled &&
+                          _gradientColors != null &&
+                          settings.coverColorExtraction)
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: _gradientColors!,
+                            ),
+                          ),
+                        )
+                      else
+                        Container(
+                          color:
+                              isOled
+                                  ? Colors.black
+                                  : Theme.of(context).scaffoldBackgroundColor,
+                        ),
+                      // Gradient overlay
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Theme.of(
+                                context,
+                              ).scaffoldBackgroundColor.withAlpha(0),
+                              Theme.of(
+                                context,
+                              ).scaffoldBackgroundColor.withAlpha(0),
+                              Theme.of(
+                                context,
+                              ).scaffoldBackgroundColor.withAlpha(40),
+                              Theme.of(
+                                context,
+                              ).scaffoldBackgroundColor.withAlpha(120),
+                              Theme.of(
+                                context,
+                              ).scaffoldBackgroundColor.withAlpha(200),
+                              Theme.of(context).scaffoldBackgroundColor,
+                            ],
+                            stops: const [0.0, 0.3, 0.5, 0.7, 0.9, 1.0],
+                          ),
                         ),
                       ),
-                    )
-                  else
-                    Container(
-                      color:
-                          isOled
-                              ? Colors.black
-                              : Theme.of(context).scaffoldBackgroundColor,
-                    ),
-                  // Gradient overlay
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Theme.of(
-                            context,
-                          ).scaffoldBackgroundColor.withAlpha(0),
-                          Theme.of(
-                            context,
-                          ).scaffoldBackgroundColor.withAlpha(0),
-                          Theme.of(
-                            context,
-                          ).scaffoldBackgroundColor.withAlpha(40),
-                          Theme.of(
-                            context,
-                          ).scaffoldBackgroundColor.withAlpha(120),
-                          Theme.of(
-                            context,
-                          ).scaffoldBackgroundColor.withAlpha(200),
-                          Theme.of(context).scaffoldBackgroundColor,
-                        ],
-                        stops: const [0.0, 0.3, 0.5, 0.7, 0.9, 1.0],
-                      ),
-                    ),
-                  ),
-                  // 封面标题预览
-                  Positioned(
-                    left: 20,
-                    right: 20,
-                    bottom: 16,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        // Cover
-                        _buildCoverHero(coverUrl, colorScheme),
-                        const SizedBox(width: 16),
-                        // Title
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (title.isNotEmpty)
-                                Text(
-                                  title,
-                                  style: Theme.of(context).textTheme.titleLarge
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                  maxLines: 4,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              const SizedBox(height: 8),
-                              // 作者加载骨架
-                              _SynchronizedShimmerBox(
-                                width: 80,
-                                height: 16,
-                                borderRadius: 4,
+                      // 封面标题预览
+                      Positioned(
+                        left: horizontalPadding,
+                        right: horizontalPadding,
+                        bottom: 16,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            // Cover
+                            _buildCoverHero(coverUrl, colorScheme),
+                            const SizedBox(width: 16),
+                            // Title
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (title.isNotEmpty)
+                                    Text(
+                                      title,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleLarge?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 4,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  const SizedBox(height: 8),
+                                  // 作者加载骨架
+                                  _SynchronizedShimmerBox(
+                                    width: 80,
+                                    height: 16,
+                                    borderRadius: 4,
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // 内容骨架屏
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  16,
+                  horizontalPadding,
+                  0,
+                ),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    // 元数据 Chips 骨架
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _SynchronizedShimmerBox(
+                          width: 55,
+                          height: 26,
+                          borderRadius: 8,
+                        ),
+                        _SynchronizedShimmerBox(
+                          width: 55,
+                          height: 26,
+                          borderRadius: 8,
+                        ),
+                        _SynchronizedShimmerBox(
+                          width: 55,
+                          height: 26,
+                          borderRadius: 8,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // 操作按钮骨架
+                    Row(
+                      children: [
+                        _SynchronizedShimmerBox(
+                          width: 56,
+                          height: 56,
+                          borderRadius: 16,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _SynchronizedShimmerBox(
+                            width: double.infinity,
+                            height: 56,
+                            borderRadius: 16,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // 内容骨架屏
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // 元数据 Chips 骨架
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
+                    const SizedBox(height: 24),
+                    // 简介骨架
                     _SynchronizedShimmerBox(
-                      width: 55,
-                      height: 26,
-                      borderRadius: 8,
-                    ),
-                    _SynchronizedShimmerBox(
-                      width: 55,
-                      height: 26,
-                      borderRadius: 8,
-                    ),
-                    _SynchronizedShimmerBox(
-                      width: 55,
-                      height: 26,
-                      borderRadius: 8,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                // 操作按钮骨架
-                Row(
-                  children: [
-                    _SynchronizedShimmerBox(
-                      width: 56,
-                      height: 56,
+                      width: double.infinity,
+                      height: 80,
                       borderRadius: 16,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _SynchronizedShimmerBox(
-                        width: double.infinity,
-                        height: 56,
-                        borderRadius: 16,
-                      ),
+                    const SizedBox(height: 24),
+                    // 列表区域骨架
+                    // 匹配下方视觉权重
+                    _SynchronizedShimmerBox(
+                      width: double.infinity,
+                      height: 300,
+                      borderRadius: 16,
                     ),
-                  ],
+                  ]),
                 ),
-                const SizedBox(height: 24),
-                // 简介骨架
-                _SynchronizedShimmerBox(
-                  width: double.infinity,
-                  height: 80,
-                  borderRadius: 16,
-                ),
-                const SizedBox(height: 24),
-                // 列表区域骨架
-                // 匹配下方视觉权重
-                _SynchronizedShimmerBox(
-                  width: double.infinity,
-                  height: 300,
-                  borderRadius: 16,
-                ),
-              ]),
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1633,505 +1647,534 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         widget.initialCoverUrl?.isNotEmpty == true
             ? widget.initialCoverUrl!
             : book.cover;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = appCenteredContentHorizontalPaddingForWidth(
+          constraints.maxWidth,
+          maxContentWidth: 640,
+        );
 
-    return CustomScrollView(
-      slivers: [
-        // 现代风格头部（模糊背景+浮动封面）
-        SliverAppBar(
-          expandedHeight: 280,
-          pinned: true,
-          stretch: true,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          // 调整右侧按钮边距以匹配左侧返回按钮视觉位置
-          actionsPadding: const EdgeInsets.only(right: 12),
-          flexibleSpace: FlexibleSpaceBar(
-            collapseMode: CollapseMode.parallax,
-            background: Stack(
-              fit: StackFit.expand,
-              children: [
-                // 提取色渐变背景或降级
-                if (!isOled &&
-                    _gradientColors != null &&
-                    !_coverLoadFailed &&
-                    settings.coverColorExtraction)
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors:
-                            _gradientColors!.length >= 3
-                                ? [
-                                  _gradientColors![0],
-                                  Color.lerp(
-                                    _gradientColors![0],
-                                    _gradientColors![1],
-                                    0.5,
-                                  )!,
-                                  _gradientColors![1],
-                                  Color.lerp(
-                                    _gradientColors![1],
-                                    _gradientColors![2],
-                                    0.5,
-                                  )!,
-                                  _gradientColors![2],
-                                ]
-                                : [
-                                  _gradientColors!.first,
-                                  Color.lerp(
-                                    _gradientColors!.first,
-                                    _gradientColors!.last,
-                                    0.3,
-                                  )!,
-                                  Color.lerp(
-                                    _gradientColors!.first,
-                                    _gradientColors!.last,
-                                    0.7,
-                                  )!,
-                                  _gradientColors!.last,
-                                ],
-                        stops:
-                            _gradientColors!.length >= 3
-                                ? const [0.0, 0.25, 0.5, 0.75, 1.0]
-                                : const [0.0, 0.35, 0.65, 1.0],
+        return CustomScrollView(
+          slivers: [
+            // 现代风格头部（模糊背景+浮动封面）
+            SliverAppBar(
+              expandedHeight: 280,
+              pinned: true,
+              stretch: true,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              // 调整右侧按钮边距以匹配左侧返回按钮视觉位置
+              actionsPadding: const EdgeInsets.only(right: 12),
+              flexibleSpace: FlexibleSpaceBar(
+                collapseMode: CollapseMode.parallax,
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 提取色渐变背景或降级
+                    if (!isOled &&
+                        _gradientColors != null &&
+                        !_coverLoadFailed &&
+                        settings.coverColorExtraction)
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors:
+                                _gradientColors!.length >= 3
+                                    ? [
+                                      _gradientColors![0],
+                                      Color.lerp(
+                                        _gradientColors![0],
+                                        _gradientColors![1],
+                                        0.5,
+                                      )!,
+                                      _gradientColors![1],
+                                      Color.lerp(
+                                        _gradientColors![1],
+                                        _gradientColors![2],
+                                        0.5,
+                                      )!,
+                                      _gradientColors![2],
+                                    ]
+                                    : [
+                                      _gradientColors!.first,
+                                      Color.lerp(
+                                        _gradientColors!.first,
+                                        _gradientColors!.last,
+                                        0.3,
+                                      )!,
+                                      Color.lerp(
+                                        _gradientColors!.first,
+                                        _gradientColors!.last,
+                                        0.7,
+                                      )!,
+                                      _gradientColors!.last,
+                                    ],
+                            stops:
+                                _gradientColors!.length >= 3
+                                    ? const [0.0, 0.25, 0.5, 0.75, 1.0]
+                                    : const [0.0, 0.35, 0.65, 1.0],
+                          ),
+                        ),
+                      )
+                    else
+                      // 默认背景：使用 Scaffold 背景色
+                      Container(
+                        color:
+                            isOled
+                                ? Colors.black
+                                : Theme.of(context).scaffoldBackgroundColor,
                       ),
-                    ),
-                  )
-                else
-                  // 默认背景：使用 Scaffold 背景色
-                  Container(
-                    color:
-                        isOled
-                            ? Colors.black
-                            : Theme.of(context).scaffoldBackgroundColor,
-                  ),
-                // 平滑过渡渐变遮罩
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Theme.of(context).scaffoldBackgroundColor.withAlpha(0),
-                        Theme.of(context).scaffoldBackgroundColor.withAlpha(0),
-                        Theme.of(context).scaffoldBackgroundColor.withAlpha(40),
-                        Theme.of(
-                          context,
-                        ).scaffoldBackgroundColor.withAlpha(120),
-                        Theme.of(
-                          context,
-                        ).scaffoldBackgroundColor.withAlpha(200),
-                        Theme.of(context).scaffoldBackgroundColor,
-                      ],
-                      stops: const [0.0, 0.3, 0.5, 0.7, 0.9, 1.0],
-                    ),
-                  ),
-                ),
-
-                // 移除淡出层以增强对比
-                // 封面标题层
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 16,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      // 浮动封面卡片
-                      _buildCoverHero(coverUrl, colorScheme),
-                      const SizedBox(width: 16),
-                      // 标题与作者
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              book.title,
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                              maxLines: 4,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (book.author.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                book.author,
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodyMedium?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
+                    // 平滑过渡渐变遮罩
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Theme.of(
+                              context,
+                            ).scaffoldBackgroundColor.withAlpha(0),
+                            Theme.of(
+                              context,
+                            ).scaffoldBackgroundColor.withAlpha(0),
+                            Theme.of(
+                              context,
+                            ).scaffoldBackgroundColor.withAlpha(40),
+                            Theme.of(
+                              context,
+                            ).scaffoldBackgroundColor.withAlpha(120),
+                            Theme.of(
+                              context,
+                            ).scaffoldBackgroundColor.withAlpha(200),
+                            Theme.of(context).scaffoldBackgroundColor,
                           ],
+                          stops: const [0.0, 0.3, 0.5, 0.7, 0.9, 1.0],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+
+                    // 移除淡出层以增强对比
+                    // 封面标题层
+                    Positioned(
+                      left: horizontalPadding,
+                      right: horizontalPadding,
+                      bottom: 16,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          // 浮动封面卡片
+                          _buildCoverHero(coverUrl, colorScheme),
+                          const SizedBox(width: 16),
+                          // 标题与作者
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  book.title,
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                  maxLines: 4,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (book.author.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    book.author,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodyMedium?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                IconButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder:
+                            (context) => CommentPage(
+                              type: CommentType.booked,
+                              id: widget.bookId,
+                              title: book.title,
+                              coverUrl: book.cover,
+                            ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.comment_outlined),
+                  tooltip: '评论',
+                ),
+                IconButton(
+                  onPressed: _showUploaderInfoSheet,
+                  icon: const Icon(Icons.contact_page_outlined),
+                  tooltip: '上传者信息',
                 ),
               ],
             ),
-          ),
-          actions: [
-            IconButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder:
-                        (context) => CommentPage(
-                          type: CommentType.booked,
-                          id: widget.bookId,
-                          title: book.title,
-                          coverUrl: book.cover,
-                        ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.comment_outlined),
-              tooltip: '评论',
-            ),
-            IconButton(
-              onPressed: _showUploaderInfoSheet,
-              icon: const Icon(Icons.contact_page_outlined),
-              tooltip: '上传者信息',
-            ),
-          ],
-        ),
 
-        // 内容区域
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 数据栏（极简 Chips）
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    _buildMetaChip(
-                      Icons.favorite_outline,
-                      '${book.favorite}',
-                      colorScheme,
-                    ),
-                    _buildMetaChip(
-                      Icons.visibility_outlined,
-                      '${book.views}',
-                      colorScheme,
-                    ),
-                    _buildMetaChip(
-                      Icons.library_books_outlined,
-                      '${book.chapters.length} 章',
-                      colorScheme,
-                    ),
-                    // 显示标记状态
-                    if (_currentMark != BookMarkStatus.none)
-                      _buildMetaChip(
-                        _getMarkIcon(_currentMark),
-                        _currentMark.displayName,
-                        colorScheme,
-                      ),
-                  ],
+            // 内容区域
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  16,
+                  horizontalPadding,
+                  0,
                 ),
-                const SizedBox(height: 20),
-
-                // 全宽现代风格操作按钮
-                Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 书架/标记开关
-                    _shelfLoading
-                        ? Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(16),
+                    // 数据栏（极简 Chips）
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _buildMetaChip(
+                          Icons.favorite_outline,
+                          '${book.favorite}',
+                          colorScheme,
+                        ),
+                        _buildMetaChip(
+                          Icons.visibility_outlined,
+                          '${book.views}',
+                          colorScheme,
+                        ),
+                        _buildMetaChip(
+                          Icons.library_books_outlined,
+                          '${book.chapters.length} 章',
+                          colorScheme,
+                        ),
+                        // 显示标记状态
+                        if (_currentMark != BookMarkStatus.none)
+                          _buildMetaChip(
+                            _getMarkIcon(_currentMark),
+                            _currentMark.displayName,
+                            colorScheme,
                           ),
-                          child: const Center(
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: M3ELoadingIndicator(size: 20),
-                            ),
-                          ),
-                        )
-                        : Material(
-                          color:
-                              _isInShelf
-                                  ? colorScheme.primaryContainer
-                                  : colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(16),
-                          child: InkWell(
-                            onTap: _toggleShelf,
-                            onLongPress: _showMarkBookSheet,
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 全宽现代风格操作按钮
+                    Row(
+                      children: [
+                        // 书架/标记开关
+                        _shelfLoading
+                            ? Container(
                               width: 56,
                               height: 56,
-                              alignment: Alignment.center,
-                              child: Icon(
-                                _isInShelf
-                                    ? Icons.bookmark
-                                    : Icons.bookmark_outline,
-                                color:
+                              decoration: BoxDecoration(
+                                color: colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: M3ELoadingIndicator(size: 20),
+                                ),
+                              ),
+                            )
+                            : Material(
+                              color:
+                                  _isInShelf
+                                      ? colorScheme.primaryContainer
+                                      : colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(16),
+                              child: InkWell(
+                                onTap: _toggleShelf,
+                                onLongPress: _showMarkBookSheet,
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  width: 56,
+                                  height: 56,
+                                  alignment: Alignment.center,
+                                  child: Icon(
                                     _isInShelf
-                                        ? colorScheme.onPrimaryContainer
-                                        : colorScheme.onSurfaceVariant,
+                                        ? Icons.bookmark
+                                        : Icons.bookmark_outline,
+                                    color:
+                                        _isInShelf
+                                            ? colorScheme.onPrimaryContainer
+                                            : colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        const SizedBox(width: 12),
+                        // 阅读按钮
+                        Expanded(
+                          child: SizedBox(
+                            height: 56,
+                            child: FilledButton(
+                              onPressed: _continueReading,
+                              style: FilledButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.play_arrow_rounded,
+                                    size: 22,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      _readPosition != null
+                                          ? (() {
+                                            // 根据 ID 查找章节标题
+                                            final chapter = book.chapters
+                                                .cast<ChapterInfo?>()
+                                                .firstWhere(
+                                                  (c) =>
+                                                      c?.id ==
+                                                      _readPosition!.chapterId,
+                                                  orElse: () => null,
+                                                );
+                                            if (chapter != null &&
+                                                chapter.title.isNotEmpty) {
+                                              String title = chapter.title;
+
+                                              // 若开启则清洗标题
+                                              final settings = ref.read(
+                                                settingsProvider,
+                                              );
+                                              if (settings
+                                                  .isCleanChapterTitleEnabled(
+                                                    AppSettings
+                                                        .cleanChapterTitleContinueReadingScope,
+                                                  )) {
+                                                // 智能混合正则：
+                                                // 处理 【第一话】 或非英文前缀
+                                                // 处理 『「〈 分隔符
+                                                // 保留纯英文标题
+                                                final regex = RegExp(
+                                                  r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
+                                                );
+                                                final match = regex.firstMatch(
+                                                  title,
+                                                );
+                                                if (match != null) {
+                                                  // 合并分组
+                                                  final extracted =
+                                                      (match.group(1) ?? '') +
+                                                      (match.group(2) ?? '');
+                                                  if (extracted.isNotEmpty) {
+                                                    title = extracted;
+                                                  }
+                                                }
+                                              }
+
+                                              // 截断长标题
+                                              if (title.length > 15) {
+                                                title =
+                                                    '${title.substring(0, 15)}...';
+                                              }
+                                              return '续读 · $title';
+                                            }
+                                            return '续读';
+                                          })()
+                                          : '开始阅读',
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                    const SizedBox(width: 12),
-                    // 阅读按钮
-                    Expanded(
-                      child: SizedBox(
-                        height: 56,
-                        child: FilledButton(
-                          onPressed: _continueReading,
-                          style: FilledButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.play_arrow_rounded, size: 22),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  _readPosition != null
-                                      ? (() {
-                                        // 根据 ID 查找章节标题
-                                        final chapter = book.chapters
-                                            .cast<ChapterInfo?>()
-                                            .firstWhere(
-                                              (c) =>
-                                                  c?.id ==
-                                                  _readPosition!.chapterId,
-                                              orElse: () => null,
-                                            );
-                                        if (chapter != null &&
-                                            chapter.title.isNotEmpty) {
-                                          String title = chapter.title;
+                      ],
+                    ),
+                    const SizedBox(height: 24),
 
-                                          // 若开启则清洗标题
-                                          final settings = ref.read(
-                                            settingsProvider,
-                                          );
-                                          if (settings.isCleanChapterTitleEnabled(
-                                            AppSettings
-                                                .cleanChapterTitleContinueReadingScope,
-                                          )) {
-                                            // 智能混合正则：
-                                            // 处理 【第一话】 或非英文前缀
-                                            // 处理 『「〈 分隔符
-                                            // 保留纯英文标题
-                                            final regex = RegExp(
-                                              r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
-                                            );
-                                            final match = regex.firstMatch(
-                                              title,
-                                            );
-                                            if (match != null) {
-                                              // 合并分组
-                                              final extracted =
-                                                  (match.group(1) ?? '') +
-                                                  (match.group(2) ?? '');
-                                              if (extracted.isNotEmpty) {
-                                                title = extracted;
-                                              }
-                                            }
-                                          }
-
-                                          // 截断长标题
-                                          if (title.length > 15) {
-                                            title =
-                                                '${title.substring(0, 15)}...';
-                                          }
-                                          return '续读 · $title';
-                                        }
-                                        return '续读';
-                                      })()
-                                      : '开始阅读',
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                            ],
+                    // 简介（可展开）
+                    if (book.introduction.isNotEmpty) ...[
+                      _buildSectionTitle('简介'),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () => _showFullIntro(context, book.introduction),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: _buildIntroPreview(
+                            book.introduction,
+                            colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // Update info - subtle
+                    ...[
+                      Builder(
+                        builder: (context) {
+                          final relativeTime = _formatRelativeTime(
+                            book.lastUpdatedAt,
+                          );
+                          // Use last chapter from chapters list for accuracy
+                          final lastChapterTitle =
+                              book.chapters.isNotEmpty
+                                  ? book.chapters.last.title
+                                  : null;
+                          final hasChapter =
+                              lastChapterTitle != null &&
+                              lastChapterTitle.isNotEmpty;
+                          final displayText =
+                              hasChapter
+                                  ? '最新: $relativeTime - $lastChapterTitle'
+                                  : '最新: $relativeTime';
+
+                          return Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest
+                                  .withAlpha(128),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.update_outlined,
+                                  size: 18,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    displayText,
+                                    style: TextStyle(
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontSize: 13,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // Chapter list header
+                    _buildSectionTitle('章节'),
                   ],
                 ),
-                const SizedBox(height: 24),
+              ),
+            ),
 
-                // 简介（可展开）
-                if (book.introduction.isNotEmpty) ...[
-                  _buildSectionTitle('简介'),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () => _showFullIntro(context, book.introduction),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: _buildIntroPreview(
-                        book.introduction,
-                        colorScheme.onSurfaceVariant,
+            // Chapter list - clean and minimal
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding - 12,
+                0,
+                horizontalPadding - 12,
+                0,
+              ),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final chapter = book.chapters[index];
+                  final sortNum = index + 1;
+                  final isCurrentChapter = _readPosition?.sortNum == sortNum;
+
+                  return ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 0,
+                    ),
+                    leading: Container(
+                      width: 32,
+                      alignment: Alignment.center,
+                      child: Text(
+                        '$sortNum',
+                        style: TextStyle(
+                          color:
+                              isCurrentChapter
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
+                          fontWeight:
+                              isCurrentChapter
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
+                          fontSize: 13,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-
-                // Update info - subtle
-                ...[
-                  Builder(
-                    builder: (context) {
-                      final relativeTime = _formatRelativeTime(
-                        book.lastUpdatedAt,
-                      );
-                      // Use last chapter from chapters list for accuracy
-                      final lastChapterTitle =
-                          book.chapters.isNotEmpty
-                              ? book.chapters.last.title
-                              : null;
-                      final hasChapter =
-                          lastChapterTitle != null &&
-                          lastChapterTitle.isNotEmpty;
-                      final displayText =
-                          hasChapter
-                              ? '最新: $relativeTime - $lastChapterTitle'
-                              : '最新: $relativeTime';
-
-                      return Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest.withAlpha(
-                            128,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.update_outlined,
-                              size: 18,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                displayText,
-                                style: TextStyle(
-                                  color: colorScheme.onSurfaceVariant,
-                                  fontSize: 13,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                ],
-
-                // Chapter list header
-                _buildSectionTitle('章节'),
-              ],
-            ),
-          ),
-        ),
-
-        // Chapter list - clean and minimal
-        SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final chapter = book.chapters[index];
-              final sortNum = index + 1;
-              final isCurrentChapter = _readPosition?.sortNum == sortNum;
-
-              return ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 0,
-                ),
-                leading: Container(
-                  width: 32,
-                  alignment: Alignment.center,
-                  child: Text(
-                    '$sortNum',
-                    style: TextStyle(
-                      color:
-                          isCurrentChapter
-                              ? colorScheme.primary
-                              : colorScheme.onSurfaceVariant,
-                      fontWeight:
-                          isCurrentChapter ? FontWeight.bold : FontWeight.w500,
-                      fontSize: 13,
-                      fontFeatures: const [FontFeature.tabularFigures()],
+                    title: Text(
+                      chapter.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isCurrentChapter ? colorScheme.primary : null,
+                        fontWeight: isCurrentChapter ? FontWeight.w600 : null,
+                        fontSize: 14,
+                      ),
                     ),
-                  ),
-                ),
-                title: Text(
-                  chapter.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isCurrentChapter ? colorScheme.primary : null,
-                    fontWeight: isCurrentChapter ? FontWeight.w600 : null,
-                    fontSize: 14,
-                  ),
-                ),
-                trailing:
-                    isCurrentChapter
-                        ? Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '当前',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colorScheme.onPrimaryContainer,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        )
-                        : null,
-                onTap: () => _startReading(sortNum: sortNum),
-              );
-            }, childCount: book.chapters.length),
-          ),
-        ),
+                    trailing:
+                        isCurrentChapter
+                            ? Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '当前',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            )
+                            : null,
+                    onTap: () => _startReading(sortNum: sortNum),
+                  );
+                }, childCount: book.chapters.length),
+              ),
+            ),
 
-        // Bottom safe area
-        SliverPadding(
-          padding: EdgeInsets.only(
-            bottom: 40 + MediaQuery.of(context).padding.bottom,
-          ),
-        ),
-      ],
+            // Bottom safe area
+            SliverPadding(
+              padding: EdgeInsets.only(
+                bottom: 40 + MediaQuery.of(context).padding.bottom,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

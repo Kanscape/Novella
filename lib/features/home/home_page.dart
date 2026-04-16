@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/network/request_queue.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/data/services/book_service.dart';
@@ -610,16 +612,13 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                       IconButton(
                         icon: const Icon(Icons.search),
                         onPressed: () {
-                          Navigator.of(context)
-                              .push(
-                                MaterialPageRoute(
-                                  builder: (_) => const SearchPage(),
-                                ),
-                              )
-                              .then((_) {
-                                _loadReadingStats();
-                                _fetchContinueReading(internalLoading: false);
-                              });
+                          AppRouteLauncher.pushDetail(
+                            context,
+                            (_) => const SearchPage(),
+                          ).then((_) {
+                            _loadReadingStats();
+                            _fetchContinueReading(internalLoading: false);
+                          });
                         },
                         tooltip: '搜索',
                       ),
@@ -667,7 +666,14 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
             // 底部留白
             // 底部留白 (减去模块自带的 16px 底部间距)
             SliverToBoxAdapter(
-              child: SizedBox(height: (settings.useIOS26Style ? 86 : 24) - 16),
+              child: SizedBox(
+                height:
+                    appBottomContentPadding(
+                      context,
+                      useIOS26Style: settings.useIOS26Style,
+                    ) -
+                    16,
+              ),
             ),
           ],
         ),
@@ -723,22 +729,18 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                 child: InkWell(
                   onTap: () {
                     // 快速进入书籍详情页
-                    Navigator.of(context)
-                        .push(
-                          MaterialPageRoute(
-                            builder:
-                                (_) => BookDetailPage(
-                                  bookId: book.id,
-                                  initialCoverUrl: book.cover,
-                                  initialTitle: book.title,
-                                  heroTag: 'continue_reading_${book.id}',
-                                ),
-                          ),
-                        )
-                        .then((_) {
-                          _loadReadingStats();
-                          _fetchContinueReading(internalLoading: false);
-                        }); // 返回刷新
+                    AppRouteLauncher.pushDetail(
+                      context,
+                      (_) => BookDetailPage(
+                        bookId: book.id,
+                        initialCoverUrl: book.cover,
+                        initialTitle: book.title,
+                        heroTag: 'continue_reading_${book.id}',
+                      ),
+                    ).then((_) {
+                      _loadReadingStats();
+                      _fetchContinueReading(internalLoading: false);
+                    }); // 返回刷新
                   },
                   child: Padding(
                     padding: const EdgeInsets.all(12),
@@ -896,10 +898,9 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
               ),
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const RecentlyUpdatedPage(),
-                    ),
+                  AppRouteLauncher.pushDetail(
+                    context,
+                    (_) => const RecentlyUpdatedPage(),
                   );
                 },
                 child: const Row(
@@ -935,18 +936,23 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
           )
           : SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 0.58,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 12,
-              ),
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final book = _latestBooks[index];
-                if (index >= 6) return null;
-                return _buildBookCard(context, book, 0, 'recent');
-              }, childCount: _latestBooks.length > 6 ? 6 : _latestBooks.length),
+            sliver: SliverLayoutBuilder(
+              builder: (context, constraints) {
+                return SliverGrid(
+                  gridDelegate: appBookGridDelegateForWidth(
+                    constraints.crossAxisExtent,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final book = _latestBooks[index];
+                      if (index >= 6) return null;
+                      return _buildBookCard(context, book, 0, 'recent');
+                    },
+                    childCount:
+                        _latestBooks.length > 6 ? 6 : _latestBooks.length,
+                  ),
+                );
+              },
             ),
           ),
       const SliverToBoxAdapter(child: SizedBox(height: 16)),
@@ -1000,12 +1006,9 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
               ),
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder:
-                          (_) =>
-                              RankingPage(initialType: settings.homeRankType),
-                    ),
+                  AppRouteLauncher.pushDetail(
+                    context,
+                    (_) => RankingPage(initialType: settings.homeRankType),
                   );
                 },
                 child: const Row(
@@ -1041,17 +1044,18 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
           )
           : SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 0.58,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 12,
-              ),
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final book = previewBooks[index];
-                return _buildBookCard(context, book, index + 1, 'rank');
-              }, childCount: previewBooks.length),
+            sliver: SliverLayoutBuilder(
+              builder: (context, constraints) {
+                return SliverGrid(
+                  gridDelegate: appBookGridDelegateForWidth(
+                    constraints.crossAxisExtent,
+                  ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final book = previewBooks[index];
+                    return _buildBookCard(context, book, index + 1, 'rank');
+                  }, childCount: previewBooks.length),
+                );
+              },
             ),
           ),
       const SliverToBoxAdapter(child: SizedBox(height: 16)),
@@ -1108,22 +1112,18 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
 
     return GestureDetector(
       onTap: () {
-        Navigator.of(context)
-            .push(
-              MaterialPageRoute(
-                builder:
-                    (_) => BookDetailPage(
-                      bookId: book.id,
-                      initialCoverUrl: book.cover,
-                      initialTitle: book.title,
-                      heroTag: heroTag,
-                    ),
-              ),
-            )
-            .then((_) {
-              _loadReadingStats();
-              _fetchContinueReading(internalLoading: false);
-            });
+        AppRouteLauncher.pushDetail(
+          context,
+          (_) => BookDetailPage(
+            bookId: book.id,
+            initialCoverUrl: book.cover,
+            initialTitle: book.title,
+            heroTag: heroTag,
+          ),
+        ).then((_) {
+          _loadReadingStats();
+          _fetchContinueReading(internalLoading: false);
+        });
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

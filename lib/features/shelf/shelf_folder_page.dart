@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_reorderable_grid_view/widgets/widgets.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/network/request_queue.dart';
+import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_cover_hint_service.dart';
@@ -470,14 +472,12 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
     }
 
     final folderId = item.id as String;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (_) => ShelfFolderPage(
-              folderId: folderId,
-              folderTitle: item.title,
-              folderPath: [...item.parents, folderId],
-            ),
+    await AppRouteLauncher.pushDetail(
+      context,
+      (_) => ShelfFolderPage(
+        folderId: folderId,
+        folderTitle: item.title,
+        folderPath: [...item.parents, folderId],
       ),
     );
 
@@ -499,15 +499,13 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (_) => BookDetailPage(
-              bookId: bookId,
-              initialCoverUrl: book?.cover,
-              initialTitle: book?.title,
-              heroTag: 'shelf_folder_${widget.folderId}_$bookId',
-            ),
+    await AppRouteLauncher.pushDetail(
+      context,
+      (_) => BookDetailPage(
+        bookId: bookId,
+        initialCoverUrl: book?.cover,
+        initialTitle: book?.title,
+        heroTag: 'shelf_folder_${widget.folderId}_$bookId',
       ),
     );
   }
@@ -737,23 +735,26 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
                     ),
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                    sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            childAspectRatio: 0.58,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 12,
+                    sliver: SliverLayoutBuilder(
+                      builder: (context, constraints) {
+                        return SliverGrid(
+                          gridDelegate: appBookGridDelegateForWidth(
+                            constraints.crossAxisExtent,
                           ),
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        return _buildGridItem(
-                          context,
-                          displayItems[index],
-                          items: displayItems,
-                          index: index,
-                          showSortHandle: false,
+                          delegate: SliverChildBuilderDelegate((
+                            context,
+                            index,
+                          ) {
+                            return _buildGridItem(
+                              context,
+                              displayItems[index],
+                              items: displayItems,
+                              index: index,
+                              showSortHandle: false,
+                            );
+                          }, childCount: displayItems.length),
                         );
-                      }, childCount: displayItems.length),
+                      },
                     ),
                   ),
                   SliverToBoxAdapter(
@@ -805,33 +806,34 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
                 unawaited(_handlePageItemsReordered());
               },
               childBuilder: (itemBuilder) {
-                return GridView.builder(
-                  key: _gridViewKey,
-                  controller: _sortScrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(
-                    12,
-                    12,
-                    12,
-                    12 + MediaQuery.paddingOf(context).bottom,
-                  ),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    childAspectRatio: 0.58,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemCount: displayItems.length,
-                  itemBuilder: (context, index) {
-                    return itemBuilder(
-                      _buildGridItem(
-                        context,
-                        displayItems[index],
-                        items: displayItems,
-                        index: index,
-                        showSortHandle: _isSortMode,
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    return GridView.builder(
+                      key: _gridViewKey,
+                      controller: _sortScrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.fromLTRB(
+                        12,
+                        12,
+                        12,
+                        12 + MediaQuery.paddingOf(context).bottom,
                       ),
-                      index,
+                      gridDelegate: appBookGridDelegateForWidth(
+                        constraints.maxWidth - 24,
+                      ),
+                      itemCount: displayItems.length,
+                      itemBuilder: (context, index) {
+                        return itemBuilder(
+                          _buildGridItem(
+                            context,
+                            displayItems[index],
+                            items: displayItems,
+                            index: index,
+                            showSortHandle: _isSortMode,
+                          ),
+                          index,
+                        );
+                      },
                     );
                   },
                 );
