@@ -4,10 +4,11 @@ import 'package:cloudflare_turnstile/cloudflare_turnstile.dart';
 import 'package:flutter/material.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/config/turnstile_config.dart';
+import 'package:novella/core/storage/secret_storage_service.dart';
+import 'package:novella/core/storage/secret_storage_warning_sheet.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/auth/refresh_token_login_page.dart';
 import 'package:novella/features/main_page.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// 原生登录/注册/找回密码页面（MD3 Outlined），使用 Cloudflare Turnstile 获取 token。
 class LoginTurnstilePage extends StatefulWidget {
@@ -55,6 +56,7 @@ class _LoginTurnstilePageState extends State<LoginTurnstilePage>
   }
 
   final AuthService _authService = AuthService();
+  final SecretStorageService _secretStorage = SecretStorageService();
   late final TabController _tabController;
 
   // ─── 登录 ───
@@ -199,8 +201,8 @@ class _LoginTurnstilePageState extends State<LoginTurnstilePage>
   }
 
   Future<void> _finishAndPopSuccess() async {
-    final prefs = await SharedPreferences.getInstance();
-    final refreshToken = prefs.getString('refresh_token') ?? '';
+    final refreshToken =
+        await _secretStorage.read(SecretStorageKeys.refreshToken) ?? '';
     if (!mounted) return;
     Navigator.of(context).pop({'refreshToken': refreshToken});
   }
@@ -616,6 +618,8 @@ class _LoginTurnstilePageState extends State<LoginTurnstilePage>
                       () => setState(() => _loginTurnstileToken = null),
                 );
                 if (token == null) return;
+                if (!mounted) return;
+                if (!await ensureSecretStorageReady(context)) return;
 
                 setState(() => _loginSubmitting = true);
                 try {
@@ -822,6 +826,7 @@ class _LoginTurnstilePageState extends State<LoginTurnstilePage>
                 final valid =
                     _registerFormKey.currentState?.validate() ?? false;
                 if (!valid) return;
+                if (!await ensureSecretStorageReady(context)) return;
 
                 setState(() => _registerSubmitting = true);
                 try {

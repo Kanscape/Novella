@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:novella/core/auth/auth_service.dart';
+import 'package:novella/core/storage/secret_storage_service.dart';
+import 'package:novella/core/storage/secret_storage_warning_sheet.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// 使用网页端的 RefreshToken 手动登录（兜底入口）。
 ///
@@ -17,6 +18,7 @@ class RefreshTokenLoginPage extends StatefulWidget {
 
 class _RefreshTokenLoginPageState extends State<RefreshTokenLoginPage> {
   final AuthService _authService = AuthService();
+  final SecretStorageService _secretStorage = SecretStorageService();
   final TextEditingController _tokenController = TextEditingController();
 
   bool _submitting = false;
@@ -48,6 +50,9 @@ class _RefreshTokenLoginPageState extends State<RefreshTokenLoginPage> {
       setState(() => _errorText = '请输入 RefreshToken');
       return;
     }
+    if (!await ensureSecretStorageReady(context)) {
+      return;
+    }
 
     setState(() {
       _submitting = true;
@@ -55,11 +60,9 @@ class _RefreshTokenLoginPageState extends State<RefreshTokenLoginPage> {
     });
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-
       // 先落盘 refresh_token，并清理旧的 session token，避免误用缓存。
-      await prefs.setString('refresh_token', refreshToken);
-      await prefs.remove('auth_token');
+      await _secretStorage.write(SecretStorageKeys.refreshToken, refreshToken);
+      await _secretStorage.delete(SecretStorageKeys.authToken);
       _authService.invalidateSessionTokenCache();
 
       // 严格校验：必须实际走 refresh_token -> session token 刷新成功。
@@ -72,8 +75,10 @@ class _RefreshTokenLoginPageState extends State<RefreshTokenLoginPage> {
       }
 
       // 校验失败：清除无效凭据，避免下次冷启动自动登录循环失败。
-      await prefs.remove('auth_token');
-      await prefs.remove('refresh_token');
+      await _secretStorage.deleteMany(const [
+        SecretStorageKeys.authToken,
+        SecretStorageKeys.refreshToken,
+      ]);
       _authService.invalidateSessionTokenCache();
 
       if (!mounted) return;
@@ -83,9 +88,10 @@ class _RefreshTokenLoginPageState extends State<RefreshTokenLoginPage> {
     } on Object catch (e) {
       // 发生异常也尽量不要污染后续登录流程
       try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('auth_token');
-        await prefs.remove('refresh_token');
+        await _secretStorage.deleteMany(const [
+          SecretStorageKeys.authToken,
+          SecretStorageKeys.refreshToken,
+        ]);
         _authService.invalidateSessionTokenCache();
       } on Object catch (_) {}
 

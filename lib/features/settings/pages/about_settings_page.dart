@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/config/app_build_info.dart';
 import 'package:novella/main.dart' show rustLibInitialized, rustLibInitError;
 import 'package:novella/features/settings/settings_provider.dart';
@@ -209,10 +209,7 @@ class AboutSettingsPage extends ConsumerWidget {
                                   Navigator.pop(sheetContext);
 
                                   // 清除 token
-                                  final prefs =
-                                      await SharedPreferences.getInstance();
-                                  await prefs.remove('auth_token');
-                                  await prefs.remove('refresh_token');
+                                  await AuthService().logout();
 
                                   // 跳转到登录页
                                   if (context.mounted) {

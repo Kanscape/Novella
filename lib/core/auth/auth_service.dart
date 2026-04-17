@@ -5,7 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:novella/core/network/api_client.dart';
 import 'package:novella/core/network/signalr_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:novella/core/storage/secret_storage_service.dart';
 import 'package:logging/logging.dart';
 
 class AuthService {
@@ -15,6 +15,7 @@ class AuthService {
 
   final ApiClient _apiClient = ApiClient();
   final SignalRService _signalRService = SignalRService();
+  final SecretStorageService _secretStorage = SecretStorageService();
   final Logger _logger = Logger('AuthService');
 
   AuthService._internal() {
@@ -254,9 +255,10 @@ class AuthService {
   }
 
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    await prefs.remove('refresh_token');
+    await _secretStorage.deleteMany(const [
+      SecretStorageKeys.authToken,
+      SecretStorageKeys.refreshToken,
+    ]);
 
     // 同步清理内存缓存
     invalidateSessionTokenCache();
@@ -313,8 +315,9 @@ class AuthService {
   /// - 若仍充足：直接返回当前有效 token（若内存没有，会按正常路径 refresh）。
   Future<String> ensureFreshSessionToken({Duration? threshold}) async {
     // 没有 refresh_token 无法刷新
-    final prefs = await SharedPreferences.getInstance();
-    final refreshToken = prefs.getString('refresh_token');
+    final refreshToken = await _secretStorage.read(
+      SecretStorageKeys.refreshToken,
+    );
     if (refreshToken == null || refreshToken.isEmpty) return '';
 
     if (isSessionTokenExpiredOrExpiringSoon(threshold: threshold)) {
@@ -325,11 +328,9 @@ class AuthService {
 
   /// 保存刷新令牌并自动获取会话令牌
   Future<void> saveTokens(String token, String refreshToken) async {
-    final prefs = await SharedPreferences.getInstance();
-
     // 若有会话令牌直接保存
     if (token.isNotEmpty) {
-      await prefs.setString('auth_token', token);
+      await _secretStorage.write(SecretStorageKeys.authToken, token);
 
       // 写入内存缓存
       _sessionToken = token;
@@ -338,7 +339,7 @@ class AuthService {
 
     // 保存刷新令牌
     if (refreshToken.isNotEmpty) {
-      await prefs.setString('refresh_token', refreshToken);
+      await _secretStorage.write(SecretStorageKeys.refreshToken, refreshToken);
 
       // 若无会话令牌，尝试刷新获取
       if (token.isEmpty) {
@@ -413,8 +414,7 @@ class AuthService {
           _sessionToken = newToken;
           _lastRefreshTime = DateTime.now();
 
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('auth_token', newToken);
+          await _secretStorage.write(SecretStorageKeys.authToken, newToken);
 
           _logger.info('Session token refreshed successfully');
           completer.complete(newToken);
@@ -442,8 +442,9 @@ class AuthService {
   ///
   /// 用于 iOS resumed 后的“预热”，避免用户第一次点击触发请求时才发现 token 过期。
   Future<String> forceRefreshSessionToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final refreshToken = prefs.getString('refresh_token');
+    final refreshToken = await _secretStorage.read(
+      SecretStorageKeys.refreshToken,
+    );
     if (refreshToken == null || refreshToken.isEmpty) return '';
     return await _refreshSessionToken(refreshToken, force: true) ?? '';
   }
@@ -466,8 +467,9 @@ class AuthService {
     }
 
     // 2. 需要刷新或正在刷新
-    final prefs = await SharedPreferences.getInstance();
-    final refreshToken = prefs.getString('refresh_token');
+    final refreshToken = await _secretStorage.read(
+      SecretStorageKeys.refreshToken,
+    );
     if (refreshToken == null || refreshToken.isEmpty) return '';
 
     return await _refreshSessionToken(refreshToken) ?? '';
@@ -476,8 +478,9 @@ class AuthService {
   /// 尝试使用存储的刷新令牌自动登录
   /// 会实际调用 API 验证 refresh token 是否有效
   Future<bool> tryAutoLogin() async {
-    final prefs = await SharedPreferences.getInstance();
-    final refreshToken = prefs.getString('refresh_token');
+    final refreshToken = await _secretStorage.read(
+      SecretStorageKeys.refreshToken,
+    );
 
     if (refreshToken == null || refreshToken.isEmpty) {
       _logger.info('No refresh token found');

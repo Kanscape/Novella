@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'dart:math'; // for Random
 import 'package:flutter/foundation.dart'; // for compute
 import 'package:flutter/widgets.dart'; // for WidgetsBindingObserver
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/storage/secret_storage_service.dart';
 import 'package:novella/core/sync/gist_sync_service.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_data_model.dart';
@@ -33,11 +33,8 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
   final GistSyncService _gistService = GistSyncService();
   final BookMarkService _bookMarkService = BookMarkService();
+  final SecretStorageService _secretStorage = SecretStorageService();
 
-  static const _storage = FlutterSecureStorage();
-  static const _keyGithubToken = 'github_access_token';
-  static const _keyGistId = 'sync_gist_id';
-  static const _keySyncPassword = 'sync_password';
   static const _keyLastSyncTime = 'last_sync_time';
   static const _keyLastSyncId = 'last_sync_id';
 
@@ -89,13 +86,15 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
   /// 初始化 (恢复状态)
   Future<void> init() async {
     // 恢复已保存的连接状态
-    final token = await _storage.read(key: _keyGithubToken);
-    final gistId = await _storage.read(key: _keyGistId);
+    final token = await _secretStorage.read(
+      SecretStorageKeys.githubAccessToken,
+    );
+    final gistId = await _secretStorage.read(SecretStorageKeys.syncGistId);
     final prefs = await SharedPreferences.getInstance();
     final lastSyncStr = prefs.getString(_keyLastSyncTime);
     _lastKnownSyncId = prefs.getString(_keyLastSyncId);
 
-    if (token != null) {
+    if (token != null && token.isNotEmpty) {
       _gistService.setAccessToken(token, gistId: gistId);
       _status = SyncStatus.idle;
       notifyListeners();
@@ -133,7 +132,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
     if (token == null) return false;
 
     // 保存 token
-    await _storage.write(key: _keyGithubToken, value: token);
+    await _secretStorage.write(SecretStorageKeys.githubAccessToken, token);
     _status = SyncStatus.idle;
     notifyListeners();
 
@@ -146,7 +145,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
     if (!SyncCrypto.isValidPassword(password)) {
       throw Exception('密码需包含大小写字母和数字，8-32位');
     }
-    await _storage.write(key: _keySyncPassword, value: password);
+    await _secretStorage.write(SecretStorageKeys.syncPassword, password);
     // 清空缓存
     _cachedKey = null;
     _cachedSalt = null;
@@ -155,13 +154,15 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
   /// 获取密码
   Future<String?> getSyncPassword() async {
-    return await _storage.read(key: _keySyncPassword);
+    return await _secretStorage.read(SecretStorageKeys.syncPassword);
   }
 
   /// 断开连接
   Future<void> disconnect() async {
-    await _storage.delete(key: _keyGithubToken);
-    await _storage.delete(key: _keyGistId);
+    await _secretStorage.deleteMany(const [
+      SecretStorageKeys.githubAccessToken,
+      SecretStorageKeys.syncGistId,
+    ]);
     // 保留密码
     _gistService.disconnect();
     _status = SyncStatus.disconnected;
@@ -374,7 +375,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       // 上传成功后更新持久化存储中的凭据
       final currentGistId = _gistService.gistId;
       if (currentGistId != null) {
-        await _storage.write(key: _keyGistId, value: currentGistId);
+        await _secretStorage.write(SecretStorageKeys.syncGistId, currentGistId);
       }
 
       // 5. 应用合并后的数据 (Update Local)
@@ -494,7 +495,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       await _applyRemoteData(remoteData);
 
       // 保存密码
-      await _storage.write(key: _keySyncPassword, value: password);
+      await _secretStorage.write(SecretStorageKeys.syncPassword, password);
 
       // 更新缓存
       final encryptedJson = jsonDecode(remoteEncrypted) as Map<String, dynamic>;
@@ -575,8 +576,10 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
     }
 
     // 收集 RefreshToken
-    final refreshToken = prefs.getString('refresh_token');
-    if (refreshToken != null) {
+    final refreshToken = await _secretStorage.read(
+      SecretStorageKeys.refreshToken,
+    );
+    if (refreshToken != null && refreshToken.isNotEmpty) {
       modules[SyncModuleNames.auth] = SyncModule(
         version: 1,
         updatedAt: DateTime.now(),
@@ -632,7 +635,10 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
     if (authModule != null) {
       final refreshToken = authModule.data['refreshToken'] as String?;
       if (refreshToken != null && refreshToken.isNotEmpty) {
-        await prefs.setString('refresh_token', refreshToken);
+        await _secretStorage.write(
+          SecretStorageKeys.refreshToken,
+          refreshToken,
+        );
       }
     }
 

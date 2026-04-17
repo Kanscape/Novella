@@ -15,10 +15,10 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:novella/core/network/backend_user_agent.dart';
+import 'package:novella/core/storage/secret_storage_service.dart';
 // gzip 数据为 JSON 格式，无需 msgpack
 import 'package:novella/core/network/request_queue.dart';
 import 'package:signalr_netcore/signalr_client.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/network/novel_hub_protocol.dart';
 
 /// 带自动过期的内存令牌存储（参考原实现）
@@ -122,6 +122,7 @@ class SignalRService {
 
   // 用于令牌刷新的 Dio 实例
   late final Dio _dio;
+  final SecretStorageService _secretStorage = SecretStorageService();
 
   bool get isConnected => _hubConnection?.state == HubConnectionState.Connected;
 
@@ -178,8 +179,7 @@ class SignalRService {
       if (provided.isNotEmpty) return provided;
 
       // provider 返回空：尝试从本地读取旧 session token 兜底
-      final prefs = await SharedPreferences.getInstance();
-      final persisted = prefs.getString('auth_token');
+      final persisted = await _secretStorage.read(SecretStorageKeys.authToken);
       if (persisted != null && persisted.isNotEmpty) {
         developer.log(
           'tokenProvider returned empty, falling back to persisted auth_token',
@@ -197,8 +197,9 @@ class SignalRService {
     }
 
     // 令牌过期或为空，使用 refresh_token 刷新（legacy path）
-    final prefs = await SharedPreferences.getInstance();
-    final refreshToken = prefs.getString('refresh_token');
+    final refreshToken = await _secretStorage.read(
+      SecretStorageKeys.refreshToken,
+    );
 
     if (refreshToken == null || refreshToken.isEmpty) {
       developer.log('No refresh token available', name: 'SIGNALR');
@@ -237,7 +238,7 @@ class SignalRService {
     }
 
     // 最后兜底：尝试使用已持久化的 auth_token（可能已过期，但比空 token 更容易触发服务端走 unauthorized 分支）
-    final persisted = prefs.getString('auth_token');
+    final persisted = await _secretStorage.read(SecretStorageKeys.authToken);
     if (persisted != null && persisted.isNotEmpty) {
       developer.log(
         'Refresh failed, falling back to persisted auth_token (may be expired)',

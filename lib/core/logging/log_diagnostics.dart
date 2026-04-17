@@ -115,6 +115,31 @@ class LogDiagnostics {
       }
     }
 
+    if (logger == 'SecretStorageService') {
+      if (msg.contains('securestorage probe failed') ||
+          msg.contains('fallback required')) {
+        return const LogDiagnosis(
+          problemId: 'secure_storage_unavailable',
+          icon: Icons.no_encryption_outlined,
+          title: 'SecureStorage 不可用',
+          description: '当前设备环境无法写入 SecureStorage，凭据可能会回退到本地设置',
+          solution: '开发环境可继续使用；如果是正式环境，建议检查系统钥匙串、凭据库或签名配置',
+          severity: DiagnosisSeverity.warning,
+        );
+      }
+
+      if (msg.contains('stored') && msg.contains('sharedpreferences')) {
+        return const LogDiagnosis(
+          problemId: 'secure_storage_fallback',
+          icon: Icons.save_outlined,
+          title: '凭据已回退保存',
+          description: '登录凭据或同步凭据已保存到 SharedPreferences',
+          solution: '如果设备后续恢复支持 SecureStorage，应用会自动迁回',
+          severity: DiagnosisSeverity.info,
+        );
+      }
+    }
+
     // ===== Rust FFI 问题 =====
     if (msg.contains('rustlib') || msg.contains('ffi') || logger == 'Flutter') {
       if (msg.contains('failed') || msg.contains('error')) {

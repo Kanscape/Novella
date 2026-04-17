@@ -11,6 +11,7 @@ import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/core/logging/log_buffer_service.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/network/signalr_service.dart';
+import 'package:novella/core/storage/secret_storage_service.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/auth/login_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
@@ -310,6 +311,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   // 2) 便于在 app resumed 时做预热 refresh + 重连。
   final AuthService _authService = AuthService();
   final SignalRService _signalRService = SignalRService();
+  final SecretStorageService _secretStorage = SecretStorageService();
 
   @override
   void initState() {
@@ -349,8 +351,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     // 阻塞用户触发的网络操作，直到预热完成
     _signalRService.beginForegroundRecovery();
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final refreshToken = prefs.getString('refresh_token');
+      final refreshToken = await _secretStorage.read(
+        SecretStorageKeys.refreshToken,
+      );
       if (refreshToken == null || refreshToken.isEmpty) {
         developer.log('No refresh_token, skip prewarm', name: 'LIFECYCLE');
         return;

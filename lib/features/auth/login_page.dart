@@ -2,13 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:novella/core/auth/auth_service.dart';
+import 'package:novella/core/storage/secret_storage_service.dart';
+import 'package:novella/core/storage/secret_storage_warning_sheet.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/sync/gist_sync_service.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/features/auth/login_turnstile_page.dart';
 import 'package:novella/features/main_page.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// MD3 风格登录/引导页
@@ -21,6 +22,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final AuthService _authService = AuthService();
+  final SecretStorageService _secretStorage = SecretStorageService();
   bool _checkingLogin = true;
 
   @override
@@ -213,6 +215,10 @@ class _LoginPageState extends State<LoginPage> {
     final syncManager = SyncManager();
 
     try {
+      if (!await ensureSecretStorageReady(context)) {
+        return;
+      }
+
       // 1. 开始 Device Flow 获取验证码
       final flowData = await syncManager.startDeviceFlow();
 
@@ -247,8 +253,9 @@ class _LoginPageState extends State<LoginPage> {
 
         // 5. 验证恢复的凭据是否有效
         // 尝试使用 refresh token 刷新 session token 来验证
-        final prefs = await SharedPreferences.getInstance();
-        final refreshToken = prefs.getString('refresh_token');
+        final refreshToken = await _secretStorage.read(
+          SecretStorageKeys.refreshToken,
+        );
 
         if (refreshToken == null || refreshToken.isEmpty) {
           // 没有找到 refresh token
@@ -270,8 +277,7 @@ class _LoginPageState extends State<LoginPage> {
           );
         } else {
           // 凭据无效，清除并显示警告
-          await prefs.remove('auth_token');
-          await prefs.remove('refresh_token');
+          await _authService.logout();
           if (context.mounted) {
             _showTokenInvalidWarning(context, '云端保存的登录凭据已过期或无效');
           }

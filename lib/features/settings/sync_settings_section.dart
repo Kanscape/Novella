@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:novella/core/storage/secret_storage_warning_sheet.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/sync/gist_sync_service.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
@@ -134,6 +135,10 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   }
 
   Future<void> _handleConnect() async {
+    if (!await ensureSecretStorageReady(context)) {
+      return;
+    }
+
     setState(() => _loading = true);
 
     try {
