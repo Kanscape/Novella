@@ -17,15 +17,20 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios
+          targets: |
+            aarch64-apple-ios
+            aarch64-apple-ios-sim
 
       - name: Build Rust (Release)
         working-directory: ./rust
         run: |
           cargo build --target aarch64-apple-ios --release
+          cargo build --release --target aarch64-apple-ios-sim
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: libnovella_native_ios
-          path: rust/target/aarch64-apple-ios/release/libnovella_native.a
+          path: |
+            rust/target/aarch64-apple-ios/release/libnovella_native.a
+            rust/target/aarch64-apple-ios-sim/release/libnovella_native.a
