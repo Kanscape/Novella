@@ -72,6 +72,137 @@ ExternalLibrary _loadLibrary() {
 // === RustLib 全局状态 ===
 bool rustLibInitialized = false;
 String? rustLibInitError;
+const double _macOSTitleBarFallbackInset = 28;
+double _initialDesktopWindowTopInset = 0;
+
+class _DesktopWindowTopInset extends StatefulWidget {
+  const _DesktopWindowTopInset({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_DesktopWindowTopInset> createState() => _DesktopWindowTopInsetState();
+}
+
+class _DesktopWindowTopInsetState extends State<_DesktopWindowTopInset>
+    with WindowListener {
+  double _topInset = _initialDesktopWindowTopInset;
+
+  bool get _isEnabled => Platform.isMacOS;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEnabled) {
+      windowManager.addListener(this);
+      unawaited(_refreshTopInset());
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_isEnabled) {
+      windowManager.removeListener(this);
+    }
+    super.dispose();
+  }
+
+  Future<void> _refreshTopInset() async {
+    if (!_isEnabled) return;
+
+    try {
+      final isFullScreen = await windowManager.isFullScreen();
+      final titleBarHeight =
+          isFullScreen
+              ? 0.0
+              : (await windowManager.getTitleBarHeight()).toDouble();
+      final resolvedInset =
+          isFullScreen
+              ? 0.0
+              : (titleBarHeight > 0
+                  ? titleBarHeight
+                  : _macOSTitleBarFallbackInset);
+
+      if (!mounted || resolvedInset == _topInset) return;
+      setState(() {
+        _topInset = resolvedInset;
+      });
+    } catch (e, stack) {
+      developer.log(
+        'Failed to refresh macOS title bar inset: $e',
+        name: 'Flutter',
+      );
+      developer.log('$stack', name: 'Flutter');
+      if (!mounted || _topInset == _macOSTitleBarFallbackInset) return;
+      setState(() {
+        _topInset = _macOSTitleBarFallbackInset;
+      });
+    }
+  }
+
+  @override
+  void onWindowMaximize() {
+    unawaited(_refreshTopInset());
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    unawaited(_refreshTopInset());
+  }
+
+  @override
+  void onWindowRestore() {
+    unawaited(_refreshTopInset());
+  }
+
+  @override
+  void onWindowResized() {
+    unawaited(_refreshTopInset());
+  }
+
+  @override
+  void onWindowEnterFullScreen() {
+    unawaited(_refreshTopInset());
+  }
+
+  @override
+  void onWindowLeaveFullScreen() {
+    unawaited(_refreshTopInset());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isEnabled || _topInset <= 0) {
+      return widget.child;
+    }
+
+    final mediaQuery = MediaQuery.of(context);
+    final topPadding =
+        mediaQuery.padding.top > _topInset ? mediaQuery.padding.top : _topInset;
+    final topViewPadding =
+        mediaQuery.viewPadding.top > _topInset
+            ? mediaQuery.viewPadding.top
+            : _topInset;
+
+    return MediaQuery(
+      data: mediaQuery.copyWith(
+        padding: EdgeInsets.fromLTRB(
+          mediaQuery.padding.left,
+          topPadding,
+          mediaQuery.padding.right,
+          mediaQuery.padding.bottom,
+        ),
+        viewPadding: EdgeInsets.fromLTRB(
+          mediaQuery.viewPadding.left,
+          topViewPadding,
+          mediaQuery.viewPadding.right,
+          mediaQuery.viewPadding.bottom,
+        ),
+      ),
+      child: widget.child,
+    );
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -131,18 +262,25 @@ void main() async {
       await windowManager.ensureInitialized();
       developer.log('WindowManager Initialized', name: 'Flutter');
 
-      WindowOptions windowOptions = const WindowOptions(
-        size: Size(1180, 860),
-        minimumSize: Size(420, 760),
+      final WindowOptions windowOptions = WindowOptions(
+        size: const Size(1180, 860),
+        minimumSize: const Size(420, 760),
         center: true,
         backgroundColor: Colors.transparent,
         skipTaskbar: false,
-        titleBarStyle: TitleBarStyle.normal,
+        titleBarStyle:
+            Platform.isMacOS ? TitleBarStyle.hidden : TitleBarStyle.normal,
         title: 'Novella',
       );
 
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
         developer.log('Window Ready to Show', name: 'Flutter');
+        if (Platform.isMacOS) {
+          final titleBarHeight =
+              (await windowManager.getTitleBarHeight()).toDouble();
+          _initialDesktopWindowTopInset =
+              titleBarHeight > 0 ? titleBarHeight : _macOSTitleBarFallbackInset;
+        }
         await windowManager.show();
         await windowManager.focus();
         developer.log('Window Should be Visible', name: 'Flutter');
@@ -376,7 +514,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
             return AnnotatedRegion<SystemUiOverlayStyle>(
               value: style,
-              child: child ?? const SizedBox.shrink(),
+              child: _DesktopWindowTopInset(
+                child: child ?? const SizedBox.shrink(),
+              ),
             );
           },
           // 本地化配置（含简体/繁体中文支持）
