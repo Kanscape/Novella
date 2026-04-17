@@ -10,8 +10,12 @@ STRIP_INSTALLED_PRODUCT = NO
 DEAD_CODE_STRIPPING = NO
 COPY_PHASE_STRIP = NO
 
-// 2. Linker flags
+// 2. Select the Rust static library by SDK
+RUST_STATIC_LIB_PATH[sdk=iphoneos*] = $(PROJECT_DIR)/libs/iphoneos/libnovella_native.a
+RUST_STATIC_LIB_PATH[sdk=iphonesimulator*] = $(PROJECT_DIR)/libs/iphonesimulator/libnovella_native.a
+
+// 3. Linker flags
 // -force_load: Force load ALL symbols from our specific Rust library
 // -ObjC: Required for Objective-C categories
 // -lc++: Link C++ standard library (for brotli/woff2)
-OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/libs/libnovella_native.a" -ObjC -lc++
+OTHER_LDFLAGS = $(inherited) -force_load "$(RUST_STATIC_LIB_PATH)" -ObjC -lc++
