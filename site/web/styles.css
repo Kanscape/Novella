@@ -991,12 +991,6 @@
       background-color: color-mix(in oklab, var(--color-base-content) 5%, transparent);
     }
   }
-  .bg-base-content\/8 {
-    background-color: var(--color-base-content);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
-    }
-  }
   .bg-black\/70 {
     background-color: color-mix(in srgb, #000 70%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1346,16 +1340,6 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--color-base-content);
-      }
-    }
-  }
-  .hover\:bg-base-content\/15 {
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-base-content);
-        @supports (color: color-mix(in lab, red, red)) {
-          background-color: color-mix(in oklab, var(--color-base-content) 15%, transparent);
-        }
       }
     }
   }

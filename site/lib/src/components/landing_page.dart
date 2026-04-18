@@ -385,8 +385,7 @@ Component _buildAppSourcesModal() {
     'div',
     attrs: {
       'class':
-          'hidden fixed inset-0 z-[70] overflow-y-auto overscroll-contain '
-          'bg-black/70 backdrop-blur-md',
+          'hidden fixed inset-0 z-[70] bg-black/70 backdrop-blur-md',
       'data-app-sources-modal': 'true',
       'role': 'dialog',
       'aria-modal': 'true',
@@ -426,52 +425,26 @@ Component _buildAppSourcesModal() {
                 'div',
                 attrs: {'class': 'relative p-5 sm:p-6'},
                 children: [
-                  // Header row
+                  // Header
                   _el(
                     'div',
-                    attrs: {
-                      'class': 'flex items-start justify-between gap-3 mb-1',
-                    },
+                    attrs: {'class': 'mb-1'},
                     children: [
                       _el(
-                        'div',
-                        children: [
-                          _el(
-                            'h3',
-                            attrs: {
-                              'id': 'app-sources-title',
-                              'class': 'text-lg font-bold tracking-tight',
-                            },
-                            children: [_text('添加 App Source')],
-                          ),
-                          _el(
-                            'p',
-                            attrs: {
-                              'class':
-                                  'mt-1 text-sm leading-relaxed text-base-content/50',
-                            },
-                            children: [_text('选择侧载工具，自动导入源。')],
-                          ),
-                        ],
-                      ),
-                      // Close button — circular ×
-                      _el(
-                        'button',
+                        'h3',
                         attrs: {
-                          'type': 'button',
-                          'class':
-                              'flex h-8 w-8 shrink-0 items-center justify-center rounded-full '
-                              'bg-base-content/8 text-base-content/50 '
-                              'transition hover:bg-base-content/15 hover:text-base-content',
-                          'data-app-sources-close': 'true',
-                          'aria-label': '关闭',
+                          'id': 'app-sources-title',
+                          'class': 'text-lg font-bold tracking-tight',
                         },
-                        children: [
-                          RawText(
-                            '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
-                            '<path d="M1 1l12 12M13 1L1 13"/></svg>',
-                          ),
-                        ],
+                        children: [_text('添加 App Source')],
+                      ),
+                      _el(
+                        'p',
+                        attrs: {
+                          'class':
+                              'mt-1 text-sm leading-relaxed text-base-content/50',
+                        },
+                        children: [_text('选择侧载工具，自动导入源。')],
                       ),
                     ],
                   ),

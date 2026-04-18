@@ -57,13 +57,15 @@
 
   modal.addEventListener('click', (event) => {
     const target = event.target;
-    if (
-      target instanceof HTMLElement &&
-      (target.hasAttribute('data-app-sources-close') || !panel.contains(target))
-    ) {
+    if (!(target instanceof HTMLElement)) return;
+    if (target.closest('[data-app-sources-close]') || !panel.contains(target)) {
       closeModal();
     }
   });
+
+  // Completely block scrolling inside the modal
+  modal.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+  modal.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
