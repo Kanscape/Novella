@@ -71,6 +71,10 @@ Future<void> main() async {
           attributes: {'rel': 'stylesheet', 'href': 'styles.css'},
         ),
         Component.element(
+          tag: 'script',
+          attributes: {'src': 'app-sources.js', 'defer': ''},
+        ),
+        Component.element(
           tag: 'link',
           attributes: {'rel': 'icon', 'type': 'image/png', 'href': faviconUrl},
         ),

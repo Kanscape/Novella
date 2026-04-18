@@ -54,6 +54,7 @@
 
 ### 环境需求
 - Flutter 3.7.2+
+- FVM
 - Rust Stable（可选，仓库已包含预编译文件）
 
 ### 构建运行
@@ -64,9 +65,16 @@ git lfs install
 
 # 2. 克隆项目
 git clone https://github.com/Kanscape/Novella.git
+cd Novella
 
-# 3. 运行
-flutter run
+# 3. 使 FVM 切到仓库要求的 Flutter 版本
+fvm use
+
+# 4. 获取依赖
+fvm flutter pub get
+
+# 5. 运行
+fvm flutter run
 ```
 
 ## 🙏 致谢

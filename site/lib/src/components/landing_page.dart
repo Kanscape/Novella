@@ -18,6 +18,8 @@ const _githubSvg =
     '.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995'
     ' 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>';
 
+const _repositoryJsonPath = 'repository.json';
+
 // ━━━ 页面组件 ━━━
 
 class HomePage extends StatelessComponent {
@@ -356,21 +358,239 @@ Component _buildHomeHero(SiteData siteData, List<ReleaseAsset> featured) {
                   _el(
                     'a',
                     attrs: {
-                      'href': '/altstore.json',
+                      'href': _repositoryJsonPath,
                       'class':
                           'font-semibold text-base-content/80 hover:text-primary transition-colors',
-                      'target': '_blank',
-                      'rel': 'noreferrer noopener',
+                      'data-app-sources-trigger': 'true',
+                      'data-repository-url': _repositoryJsonPath,
+                      'aria-haspopup': 'dialog',
                     },
-                    children: [_text('AltStore Source →')],
+                    children: [_text('App Sources →')],
                   ),
                 ],
               ),
+              _buildAppSourcesModal(),
             ],
           ),
           // 右侧视觉区域
           _buildHeroVisual(siteData, featured),
         ],
+      ),
+    ],
+  );
+}
+
+Component _buildAppSourcesModal() {
+  return _el(
+    'div',
+    attrs: {
+      'class':
+          'hidden fixed inset-0 z-[70] overflow-y-auto overscroll-contain '
+          'bg-black/70 backdrop-blur-md',
+      'data-app-sources-modal': 'true',
+      'role': 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': 'app-sources-title',
+    },
+    children: [
+      // Centering wrapper – bottom sheet on mobile, centered on desktop
+      _el(
+        'div',
+        attrs: {
+          'class':
+              'flex min-h-full items-end sm:items-center justify-center p-0 sm:p-6',
+        },
+        children: [
+          // Panel — sheet-style on mobile, centered card on desktop
+          _el(
+            'div',
+            attrs: {
+              'class':
+                  'relative w-full sm:max-w-lg overflow-hidden '
+                  'rounded-t-[1.75rem] sm:rounded-[1.75rem] '
+                  'border border-base-content/8 bg-base-200 shadow-2xl',
+              'data-app-sources-panel': 'true',
+            },
+            children: [
+              // Decorative gradient glow
+              _el(
+                'div',
+                attrs: {
+                  'class':
+                      'pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 '
+                      'h-48 w-72 rounded-full bg-primary/20 blur-3xl',
+                },
+              ),
+              // Content
+              _el(
+                'div',
+                attrs: {'class': 'relative p-5 sm:p-6'},
+                children: [
+                  // Header row
+                  _el(
+                    'div',
+                    attrs: {
+                      'class': 'flex items-start justify-between gap-3 mb-1',
+                    },
+                    children: [
+                      _el(
+                        'div',
+                        children: [
+                          _el(
+                            'h3',
+                            attrs: {
+                              'id': 'app-sources-title',
+                              'class': 'text-lg font-bold tracking-tight',
+                            },
+                            children: [_text('添加 App Source')],
+                          ),
+                          _el(
+                            'p',
+                            attrs: {
+                              'class':
+                                  'mt-1 text-sm leading-relaxed text-base-content/50',
+                            },
+                            children: [_text('选择侧载工具，自动导入源。')],
+                          ),
+                        ],
+                      ),
+                      // Close button — circular ×
+                      _el(
+                        'button',
+                        attrs: {
+                          'type': 'button',
+                          'class':
+                              'flex h-8 w-8 shrink-0 items-center justify-center rounded-full '
+                              'bg-base-content/8 text-base-content/50 '
+                              'transition hover:bg-base-content/15 hover:text-base-content',
+                          'data-app-sources-close': 'true',
+                          'aria-label': '关闭',
+                        },
+                        children: [
+                          RawText(
+                            '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
+                            '<path d="M1 1l12 12M13 1L1 13"/></svg>',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  // Sideload target cards — horizontal list
+                  _el(
+                    'div',
+                    attrs: {'class': 'mt-4 flex flex-col gap-2.5'},
+                    children: [
+                      _sideloadTargetCard(
+                        id: 'altstore',
+                        title: 'AltStore',
+                        description: 'AltStore is an alternative app store for non-jailbroken iOS devices.',
+                        iconPath: 'assets/sideloaders/altstore.png',
+                      ),
+                      _sideloadTargetCard(
+                        id: 'sidestore',
+                        title: 'SideStore',
+                        description: 'SideStore is a fork of AltStore that doesn\'t require an AltServer.',
+                        iconPath: 'assets/sideloaders/sidestore.png',
+                      ),
+                      _sideloadTargetCard(
+                        id: 'feather',
+                        title: 'Feather',
+                        description: 'On-device iOS installer utilizing Apple Developer certificates.',
+                        iconPath: 'assets/sideloaders/feather.png',
+                      ),
+                    ],
+                  ),
+                  // Footer — compact URL bar
+                  _el(
+                    'div',
+                    attrs: {
+                      'class':
+                          'mt-4 flex items-center gap-3 rounded-xl '
+                          'bg-base-content/5 px-3.5 py-2.5',
+                    },
+                    children: [
+                      _el(
+                        'code',
+                        attrs: {
+                          'class':
+                              'flex-1 min-w-0 truncate text-xs text-base-content/45',
+                          'data-app-sources-url': 'true',
+                        },
+                        children: [_text(_repositoryJsonPath)],
+                      ),
+                      _anchor(
+                        _repositoryJsonPath,
+                        '打开',
+                        classes:
+                            'shrink-0 text-xs font-semibold text-primary hover:text-primary/80 transition-colors',
+                        extraAttrs: const {
+                          'data-app-sources-fallback': 'true',
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Component _sideloadTargetCard({
+  required String id,
+  required String title,
+  required String description,
+  required String iconPath,
+}) {
+  return _el(
+    'a',
+    attrs: {
+      'href': _repositoryJsonPath,
+      'class':
+          'group flex items-center gap-4 rounded-2xl '
+          'border border-base-content/6 bg-base-100/50 '
+          'px-4 py-3.5 transition-all duration-200 '
+          'hover:border-primary/30 hover:bg-base-100/80 '
+          'hover:shadow-lg hover:shadow-primary/5',
+      'data-app-source-target': id,
+    },
+    children: [
+      // Icon
+      _img(
+        src: iconPath,
+        alt: title,
+        classes: 'h-10 w-10 shrink-0 object-contain',
+        loading: 'lazy',
+      ),
+      // Text
+      _el(
+        'div',
+        attrs: {'class': 'flex-1 min-w-0'},
+        children: [
+          _el(
+            'div',
+            attrs: {'class': 'text-sm font-semibold tracking-tight'},
+            children: [_text(title)],
+          ),
+          _el(
+            'p',
+            attrs: {
+              'class':
+                  'mt-0.5 text-xs leading-relaxed text-base-content/45',
+            },
+            children: [_text(description)],
+          ),
+        ],
+      ),
+      // Chevron arrow
+      RawText(
+        '<svg class="shrink-0 w-4 h-4 text-base-content/25 group-hover:text-primary/60 transition-colors" '
+        'viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M6 3l5 5-5 5"/></svg>',
       ),
     ],
   );
@@ -1154,6 +1374,7 @@ Component _anchor(
   String label, {
   String? classes,
   bool external = false,
+  Map<String, String?> extraAttrs = const {},
 }) {
   final attrs = <String, String>{'href': href};
   if (classes != null) {
@@ -1162,6 +1383,12 @@ Component _anchor(
   if (external) {
     attrs['target'] = '_blank';
     attrs['rel'] = 'noreferrer noopener';
+  }
+  for (final entry in extraAttrs.entries) {
+    final value = entry.value;
+    if (value != null && value.isNotEmpty) {
+      attrs[entry.key] = value;
+    }
   }
 
   return _el('a', attrs: attrs, children: [_text(label)]);

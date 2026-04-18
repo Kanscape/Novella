@@ -222,3 +222,6 @@ Web-master/
 # Local Docs
 # =====================================================
 docs/
+
+# FVM Version Cache
+.fvm/

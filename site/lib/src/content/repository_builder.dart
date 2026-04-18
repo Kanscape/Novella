@@ -1,7 +1,7 @@
 import 'models.dart';
 
-class AltStoreSourceBuilderConfig {
-  const AltStoreSourceBuilderConfig({
+class RepositoryBuilderConfig {
+  const RepositoryBuilderConfig({
     required this.siteUrl,
     required this.siteBasePath,
     required this.sourceName,
@@ -21,37 +21,38 @@ class AltStoreSourceBuilderConfig {
     required this.assetNamePattern,
   });
 
-  factory AltStoreSourceBuilderConfig.fromEnvironment(
+  factory RepositoryBuilderConfig.fromEnvironment(
     Map<String, String> environment,
   ) {
     final siteUrl = environment['SITE_URL'] ?? 'https://novella.celia.sh';
-    final rawScreenshotPaths = environment['ALTSTORE_SCREENSHOT_PATHS'];
+    final rawScreenshotPaths = environment['REPOSITORY_SCREENSHOT_PATHS'];
 
-    return AltStoreSourceBuilderConfig(
+    return RepositoryBuilderConfig(
       siteUrl: siteUrl,
       siteBasePath: environment['SITE_BASE_PATH'] ?? '/',
-      sourceName: environment['ALTSTORE_SOURCE_NAME'] ?? 'Novella Repository',
+      sourceName: environment['REPOSITORY_NAME'] ?? 'Novella Repository',
       sourceIdentifier:
-          environment['ALTSTORE_SOURCE_IDENTIFIER'] ??
-          'sh.celia.novella.altstore',
+          environment['REPOSITORY_IDENTIFIER'] ?? 'sh.celia.novella.repository',
       sourceSubtitle:
-          environment['ALTSTORE_SOURCE_SUBTITLE'] ?? 'AltStore source for Novella',
-      sourceWebsite: environment['ALTSTORE_SOURCE_WEBSITE'] ?? siteUrl,
-      tintColor: environment['ALTSTORE_TINT_COLOR'] ?? '#f59393',
-      appName: environment['ALTSTORE_APP_NAME'] ?? 'Novella',
-      appSubtitle: environment['ALTSTORE_APP_SUBTITLE'] ?? '轻书架第三方客户端',
+          environment['REPOSITORY_SUBTITLE'] ?? 'Repository for Novella',
+      sourceWebsite: environment['REPOSITORY_WEBSITE'] ?? siteUrl,
+      tintColor: environment['REPOSITORY_TINT_COLOR'] ?? '#f59393',
+      appName: environment['REPOSITORY_APP_NAME'] ?? 'Novella',
+      appSubtitle: environment['REPOSITORY_APP_SUBTITLE'] ?? '轻书架第三方客户端',
       appDescription:
-          environment['ALTSTORE_APP_DESCRIPTION'] ??
+          environment['REPOSITORY_APP_DESCRIPTION'] ??
           '基于 Flutter 构建的轻小说阅读器，提供纯净的界面和阅读体验。',
-      developerName: environment['ALTSTORE_DEVELOPER_NAME'] ?? 'Kanscape',
+      developerName: environment['REPOSITORY_DEVELOPER_NAME'] ?? 'Kanscape',
       bundleIdentifier:
-          environment['ALTSTORE_BUNDLE_IDENTIFIER'] ?? 'sh.celia.novella',
-      minOsVersion: environment['ALTSTORE_MIN_OS_VERSION'] ?? '13.0',
-      buildVersion: environment['ALTSTORE_BUILD_VERSION'],
+          environment['REPOSITORY_BUNDLE_IDENTIFIER'] ?? 'sh.celia.novella',
+      minOsVersion: environment['REPOSITORY_MIN_OS_VERSION'] ?? '13.0',
+      buildVersion: environment['REPOSITORY_BUILD_VERSION'],
       iconPath:
-          environment['ALTSTORE_ICON_PATH'] ?? 'assets/brand/altstore-icon.png',
+          environment['REPOSITORY_ICON_PATH'] ??
+          'assets/brand/repository-icon.png',
       screenshotPaths: _parseScreenshotPaths(rawScreenshotPaths),
-      assetNamePattern: environment['ALTSTORE_ASSET_NAME_PATTERN'] ?? r'\.ipa$',
+      assetNamePattern:
+          environment['REPOSITORY_ASSET_NAME_PATTERN'] ?? r'\.ipa$',
     );
   }
 
@@ -76,12 +77,12 @@ class AltStoreSourceBuilderConfig {
   static List<String> _parseScreenshotPaths(String? rawValue) {
     if (rawValue == null || rawValue.trim().isEmpty) {
       return const [
-        'assets/screenshots/altstore-detail-light.png',
-        'assets/screenshots/altstore-detail-dark.png',
-        'assets/screenshots/altstore-reader-light.png',
-        'assets/screenshots/altstore-reader-dark.png',
-        'assets/screenshots/altstore-settings-light.png',
-        'assets/screenshots/altstore-settings-dark.png',
+        'assets/screenshots/repository-detail-light.png',
+        'assets/screenshots/repository-detail-dark.png',
+        'assets/screenshots/repository-reader-light.png',
+        'assets/screenshots/repository-reader-dark.png',
+        'assets/screenshots/repository-settings-light.png',
+        'assets/screenshots/repository-settings-dark.png',
       ];
     }
 
@@ -93,10 +94,10 @@ class AltStoreSourceBuilderConfig {
   }
 }
 
-class AltStoreSourceBuilder {
-  const AltStoreSourceBuilder({required this.config});
+class RepositoryBuilder {
+  const RepositoryBuilder({required this.config});
 
-  final AltStoreSourceBuilderConfig config;
+  final RepositoryBuilderConfig config;
 
   Map<String, dynamic> build(SiteData siteData) {
     final ipaAsset = selectIpaAsset(siteData.latestRelease.assets);
