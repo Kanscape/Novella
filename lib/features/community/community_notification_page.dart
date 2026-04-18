@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/network/request_queue.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/app_notification.dart';
 import 'package:novella/data/services/notification_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
@@ -202,23 +203,13 @@ class _CommunityNotificationPageState
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: const [
                     SizedBox(height: 120),
-                    Center(child: CircularProgressIndicator()),
+                    Center(child: M3ELoadingIndicator()),
                   ],
                 )
                 : ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(16),
                   children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          '通知中心已经接入真实数据源，当前支持查看列表、分页加载和标记已读。',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     if (_errorMessage != null && _items.isEmpty)
                       Card(
                         child: Padding(
@@ -313,7 +304,7 @@ class _CommunityNotificationPageState
                       if (_loadingMore)
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(child: CircularProgressIndicator()),
+                          child: Center(child: M3ELoadingIndicator(size: 28)),
                         )
                       else if (_currentPage < _totalPages)
                         FilledButton.tonal(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:novella/data/models/community.dart';
 import 'package:novella/data/services/community_service.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/community/community_board_icon.dart';
 import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
@@ -754,7 +755,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                       ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: M3ELoadingIndicator(size: 16),
                       )
                       : const Text('发布'),
             ),
@@ -763,7 +764,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
       ),
       body:
           _loadingCatalog && !hasCatalog
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: M3ELoadingIndicator())
               : Form(
                 key: _formKey,
                 child: ListView(

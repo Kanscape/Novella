@@ -37,7 +37,6 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   int _currentPage = 1;
 
   String _boardKey = 'all';
-  bool _boardExpanded = false;
   String _subCategoryKey = '';
   CommunityFeedOrder _order = CommunityFeedOrder.latest;
   CommunityFeedScope _scope = CommunityFeedScope.all;
@@ -232,7 +231,6 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
     }
     setState(() {
       _boardKey = boardKey;
-      _boardExpanded = false;
       _subCategoryKey = '';
     });
     unawaited(_loadCommunityFeed());
@@ -301,32 +299,29 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 16, 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                '社区',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurface,
-                ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 16, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '社区',
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface,
               ),
             ),
-            IconButton(
-              tooltip: '发布帖子',
-              icon: const Icon(Icons.edit_note_rounded),
-              onPressed: _openComposePage,
-            ),
-            _NotificationActionButton(
-              unreadCount: unreadCount,
-              onPressed: _openNotificationPage,
-            ),
-          ],
-        ),
+          ),
+          IconButton(
+            tooltip: '发布帖子',
+            icon: const Icon(Icons.edit_note_rounded),
+            onPressed: _openComposePage,
+          ),
+          _NotificationActionButton(
+            unreadCount: unreadCount,
+            onPressed: _openNotificationPage,
+          ),
+        ],
       ),
     );
   }
@@ -504,15 +499,6 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final selectedBoard = _selectedBoardSummary();
-    final visibleBoards =
-        _boardExpanded
-            ? boards
-            : <CommunityBoardSummary>[
-              if (selectedBoard != null) selectedBoard,
-              ...boards
-                  .where((board) => board.key != selectedBoard?.key)
-                  .take(selectedBoard == null ? 3 : 2),
-            ];
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -543,8 +529,8 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                       const SizedBox(height: 2),
                       Text(
                         selectedBoard != null
-                            ? '当前：${selectedBoard.title}'
-                            : '展开后切换讨论板块',
+                            ? '当前：${_boardSelectionTitle(selectedBoard)}'
+                            : '左右滑动切换讨论板块',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
@@ -552,61 +538,27 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                     ],
                   ),
                 ),
-                TextButton.icon(
-                  onPressed:
-                      () => setState(() => _boardExpanded = !_boardExpanded),
-                  icon: Icon(
-                    _boardExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    size: 18,
-                  ),
-                  label: Text(_boardExpanded ? '收起' : '展开'),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(0, 32),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    foregroundColor: colorScheme.primary,
-                    textStyle: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 10),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
                 children: [
-                  for (final board in visibleBoards)
+                  for (var index = 0; index < boards.length; index++) ...[
                     _BoardFilterChip(
-                      title: board.title,
-                      subtitle:
-                          board.heatLabel.isNotEmpty
-                              ? board.heatLabel
-                              : '${board.todayPosts} 今日',
-                      iconName: board.icon,
-                      fallbackText: board.title,
-                      accent: _boardAccentColor(context, board.key),
-                      selected: _boardKey == board.key,
-                      onTap: () => _updateBoard(board.key),
+                      title: _boardSelectionTitle(boards[index]),
+                      iconName: boards[index].icon,
+                      fallbackText: boards[index].title,
+                      accent: _boardAccentColor(context, boards[index].key),
+                      selected: _boardKey == boards[index].key,
+                      onTap: () => _updateBoard(boards[index].key),
                     ),
+                    if (index != boards.length - 1) const SizedBox(width: 8),
+                  ],
                 ],
               ),
             ),
-            if (!_boardExpanded && boards.length > visibleBoards.length) ...[
-              const SizedBox(height: 10),
-              Text(
-                '还有 ${boards.length - visibleBoards.length} 个板块，展开后查看全部',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -695,6 +647,10 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
         ],
       ),
     );
+  }
+
+  String _boardSelectionTitle(CommunityBoardSummary board) {
+    return board.key == 'all' ? '全部' : board.title;
   }
 
   Widget _buildErrorCard() {
@@ -818,7 +774,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
     if (_loadingMore) {
       return const Padding(
         padding: EdgeInsets.fromLTRB(12, 18, 12, 0),
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: M3ELoadingIndicator(size: 28)),
       );
     }
 
@@ -927,68 +883,78 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
     );
 
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: _loadCommunityHome,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(child: _buildHeader(unreadCount)),
-            if (_loading && payload == null)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(child: M3ELoadingIndicator()),
-              )
-            else ...[
-              SliverToBoxAdapter(
-                child: _buildSummaryPanel(payload, selectedBoard),
-              ),
-              if (payload != null && payload.announcement.isNotEmpty)
-                SliverToBoxAdapter(child: _buildAnnouncementBanner(payload)),
-              SliverToBoxAdapter(child: _buildBoardStrip()),
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _PinnedToolbarDelegate(
-                  height: toolbarHeight,
-                  child: _buildToolbar(),
-                ),
-              ),
-              if (_loading && payload != null)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: const LinearProgressIndicator(minHeight: 3),
+      body: ColoredBox(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: SafeArea(
+          bottom: false,
+          child: RefreshIndicator(
+            onRefresh: _loadCommunityHome,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(child: _buildHeader(unreadCount)),
+                if (_loading && payload == null)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: M3ELoadingIndicator()),
+                  )
+                else ...[
+                  SliverToBoxAdapter(
+                    child: _buildSummaryPanel(payload, selectedBoard),
+                  ),
+                  if (payload != null && payload.announcement.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _buildAnnouncementBanner(payload),
+                    ),
+                  SliverToBoxAdapter(child: _buildBoardStrip()),
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _PinnedToolbarDelegate(
+                      height: toolbarHeight,
+                      child: _buildToolbar(),
                     ),
                   ),
-                ),
-              if (_errorMessage != null && _feedItems.isEmpty)
-                SliverToBoxAdapter(child: _buildErrorCard())
-              else if (_feedItems.isEmpty)
-                SliverToBoxAdapter(child: _buildEmptyCard())
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                  sliver: SliverList.builder(
-                    itemCount: _feedItems.length,
-                    itemBuilder: (context, index) {
-                      final item = _feedItems[index];
-                      return Padding(
-                        padding: EdgeInsets.only(
-                          bottom: index == _feedItems.length - 1 ? 0 : 8,
+                  if (_loading && payload != null)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: const LinearProgressIndicator(minHeight: 3),
                         ),
-                        child: _CommunityFeedCard(
-                          item: item,
-                          onTap: () => _openThread(item.id, item.title),
-                        ),
-                      );
-                    },
+                      ),
+                    ),
+                  if (_errorMessage != null && _feedItems.isEmpty)
+                    SliverToBoxAdapter(child: _buildErrorCard())
+                  else if (_feedItems.isEmpty)
+                    SliverToBoxAdapter(child: _buildEmptyCard())
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                      sliver: SliverList.builder(
+                        itemCount: _feedItems.length,
+                        itemBuilder: (context, index) {
+                          final item = _feedItems[index];
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              bottom: index == _feedItems.length - 1 ? 0 : 8,
+                            ),
+                            child: _CommunityFeedCard(
+                              item: item,
+                              onTap: () => _openThread(item.id, item.title),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  SliverToBoxAdapter(child: _buildFeedFooter()),
+                  SliverToBoxAdapter(
+                    child: _buildSecondaryModules(bottomPadding),
                   ),
-                ),
-              SliverToBoxAdapter(child: _buildFeedFooter()),
-              SliverToBoxAdapter(child: _buildSecondaryModules(bottomPadding)),
-            ],
-          ],
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1139,7 +1105,6 @@ class _BoardAccentBadge extends StatelessWidget {
 class _BoardFilterChip extends StatelessWidget {
   const _BoardFilterChip({
     required this.title,
-    required this.subtitle,
     required this.iconName,
     required this.fallbackText,
     required this.accent,
@@ -1148,7 +1113,6 @@ class _BoardFilterChip extends StatelessWidget {
   });
 
   final String title;
-  final String subtitle;
   final String iconName;
   final String fallbackText;
   final Color accent;
@@ -1175,12 +1139,12 @@ class _BoardFilterChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minWidth: 112),
+          constraints: const BoxConstraints(minWidth: 104),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: borderColor),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1199,15 +1163,11 @@ class _BoardFilterChip extends StatelessWidget {
                 children: [
                   Text(
                     title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.labelLarge?.copyWith(
+                      color: selected ? accent : colorScheme.onSurface,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
