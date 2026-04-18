@@ -10,7 +10,7 @@ jobs:
   build-ios-lib:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           lfs: true
 
@@ -28,7 +28,7 @@ jobs:
           cargo build --release --target aarch64-apple-ios-sim
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: libnovella_native_ios
           path: |

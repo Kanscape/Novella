@@ -293,26 +293,26 @@ packages:
     dependency: "direct main"
     description:
       name: jaspr
-      sha256: fcfb975cfaca42beab50735e1865e52ea32d44b69a7ec76504adcca4dc004be9
+      sha256: "3fc388e9c114b5febe8f4678c34332f27c652882e4ec06c293c0350075af8e76"
       url: "https://pub.dev"
     source: hosted
-    version: "0.22.4"
+    version: "0.23.0"
   jaspr_builder:
     dependency: "direct dev"
     description:
       name: jaspr_builder
-      sha256: e76f4feb69217100a3871829ca3a97960231d2d8ed118fac1135752eb9164917
+      sha256: "9f5be7e7f78af33083aac109b8e2c92369f6acd5993c1a2dfecd75a30f9e8d72"
       url: "https://pub.dev"
     source: hosted
-    version: "0.22.4"
+    version: "0.23.0"
   jaspr_router:
     dependency: "direct main"
     description:
       name: jaspr_router
-      sha256: a82899af7e1717ef1643889a00a9f1a738983b58a7db13f1512a0066056d6a1e
+      sha256: "43abdfd63c19cae8faac50334c7f3065635bac3e85fd558b6076517978ade64a"
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.1"
+    version: "0.8.2"
   json_annotation:
     dependency: transitive
     description:

@@ -19,7 +19,7 @@ jobs:
     
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           lfs: true
 
@@ -91,7 +91,7 @@ jobs:
 
       # 上传产物
       - name: Upload IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: novella-unsigned-ipa
           path: novella.ipa
