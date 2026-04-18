@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/utils/time_utils.dart';
@@ -14,6 +15,7 @@ import 'package:novella/features/community/community_compose_page.dart';
 import 'package:novella/features/community/community_notification_page.dart';
 import 'package:novella/features/community/community_thread_page.dart';
 import 'package:novella/features/community/notification_unread_provider.dart';
+import 'package:novella/features/settings/settings_page.dart';
 
 class CommunityPage extends ConsumerStatefulWidget {
   const CommunityPage({super.key});
@@ -332,7 +334,6 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   Widget _buildSummaryPanel(
     CommunityHomePayload? payload,
     CommunityBoardSummary? selectedBoard,
-    int unreadCount,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -407,16 +408,14 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                   label: '在线',
                   value: '${payload?.onlineUserCount ?? 0}',
                 ),
-                _SummaryStatChip(
-                  icon: Icons.notifications_none_rounded,
-                  label: '未读',
-                  value: '$unreadCount',
-                ),
                 if (selectedBoard != null && selectedBoard.heatLabel.isNotEmpty)
                   _SummaryStatChip(
                     icon: Icons.local_fire_department_outlined,
                     label: '热度',
-                    value: selectedBoard.heatLabel,
+                    value:
+                        selectedBoard.heatLabel
+                            .replaceFirst(RegExp(r'^热度\s*'), '')
+                            .trim(),
                   ),
               ],
             ),
@@ -468,7 +467,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '公告',
+                    'Web 端公告',
                     style: theme.textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -851,17 +850,17 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
     return const SizedBox.shrink();
   }
 
-  Widget _buildSecondaryModules() {
+  Widget _buildSecondaryModules(double bottomPadding) {
     final hotThreads = _payload?.hotThreads ?? const <CommunityHotRankItem>[];
     final activeUsers =
         _payload?.activeUsers ?? const <CommunityActiveUserItem>[];
 
     if (hotThreads.isEmpty && activeUsers.isEmpty) {
-      return const SizedBox(height: 28);
+      return SizedBox(height: bottomPadding);
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 18, 12, 28),
+      padding: EdgeInsets.fromLTRB(12, 18, 12, bottomPadding),
       child: Column(
         children: [
           if (hotThreads.isNotEmpty)
@@ -916,11 +915,16 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   @override
   Widget build(BuildContext context) {
     final payload = _payload;
+    final settings = ref.watch(settingsProvider);
     final unreadCount =
         ref.watch(notificationUnreadCountProvider).asData?.value ?? 0;
     final selectedBoard = _selectedBoardSummary();
     final hasSubCategories = (payload?.subCategories.isNotEmpty ?? false);
     final toolbarHeight = _toolbarHeight(hasSubCategories);
+    final bottomPadding = appBottomContentPadding(
+      context,
+      useIOS26Style: settings.useIOS26Style,
+    );
 
     return Scaffold(
       body: RefreshIndicator(
@@ -936,7 +940,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
               )
             else ...[
               SliverToBoxAdapter(
-                child: _buildSummaryPanel(payload, selectedBoard, unreadCount),
+                child: _buildSummaryPanel(payload, selectedBoard),
               ),
               if (payload != null && payload.announcement.isNotEmpty)
                 SliverToBoxAdapter(child: _buildAnnouncementBanner(payload)),
@@ -982,7 +986,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                   ),
                 ),
               SliverToBoxAdapter(child: _buildFeedFooter()),
-              SliverToBoxAdapter(child: _buildSecondaryModules()),
+              SliverToBoxAdapter(child: _buildSecondaryModules(bottomPadding)),
             ],
           ],
         ),
@@ -1399,8 +1403,6 @@ class _CommunityFeedCard extends StatelessWidget {
                         ),
                         if (item.subCategoryLabel.isNotEmpty)
                           _MetaChip(label: item.subCategoryLabel),
-                        for (final tag in item.tags.take(2))
-                          _MetaChip(label: '#$tag'),
                       ],
                     ),
                     const SizedBox(height: 10),

@@ -330,7 +330,7 @@ class _MainPageState extends ConsumerState<MainPage> {
                       isLabelVisible: unreadNotificationCount > 0,
                       child: const Icon(Icons.forum),
                     ),
-                    label: const Text('社区'),
+                    label: Text('社区'),
                   ),
                   const NavigationRailDestination(
                     icon: Icon(Icons.settings_outlined),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:html/dom.dart' as dom;
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/utils/time_utils.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -977,12 +978,23 @@ class _ThreadMainPost extends StatelessWidget {
             child: HtmlWidget(
               sanitizeReaderHtmlTextNodes(html, const {}),
               textStyle: theme.textTheme.bodyLarge?.copyWith(height: 1.72),
+              customWidgetBuilder:
+                  (element) => _buildThreadBodyCustomBlock(context, element),
               customStylesBuilder: (element) {
                 switch (element.localName) {
                   case 'body':
                     return {'margin': '0', 'padding': '0'};
                   case 'p':
                     return {'margin': '0 0 0.8em 0', 'line-height': '1.72'};
+                  case 'div':
+                    if (_hasPreformattedWhitespace(element)) {
+                      return {
+                        'white-space': 'normal',
+                        'margin': '0.9em 0',
+                        'padding': '0',
+                      };
+                    }
+                    return null;
                   case 'img':
                     return {'max-width': '100%', 'height': 'auto'};
                   case 'blockquote':
@@ -1739,19 +1751,126 @@ class _ForumAvatar extends StatelessWidget {
 
 Color _boardAccentColor(BuildContext context, String key) {
   final colorScheme = Theme.of(context).colorScheme;
-  final palette = <Color>[
-    colorScheme.primary,
-    colorScheme.secondary,
-    colorScheme.tertiary,
-    Color.lerp(colorScheme.primary, colorScheme.secondary, 0.45)!,
-    Color.lerp(colorScheme.secondary, colorScheme.tertiary, 0.45)!,
-  ];
+  return colorScheme.primary;
+}
 
-  var hash = 0;
-  for (final codeUnit in key.codeUnits) {
-    hash = (hash * 31 + codeUnit) & 0x7fffffff;
+Widget? _buildThreadBodyCustomBlock(BuildContext context, dom.Element element) {
+  if (!_isThreadPreformattedBlock(element)) {
+    return null;
   }
-  return palette[hash % palette.length];
+
+  final text = _extractThreadPreformattedText(element);
+  if (text.trim().isEmpty) {
+    return null;
+  }
+
+  final theme = Theme.of(context);
+  final colorScheme = theme.colorScheme;
+
+  return Container(
+    width: double.infinity,
+    margin: const EdgeInsets.symmetric(vertical: 12),
+    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+    decoration: BoxDecoration(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: colorScheme.outlineVariant.withValues(alpha: 0.24),
+      ),
+    ),
+    child: SelectableText(
+      text,
+      textWidthBasis: TextWidthBasis.parent,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        height: 1.6,
+        fontFamily: 'monospace',
+      ),
+    ),
+  );
+}
+
+bool _isThreadPreformattedBlock(dom.Element element) {
+  final tag = (element.localName ?? '').toLowerCase();
+  if (tag == 'pre') {
+    return true;
+  }
+
+  if (_hasPreformattedWhitespace(element)) {
+    return true;
+  }
+
+  final classes = element.classes.map((item) => item.toLowerCase()).toSet();
+  return classes.contains('ql-code-block') ||
+      classes.contains('ql-code-block-container') ||
+      classes.contains('code-block');
+}
+
+bool _hasPreformattedWhitespace(dom.Element element) {
+  final style = (element.attributes['style'] ?? '').toLowerCase();
+  return style.contains('white-space: pre') ||
+      style.contains('white-space:pre');
+}
+
+String _extractThreadPreformattedText(dom.Element element) {
+  final buffer = StringBuffer();
+  var lastWrittenChar = '';
+
+  void writeText(String value) {
+    if (value.isEmpty) {
+      return;
+    }
+    buffer.write(value);
+    lastWrittenChar = value[value.length - 1];
+  }
+
+  void writeLineBreak() {
+    if (buffer.isEmpty || lastWrittenChar == '\n') {
+      return;
+    }
+    buffer.write('\n');
+    lastWrittenChar = '\n';
+  }
+
+  void visit(dom.Node node) {
+    if (node is dom.Text) {
+      writeText(sanitizeReaderTextNode(node.text, const {}));
+      return;
+    }
+
+    if (node is! dom.Element) {
+      return;
+    }
+
+    final tag = (node.localName ?? '').toLowerCase();
+    if (tag == 'br') {
+      writeLineBreak();
+      return;
+    }
+
+    final isBlockLike =
+        tag == 'div' ||
+        tag == 'p' ||
+        tag == 'pre' ||
+        tag == 'li' ||
+        tag == 'section' ||
+        tag == 'article';
+
+    for (final child in node.nodes) {
+      visit(child);
+    }
+
+    if (isBlockLike) {
+      writeLineBreak();
+    }
+  }
+
+  visit(element);
+
+  return buffer
+      .toString()
+      .replaceAll('\u00A0', ' ')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .trimRight();
 }
 
 String _formatThreadTime(DateTime? value) {

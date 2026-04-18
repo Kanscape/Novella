@@ -480,12 +480,6 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
             children: [
               const _HintChip(label: '标题至少 6 个字', icon: Icons.title_rounded),
               const _HintChip(label: '正文至少 20 个字', icon: Icons.notes_rounded),
-              const _HintChip(label: '发布为 HTML', icon: Icons.html_rounded),
-              if (board != null)
-                _HintChip(
-                  label: '${board.subCategories.length} 个子分类',
-                  icon: Icons.tune_rounded,
-                ),
             ],
           ),
         ],
