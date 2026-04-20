@@ -26,6 +26,7 @@ import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
 import 'package:novella/features/reader/shared/reader_image_view.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
 import 'package:novella/features/reader/shared/reader_title_sheet.dart';
+import 'package:novella/features/reader/shared/reader_title_utils.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -3613,20 +3614,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
         settings.isCleanChapterTitleEnabled(
           AppSettings.cleanChapterTitleReaderTitleScope,
         )) {
-      // 混合正则：
-      // 处理 【第一话】 或非英文前缀
-      // 处理 『「〈 分隔符
-      // 保留纯英文标题
-      final regex = RegExp(
-        r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
-      );
-      final match = regex.firstMatch(title);
-      if (match != null) {
-        final extracted = (match.group(1) ?? '') + (match.group(2) ?? '');
-        if (extracted.isNotEmpty) {
-          title = extracted;
-        }
-      }
+      title = simplifyReaderChapterTitle(title);
     }
     return title;
   }

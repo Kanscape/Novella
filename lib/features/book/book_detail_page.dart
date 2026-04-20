@@ -15,6 +15,7 @@ import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/reader/reader_page.dart';
+import 'package:novella/features/reader/shared/reader_title_utils.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/data/models/comment.dart';
@@ -1963,25 +1964,10 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                                     AppSettings
                                                         .cleanChapterTitleContinueReadingScope,
                                                   )) {
-                                                // 智能混合正则：
-                                                // 处理 【第一话】 或非英文前缀
-                                                // 处理 『「〈 分隔符
-                                                // 保留纯英文标题
-                                                final regex = RegExp(
-                                                  r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
-                                                );
-                                                final match = regex.firstMatch(
-                                                  title,
-                                                );
-                                                if (match != null) {
-                                                  // 合并分组
-                                                  final extracted =
-                                                      (match.group(1) ?? '') +
-                                                      (match.group(2) ?? '');
-                                                  if (extracted.isNotEmpty) {
-                                                    title = extracted;
-                                                  }
-                                                }
+                                                title =
+                                                    simplifyReaderChapterTitle(
+                                                      title,
+                                                    );
                                               }
 
                                               // 截断长标题

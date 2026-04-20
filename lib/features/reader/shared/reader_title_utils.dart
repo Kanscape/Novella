@@ -5,14 +5,14 @@ String simplifyReaderChapterTitle(String title) {
   }
 
   final regex = RegExp(
-    r'^\s*(?:【[^】]*】\s*)?(?![a-zA-Z]+\s)([^【「」】]+?)[\s【「」].*$',
+    r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
   );
   final match = regex.firstMatch(trimmed);
   if (match == null) {
     return trimmed;
   }
 
-  final extracted = (match.group(1) ?? '').trim();
+  final extracted = ((match.group(1) ?? '') + (match.group(2) ?? '')).trim();
   return extracted.isEmpty ? trimmed : extracted;
 }
 
