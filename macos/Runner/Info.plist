@@ -22,6 +22,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于保存阅读器中的图片到照片图库。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于访问照片图库以保存图片。</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
