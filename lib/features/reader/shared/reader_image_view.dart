@@ -20,15 +20,14 @@ const double _readerImagePreviewGroupHeight = 48;
 const double _readerImagePreviewGroupButtonHeight = 40;
 const double _readerImagePreviewGroupIconSize = 20;
 const String _novellaAlbumName = 'Novella';
-const String _shareImageTitle = '\u5206\u4eab\u56fe\u7247';
-const String _galleryAccessDeniedMessage = '\u672a\u83b7\u5f97\u76f8\u518c\u8bbf\u95ee\u6743\u9650';
-const String _imageSavedMessage = '\u56fe\u7247\u5df2\u4fdd\u5b58\u5230\u76f8\u518c';
-const String _saveImageFailedMessage = '\u4fdd\u5b58\u56fe\u7247\u5931\u8d25';
-const String _shareImageFailedMessage = '\u5206\u4eab\u56fe\u7247\u5931\u8d25';
-const String _shareWindowsFallbackMessage =
-    '\u5f53\u524d Windows \u7248\u672c\u4e0d\u652f\u6301\u6587\u4ef6\u5206\u4eab\uff0c\u5df2\u6539\u4e3a\u5206\u4eab\u56fe\u7247\u94fe\u63a5';
-const String _notEnoughSpaceMessage = '\u8bbe\u5907\u5269\u4f59\u7a7a\u95f4\u4e0d\u8db3';
-const String _unsupportedFormatMessage = '\u56fe\u7247\u683c\u5f0f\u6682\u4e0d\u652f\u6301\u4fdd\u5b58';
+const String _shareImageTitle = '分享图片';
+const String _galleryAccessDeniedMessage = '未获得相册访问权限';
+const String _imageSavedMessage = '图片已保存到相册';
+const String _saveImageFailedMessage = '保存图片失败';
+const String _shareImageFailedMessage = '分享图片失败';
+const String _shareWindowsFallbackMessage = '当前 Windows 版本不支持文件分享，已改为分享图片链接';
+const String _notEnoughSpaceMessage = '设备剩余空间不足';
+const String _unsupportedFormatMessage = '图片格式暂不支持保存';
 
 class _DownloadedImageFile {
   final String filePath;
@@ -61,10 +60,7 @@ Future<void> showReaderImagePreview(
     barrierColor: Colors.black.withValues(alpha: 0.96),
     transitionDuration: const Duration(milliseconds: 180),
     pageBuilder: (dialogContext, _, __) {
-      return _ReaderImagePreviewDialog(
-        imageUrl: trimmedUrl,
-        alt: alt?.trim(),
-      );
+      return _ReaderImagePreviewDialog(imageUrl: trimmedUrl, alt: alt?.trim());
     },
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
@@ -173,9 +169,10 @@ class _ReaderImagePreviewDialogState extends State<_ReaderImagePreviewDialog> {
     return [
       AdaptiveActionGroupItem(
         iosSymbol: 'square.and.arrow.up',
-        icon: PlatformInfo.isIOS
-            ? CupertinoIcons.square_arrow_up
-            : Icons.share_rounded,
+        icon:
+            PlatformInfo.isIOS
+                ? CupertinoIcons.square_arrow_up
+                : Icons.share_rounded,
         onPressed: _isSharing ? null : () => _shareImage(context),
         enabled: !_isSharing,
         loading: _isSharing,
@@ -187,9 +184,10 @@ class _ReaderImagePreviewDialogState extends State<_ReaderImagePreviewDialog> {
       ),
       AdaptiveActionGroupItem(
         iosSymbol: 'square.and.arrow.down',
-        icon: PlatformInfo.isIOS
-            ? CupertinoIcons.arrow_down_to_line
-            : Icons.download_rounded,
+        icon:
+            PlatformInfo.isIOS
+                ? CupertinoIcons.arrow_down_to_line
+                : Icons.download_rounded,
         onPressed: _isSaving ? null : () => _saveImage(context),
         enabled: !_isSaving,
         loading: _isSaving,
@@ -226,10 +224,7 @@ class _ReaderImagePreviewDialogState extends State<_ReaderImagePreviewDialog> {
           name: downloadedImage.fileName,
         );
       } else {
-        await Gal.putImage(
-          downloadedImage.filePath,
-          album: _novellaAlbumName,
-        );
+        await Gal.putImage(downloadedImage.filePath, album: _novellaAlbumName);
       }
 
       _showMessage(messenger, _imageSavedMessage);
@@ -459,6 +454,7 @@ class ReaderRoundedNetworkImage extends StatelessWidget {
   final int memCacheWidth;
   final Color errorColor;
   final bool previewable;
+  final bool openPreviewOnLongPress;
   final EdgeInsetsGeometry padding;
 
   const ReaderRoundedNetworkImage({
@@ -473,6 +469,7 @@ class ReaderRoundedNetworkImage extends StatelessWidget {
     this.fit = BoxFit.contain,
     this.memCacheWidth = 1080,
     this.previewable = true,
+    this.openPreviewOnLongPress = false,
     this.padding = EdgeInsets.zero,
   });
 
@@ -509,11 +506,11 @@ class ReaderRoundedNetworkImage extends StatelessWidget {
     }
 
     if (previewable) {
-      child = GestureDetector(
+      child = ReaderImagePreviewGesture(
+        imageUrl: trimmedUrl,
+        alt: alt,
+        openOnLongPress: openPreviewOnLongPress,
         behavior: HitTestBehavior.opaque,
-        onTap: () {
-          showReaderImagePreview(context, imageUrl: trimmedUrl, alt: alt);
-        },
         child: child,
       );
     }
@@ -557,5 +554,41 @@ class ReaderRoundedNetworkImage extends StatelessWidget {
       return null;
     }
     return value;
+  }
+}
+
+class ReaderImagePreviewGesture extends StatelessWidget {
+  final String imageUrl;
+  final String? alt;
+  final bool openOnLongPress;
+  final HitTestBehavior behavior;
+  final Widget child;
+
+  const ReaderImagePreviewGesture({
+    super.key,
+    required this.imageUrl,
+    required this.child,
+    this.alt,
+    this.openOnLongPress = false,
+    this.behavior = HitTestBehavior.deferToChild,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedUrl = imageUrl.trim();
+    if (trimmedUrl.isEmpty) {
+      return child;
+    }
+
+    void openPreview() {
+      showReaderImagePreview(context, imageUrl: trimmedUrl, alt: alt);
+    }
+
+    return GestureDetector(
+      behavior: behavior,
+      onTap: openOnLongPress ? null : openPreview,
+      onLongPress: openOnLongPress ? openPreview : null,
+      child: child,
+    );
   }
 }

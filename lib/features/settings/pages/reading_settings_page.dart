@@ -131,6 +131,13 @@ class ReadingSettingsPage extends ConsumerWidget {
                         ? notifier.setReaderPagedNoAnimation
                         : null,
               ),
+              SwitchListTile(
+                secondary: const Icon(Icons.touch_app_outlined),
+                title: const Text('长按预览插图'),
+                subtitle: const Text('阅读页长按以预览，可减少误触'),
+                value: settings.readerImagePreviewOpenOnLongPress,
+                onChanged: notifier.setReaderImagePreviewOpenOnLongPress,
+              ),
               ListTile(
                 leading: Icon(
                   settings.readerViewMode == ReaderViewMode.paged

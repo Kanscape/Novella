@@ -1219,6 +1219,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     dom.Element element,
     Color textColor,
     double readerSidePadding,
+    bool openImagePreviewOnLongPress,
   ) {
     if (!_isStandaloneIllustrationContainer(element)) {
       return null;
@@ -1255,6 +1256,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           errorColor: textColor,
           borderRadius: 4,
           previewable: previewable,
+          openPreviewOnLongPress: openImagePreviewOnLongPress,
         );
 
         if (aspectRatio != null) {
@@ -1278,6 +1280,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     dom.Element element,
     Color textColor,
     double readerSidePadding,
+    bool openImagePreviewOnLongPress,
   ) {
     if (element.localName != 'img') {
       return null;
@@ -1314,6 +1317,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
             errorColor: textColor,
             borderRadius: 4,
             previewable: isPreviewable,
+            openPreviewOnLongPress: openImagePreviewOnLongPress,
           ),
         ),
       );
@@ -1335,6 +1339,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         errorColor: textColor,
         borderRadius: 4,
         previewable: isPreviewable,
+        openPreviewOnLongPress: openImagePreviewOnLongPress,
       );
 
       if (aspectRatio != null && !insideTable) {
@@ -1831,8 +1836,14 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
               element,
               textColor,
               settings.readerSidePadding,
+              settings.readerImagePreviewOpenOnLongPress,
             ) ??
-            _buildImageWidget(element, textColor, settings.readerSidePadding);
+            _buildImageWidget(
+              element,
+              textColor,
+              settings.readerSidePadding,
+              settings.readerImagePreviewOpenOnLongPress,
+            );
       },
       onTapUrl: (_) => true,
     );

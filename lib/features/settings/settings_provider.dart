@@ -24,6 +24,7 @@ class AppSettings {
   final ReaderViewMode readerViewMode;
   final bool readerPagedNoAnimation;
   final ReaderBatteryIndicatorStyle readerBatteryIndicatorStyle;
+  final bool readerImagePreviewOpenOnLongPress;
   final String theme; // 'system'（系统）, 'light'（浅色）, 'dark'（深色）
   final String appFontFamily;
   final String appFontFileName;
@@ -96,6 +97,7 @@ class AppSettings {
     this.readerViewMode = ReaderViewMode.paged,
     this.readerPagedNoAnimation = false,
     this.readerBatteryIndicatorStyle = ReaderBatteryIndicatorStyle.text,
+    this.readerImagePreviewOpenOnLongPress = false,
     this.theme = 'system',
     this.appFontFamily = '',
     this.appFontFileName = '',
@@ -159,6 +161,7 @@ class AppSettings {
     ReaderViewMode? readerViewMode,
     bool? readerPagedNoAnimation,
     ReaderBatteryIndicatorStyle? readerBatteryIndicatorStyle,
+    bool? readerImagePreviewOpenOnLongPress,
     String? theme,
     String? appFontFamily,
     String? appFontFileName,
@@ -208,6 +211,9 @@ class AppSettings {
           readerPagedNoAnimation ?? this.readerPagedNoAnimation,
       readerBatteryIndicatorStyle:
           readerBatteryIndicatorStyle ?? this.readerBatteryIndicatorStyle,
+      readerImagePreviewOpenOnLongPress:
+          readerImagePreviewOpenOnLongPress ??
+          this.readerImagePreviewOpenOnLongPress,
       theme: theme ?? this.theme,
       appFontFamily: appFontFamily ?? this.appFontFamily,
       appFontFileName: appFontFileName ?? this.appFontFileName,
@@ -314,6 +320,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       readerBatteryIndicatorStyle: _parseReaderBatteryIndicatorStyle(
         prefs.getString('setting_readerBatteryIndicatorStyle'),
       ),
+      readerImagePreviewOpenOnLongPress:
+          prefs.getBool('setting_readerImagePreviewOpenOnLongPress') ?? false,
       theme: prefs.getString('setting_theme') ?? 'system',
       appFontFamily: prefs.getString('setting_appFontFamily') ?? '',
       appFontFileName: prefs.getString('setting_appFontFileName') ?? '',
@@ -396,6 +404,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await prefs.setString(
       'setting_readerBatteryIndicatorStyle',
       state.readerBatteryIndicatorStyle.name,
+    );
+    await prefs.setBool(
+      'setting_readerImagePreviewOpenOnLongPress',
+      state.readerImagePreviewOpenOnLongPress,
     );
     await prefs.setString('setting_theme', state.theme);
     await prefs.setString('setting_appFontFamily', state.appFontFamily);
@@ -508,6 +520,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
               ? ReaderBatteryIndicatorStyle.capsule
               : value,
     );
+    _save();
+  }
+
+  void setReaderImagePreviewOpenOnLongPress(bool value) {
+    state = state.copyWith(readerImagePreviewOpenOnLongPress: value);
     _save();
   }
 

@@ -884,6 +884,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     dom.Element element,
     Color textColor,
     double readerSidePadding,
+    bool openImagePreviewOnLongPress,
   ) {
     if (!_isStandaloneIllustrationContainer(element)) {
       return null;
@@ -923,6 +924,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
           errorColor: textColor,
           borderRadius: 3,
           previewable: previewable,
+          openPreviewOnLongPress: openImagePreviewOnLongPress,
         );
 
         if (aspectRatio != null) {
@@ -1349,14 +1351,6 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       await completer.future;
       frames++;
     }
-  }
-
-  Future<void> _showReaderImagePreview(
-    BuildContext context, {
-    required String imageUrl,
-    String? alt,
-  }) async {
-    await showReaderImagePreview(context, imageUrl: imageUrl, alt: alt);
   }
 
   Future<void> _jumpToBlockIndex(int index, {double alignment = 0.0}) async {
@@ -2063,6 +2057,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     final readerLineHeight = settings.readerLineHeight;
     final readerParagraphSpacing = settings.readerParagraphSpacing;
     final readerSidePadding = settings.readerSidePadding;
+    final openImagePreviewOnLongPress =
+        settings.readerImagePreviewOpenOnLongPress;
 
     // Route B：布局信息在加载章节时基于 blocks 预计算并缓存，避免 build 时反复 parse。
     final layoutInfo = _layoutInfo;
@@ -2305,6 +2301,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
         element,
         readerTextColor,
         readerSidePadding,
+        openImagePreviewOnLongPress,
       );
       if (illustrationWidget != null) {
         return illustrationWidget;
@@ -2585,13 +2582,10 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
             final alt = element.attributes['alt'];
             return Builder(
               builder: (context) {
-                return GestureDetector(
-                  onTap:
-                      () => _showReaderImagePreview(
-                        context,
-                        imageUrl: src,
-                        alt: alt,
-                      ),
+                return ReaderImagePreviewGesture(
+                  imageUrl: src,
+                  alt: alt,
+                  openOnLongPress: openImagePreviewOnLongPress,
                   child: imageWidget,
                 );
               },
