@@ -23,6 +23,7 @@ class AppSettings {
   final double readerSidePadding;
   final ReaderViewMode readerViewMode;
   final bool readerPagedNoAnimation;
+  final bool readerPagedShowSystemStatusBar;
   final ReaderBatteryIndicatorStyle readerBatteryIndicatorStyle;
   final bool readerImagePreviewOpenOnLongPress;
   final String theme; // 'system'（系统）, 'light'（浅色）, 'dark'（深色）
@@ -96,6 +97,7 @@ class AppSettings {
     this.readerSidePadding = 30.0,
     this.readerViewMode = ReaderViewMode.paged,
     this.readerPagedNoAnimation = false,
+    this.readerPagedShowSystemStatusBar = false,
     this.readerBatteryIndicatorStyle = ReaderBatteryIndicatorStyle.text,
     this.readerImagePreviewOpenOnLongPress = false,
     this.theme = 'system',
@@ -160,6 +162,7 @@ class AppSettings {
     double? readerSidePadding,
     ReaderViewMode? readerViewMode,
     bool? readerPagedNoAnimation,
+    bool? readerPagedShowSystemStatusBar,
     ReaderBatteryIndicatorStyle? readerBatteryIndicatorStyle,
     bool? readerImagePreviewOpenOnLongPress,
     String? theme,
@@ -209,6 +212,8 @@ class AppSettings {
       readerViewMode: readerViewMode ?? this.readerViewMode,
       readerPagedNoAnimation:
           readerPagedNoAnimation ?? this.readerPagedNoAnimation,
+      readerPagedShowSystemStatusBar:
+          readerPagedShowSystemStatusBar ?? this.readerPagedShowSystemStatusBar,
       readerBatteryIndicatorStyle:
           readerBatteryIndicatorStyle ?? this.readerBatteryIndicatorStyle,
       readerImagePreviewOpenOnLongPress:
@@ -317,6 +322,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       ),
       readerPagedNoAnimation:
           prefs.getBool('setting_readerPagedNoAnimation') ?? false,
+      readerPagedShowSystemStatusBar:
+          prefs.getBool('setting_readerPagedShowSystemStatusBar') ?? false,
       readerBatteryIndicatorStyle: _parseReaderBatteryIndicatorStyle(
         prefs.getString('setting_readerBatteryIndicatorStyle'),
       ),
@@ -400,6 +407,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await prefs.setBool(
       'setting_readerPagedNoAnimation',
       state.readerPagedNoAnimation,
+    );
+    await prefs.setBool(
+      'setting_readerPagedShowSystemStatusBar',
+      state.readerPagedShowSystemStatusBar,
     );
     await prefs.setString(
       'setting_readerBatteryIndicatorStyle',
@@ -510,6 +521,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setReaderPagedNoAnimation(bool value) {
     state = state.copyWith(readerPagedNoAnimation: value);
+    _save();
+  }
+
+  void setReaderPagedShowSystemStatusBar(bool value) {
+    state = state.copyWith(readerPagedShowSystemStatusBar: value);
     _save();
   }
 

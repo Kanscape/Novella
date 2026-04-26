@@ -1,3 +1,4 @@
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/features/settings/settings_provider.dart';
@@ -48,6 +49,13 @@ class ReadingSettingsPage extends ConsumerWidget {
     final notifier = ref.read(settingsProvider.notifier);
     final currentConvertTypeLabel =
         _convertTypeLabels[settings.convertType] ?? '关闭';
+    final supportsSystemStatusBarSetting =
+        PlatformInfo.isAndroid || PlatformInfo.isIOS;
+    final canAdjustSystemStatusBar =
+        supportsSystemStatusBarSetting &&
+        settings.readerViewMode == ReaderViewMode.paged;
+    final systemStatusBarActive =
+        canAdjustSystemStatusBar && settings.readerPagedShowSystemStatusBar;
 
     return Scaffold(
       body: CustomScrollView(
@@ -134,9 +142,25 @@ class ReadingSettingsPage extends ConsumerWidget {
               SwitchListTile(
                 secondary: const Icon(Icons.touch_app_outlined),
                 title: const Text('长按预览插图'),
-                subtitle: const Text('阅读页长按以预览，可减少误触'),
+                subtitle: const Text('调整预览方式，可减少误触'),
                 value: settings.readerImagePreviewOpenOnLongPress,
                 onChanged: notifier.setReaderImagePreviewOpenOnLongPress,
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.signal_cellular_alt_outlined),
+                title: const Text('系统状态栏'),
+                subtitle: Text(
+                  !supportsSystemStatusBarSetting
+                      ? '仅移动端可调整'
+                      : settings.readerViewMode == ReaderViewMode.paged
+                      ? '阅读时显示设备顶部状态栏'
+                      : '仅“左右翻页”模式可调整',
+                ),
+                value: settings.readerPagedShowSystemStatusBar,
+                onChanged:
+                    canAdjustSystemStatusBar
+                        ? notifier.setReaderPagedShowSystemStatusBar
+                        : null,
               ),
               ListTile(
                 leading: Icon(
@@ -184,35 +208,42 @@ class ReadingSettingsPage extends ConsumerWidget {
                     ),
               ),
               ListTile(
+                enabled: !systemStatusBarActive,
                 leading: const Icon(Icons.bolt_rounded),
                 title: const Text('电量指示器'),
-                subtitle: Text(_getReaderBatteryIndicatorSummary(settings)),
+                subtitle: Text(
+                  systemStatusBarActive
+                      ? '系统状态栏已显示电量'
+                      : _getReaderBatteryIndicatorSummary(settings),
+                ),
                 trailing: const Icon(Icons.chevron_right, size: 20),
                 onTap:
-                    () => SettingsUIHelper.showSelectionSheet<
-                      ReaderBatteryIndicatorStyle
-                    >(
-                      context: context,
-                      title: '电量指示器',
-                      subtitle:
-                          settings.supportsTextBatteryIndicator
-                              ? '可在文字、标准胶囊和动态胶囊之间切换'
-                              : '此平台仅支持胶囊样式，可在标准胶囊和动态胶囊之间切换',
-                      currentValue:
-                          settings.effectiveReaderBatteryIndicatorStyle,
-                      options: _availableReaderBatteryIndicatorOptions(
-                        settings,
-                      ),
-                      icons: _readerBatteryIndicatorIcons,
-                      onSelected: notifier.setReaderBatteryIndicatorStyle,
-                      leadingBuilder:
-                          (context, value, isSelected) =>
-                              _buildReaderBatteryIndicatorOptionIcon(
-                                context,
-                                value,
-                                isSelected,
-                              ),
-                    ),
+                    systemStatusBarActive
+                        ? null
+                        : () => SettingsUIHelper.showSelectionSheet<
+                          ReaderBatteryIndicatorStyle
+                        >(
+                          context: context,
+                          title: '电量指示器',
+                          subtitle:
+                              settings.supportsTextBatteryIndicator
+                                  ? '可在文字、标准胶囊和动态胶囊之间切换'
+                                  : '此平台仅支持胶囊样式，可在标准胶囊和动态胶囊之间切换',
+                          currentValue:
+                              settings.effectiveReaderBatteryIndicatorStyle,
+                          options: _availableReaderBatteryIndicatorOptions(
+                            settings,
+                          ),
+                          icons: _readerBatteryIndicatorIcons,
+                          onSelected: notifier.setReaderBatteryIndicatorStyle,
+                          leadingBuilder:
+                              (context, value, isSelected) =>
+                                  _buildReaderBatteryIndicatorOptionIcon(
+                                    context,
+                                    value,
+                                    isSelected,
+                                  ),
+                        ),
               ),
               ListTile(
                 leading: const Icon(Icons.auto_fix_high),

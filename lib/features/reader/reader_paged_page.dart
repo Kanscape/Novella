@@ -191,6 +191,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   String _pendingMeasureKey = '';
   String _measurementLayerCacheKey = '';
   double _manualPageDragOffset = 0;
+  bool? _lastAppliedShowSystemStatusBar;
+  int? _lastAppliedSystemOverlayBackgroundColor;
   Widget? _cachedMeasurementLayer;
 
   @override
@@ -198,7 +200,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _targetSortNum = widget.sortNum;
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _applyReaderSystemUiMode(ref.read(settingsProvider), force: true);
     _initInfoBar();
     _loadChapter(
       widget.sortNum,
@@ -284,6 +286,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       _readingTimeService.endSession();
     }
     if (state == AppLifecycleState.resumed) {
+      _applyReaderSystemUiMode(ref.read(settingsProvider), force: true);
       _readingTimeService.startSession();
       _updateTime();
       _updateBattery();
@@ -307,6 +310,23 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       bookId: widget.bid,
       chapterId: chapter.id,
       xPath: currentXPath,
+    );
+  }
+
+  void _applyReaderSystemUiMode(AppSettings settings, {bool force = false}) {
+    final showStatusBar = settings.readerPagedShowSystemStatusBar;
+    if (!force && _lastAppliedShowSystemStatusBar == showStatusBar) {
+      return;
+    }
+
+    _lastAppliedShowSystemStatusBar = showStatusBar;
+    unawaited(
+      showStatusBar
+          ? SystemChrome.setEnabledSystemUIMode(
+            SystemUiMode.manual,
+            overlays: const [SystemUiOverlay.top],
+          )
+          : SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
     );
   }
 
@@ -2250,6 +2270,35 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         .textColor;
   }
 
+  SystemUiOverlayStyle _readerSystemOverlayStyle(Color backgroundColor) {
+    final brightness = ThemeData.estimateBrightnessForColor(backgroundColor);
+    final iconBrightness =
+        brightness == Brightness.dark ? Brightness.light : Brightness.dark;
+    final iosStatusBarBrightness =
+        iconBrightness == Brightness.light ? Brightness.dark : Brightness.light;
+    return SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: iconBrightness,
+      statusBarBrightness: iosStatusBarBrightness,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: iconBrightness,
+      systemStatusBarContrastEnforced: false,
+      systemNavigationBarContrastEnforced: false,
+    );
+  }
+
+  void _applyReaderSystemOverlayStyle(Color backgroundColor) {
+    final backgroundValue = backgroundColor.toARGB32();
+    if (_lastAppliedSystemOverlayBackgroundColor == backgroundValue) {
+      return;
+    }
+    _lastAppliedSystemOverlayBackgroundColor = backgroundValue;
+    SystemChrome.setSystemUIOverlayStyle(
+      _readerSystemOverlayStyle(backgroundColor),
+    );
+  }
+
   Future<void> _openChapterList(BuildContext context) async {
     await showReaderChapterListSheet(
       context,
@@ -2769,6 +2818,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    _applyReaderSystemUiMode(settings);
     final baseTheme = Theme.of(context);
     final currentScheme =
         (settings.coverColorExtraction ? _dynamicColorScheme : null) ??
@@ -2820,7 +2870,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
               final backgroundColor = _readerBackgroundColor(settings, context);
               final textColor = _readerTextColor(settings, context);
               final linkColor = Theme.of(context).colorScheme.primary;
-              return AdaptiveScaffold(
+              final systemOverlayStyle = _readerSystemOverlayStyle(
+                backgroundColor,
+              );
+              _applyReaderSystemOverlayStyle(backgroundColor);
+              final scaffold = AdaptiveScaffold(
                 body: Container(
                   color: backgroundColor,
                   child: Stack(
@@ -3133,7 +3187,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                         ],
                                       ),
                                     ),
-                                  if (measurementReady && pages.isNotEmpty)
+                                  if (measurementReady &&
+                                      pages.isNotEmpty &&
+                                      !settings.readerPagedShowSystemStatusBar)
                                     Positioned(
                                       left: 16,
                                       bottom:
@@ -3156,6 +3212,10 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                     ],
                   ),
                 ),
+              );
+              return AnnotatedRegion<SystemUiOverlayStyle>(
+                value: systemOverlayStyle,
+                child: scaffold,
               );
             },
           ),
