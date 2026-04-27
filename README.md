@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="Novella banner" width="100%">
+</p>
+
 # 📚 Novella
 
 <a href="https://trendshift.io/repositories/22931" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22931" alt="Kanscape%2FNovella | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
