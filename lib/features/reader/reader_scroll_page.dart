@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -215,6 +216,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
   // Route B 采用 ScrollablePositionedList，不再需要 visibility_detector。
 
   bool _exitInProgress = false;
+  double? _stableAndroidBottomPadding;
 
   /// 退出阅读器前保存进度。
   ///
@@ -1466,7 +1468,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     _readingTimeService.startSession();
 
     // 初始化全屏和信息栏
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _applyReaderSystemUiMode();
     _initInfoBar();
   }
 
@@ -1601,8 +1603,31 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     }
     // 前台恢复记录时长
     if (state == AppLifecycleState.resumed) {
+      _applyReaderSystemUiMode();
       _readingTimeService.startSession();
     }
+  }
+
+  void _applyReaderSystemUiMode() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  double _readerBottomPadding(BuildContext context) {
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return 0;
+    }
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return bottomPadding;
+    }
+
+    final stablePadding = _stableAndroidBottomPadding;
+    if (stablePadding == null || bottomPadding < stablePadding) {
+      _stableAndroidBottomPadding = bottomPadding;
+      return bottomPadding;
+    }
+
+    return stablePadding;
   }
 
   void _toggleBars() {
@@ -2049,7 +2074,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
 
   Widget _buildWebContent(BuildContext context, AppSettings settings) {
     final double topPadding = MediaQuery.of(context).padding.top;
-    final double bottomPadding = MediaQuery.of(context).padding.bottom;
+    final double bottomPadding = _readerBottomPadding(context);
 
     // 获取阅读背景色和文字色
     final readerBackgroundColor = _getReaderBackgroundColor(settings);
@@ -2074,7 +2099,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
                   ? 0
                   : topPadding + 20,
               0,
-              layoutInfo.endsWithImage ? 0 : 80.0 + bottomPadding,
+              layoutInfo.endsWithImage ? 0 : 56.0 + bottomPadding,
             );
 
     // 自定义样式构建器
@@ -3278,12 +3303,12 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
 
   /// 悬浮底部功能区（上下章导航）
   Widget _buildFloatingBottomControls(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final bottomPadding = _readerBottomPadding(context);
     final settings = ref.watch(settingsProvider);
 
     return Positioned(
       right: 16,
-      bottom: bottomPadding + 16,
+      bottom: bottomPadding + 24,
       child: AnimatedBuilder(
         animation: _barsAnimController,
         builder: (context, child) {

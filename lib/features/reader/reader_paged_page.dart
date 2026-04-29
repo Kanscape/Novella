@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
@@ -116,8 +117,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   static const double _topBarVerticalInset = 8;
   static const double _topBarGap = 12;
   static const double _contentTopGap = 20;
-  static const double _contentBottomGap = 56;
-  static const double _indicatorBottomGap = 12;
+  static const double _contentBottomGap = 32;
+  static const double _indicatorBottomGap = 28;
+  static const double _indicatorAvoidanceHeight = 34;
   static const double _doublePageGap = 24;
   static const double _manualPageTurnTriggerDistance = 48;
   static const _blockTags = {
@@ -191,6 +193,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   String _pendingMeasureKey = '';
   String _measurementLayerCacheKey = '';
   double _manualPageDragOffset = 0;
+  double? _stableAndroidBottomPadding;
   bool? _lastAppliedShowSystemStatusBar;
   int? _lastAppliedSystemOverlayBackgroundColor;
   Widget? _cachedMeasurementLayer;
@@ -1955,8 +1958,32 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         _contentTopGap;
   }
 
+  double _readerBottomPadding(BuildContext context) {
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return 0;
+    }
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return bottomPadding;
+    }
+
+    final stablePadding = _stableAndroidBottomPadding;
+    if (stablePadding == null || bottomPadding < stablePadding) {
+      _stableAndroidBottomPadding = bottomPadding;
+      return bottomPadding;
+    }
+
+    return stablePadding;
+  }
+
   double _bottomContentPadding(BuildContext context) {
-    return MediaQuery.paddingOf(context).bottom + _contentBottomGap;
+    return _readerBottomPadding(context) + _contentBottomGap;
+  }
+
+  double _imageOnlyBottomContentPadding(BuildContext context) {
+    return _readerBottomPadding(context) +
+        _indicatorBottomGap +
+        _indicatorAvoidanceHeight;
   }
 
   double _pageContentHeight(BuildContext context, BoxConstraints constraints) {
@@ -2089,7 +2116,12 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       if (tag == 'img') {
         return true;
       }
-      return false;
+      final images =
+          root
+              .getElementsByTagName('img')
+              .where((img) => !_isFootnoteMarkerImage(img))
+              .toList();
+      return images.length == 1 && _normalizeText(root.text).isEmpty;
     } catch (_) {
       return false;
     }
@@ -2907,10 +2939,6 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                               );
                               final contentBottomPadding =
                                   _bottomContentPadding(context);
-                              final contentHeight = _pageContentHeight(
-                                context,
-                                constraints,
-                              );
                               final measureKey =
                                   '${_chapter?.id}|${contentWidth.toStringAsFixed(1)}|'
                                   '${settings.fontSize.toStringAsFixed(2)}|'
@@ -3009,21 +3037,41 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                                 Widget buildSpreadPage(
                                                   _ReaderPageSlice page,
                                                 ) {
+                                                  final imageOnly =
+                                                      _isImageOnlyPage(page);
+                                                  final pageBottomPadding =
+                                                      imageOnly
+                                                          ? _imageOnlyBottomContentPadding(
+                                                            context,
+                                                          )
+                                                          : contentBottomPadding;
+                                                  final effectiveBottomPadding =
+                                                      pageBottomPadding >
+                                                              contentBottomPadding
+                                                          ? pageBottomPadding
+                                                          : contentBottomPadding;
+                                                  final pageContentHeight =
+                                                      (constraints.maxHeight -
+                                                              contentTopPadding -
+                                                              effectiveBottomPadding)
+                                                          .clamp(
+                                                            220.0,
+                                                            double.infinity,
+                                                          );
                                                   return Padding(
-                                                    padding:
-                                                        EdgeInsets.fromLTRB(
-                                                          horizontalPadding,
-                                                          contentTopPadding,
-                                                          horizontalPadding,
-                                                          contentBottomPadding,
-                                                        ),
+                                                    padding: EdgeInsets.fromLTRB(
+                                                      horizontalPadding,
+                                                      contentTopPadding,
+                                                      horizontalPadding,
+                                                      effectiveBottomPadding,
+                                                    ),
                                                     child:
                                                         _buildReaderPageContent(
                                                           page: page,
                                                           contentWidth:
                                                               contentWidth,
                                                           contentHeight:
-                                                              contentHeight,
+                                                              pageContentHeight,
                                                           settings: settings,
                                                           textColor: textColor,
                                                           linkColor: linkColor,
@@ -3122,7 +3170,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                       left: 16,
                                       right: 16,
                                       bottom:
-                                          MediaQuery.paddingOf(context).bottom +
+                                          _readerBottomPadding(context) +
                                           _indicatorBottomGap,
                                       child: Row(
                                         children: [
@@ -3193,7 +3241,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                     Positioned(
                                       left: 16,
                                       bottom:
-                                          MediaQuery.paddingOf(context).bottom +
+                                          _readerBottomPadding(context) +
                                           _indicatorBottomGap +
                                           6,
                                       child: IgnorePointer(
