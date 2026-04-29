@@ -17,6 +17,7 @@ import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/reader/reader_page.dart';
 import 'package:novella/features/reader/shared/reader_title_utils.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
+import 'package:novella/features/search/search_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/data/models/comment.dart';
 import 'package:novella/features/comment/comment_page.dart';
@@ -980,6 +981,43 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     _startReading(sortNum: sortNum, allowServerOverrideOnOpen: true);
   }
 
+  void _openQuickSearch(String keyword, {bool exact = false}) {
+    final trimmedKeyword = keyword.trim();
+    if (trimmedKeyword.isEmpty) return;
+
+    AppRouteLauncher.pushDetail(
+      context,
+      (_) => SearchPage(initialKeyword: trimmedKeyword, initialExact: exact),
+    );
+  }
+
+  Widget _buildQuickSearchText({
+    required String text,
+    required TextStyle? style,
+    required String semanticsLabel,
+    int? maxLines,
+    bool exact = false,
+  }) {
+    final trimmedText = text.trim();
+    if (trimmedText.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Semantics(
+      button: true,
+      label: semanticsLabel,
+      child: GestureDetector(
+        onTap: () => _openQuickSearch(trimmedText, exact: exact),
+        child: Text(
+          trimmedText,
+          style: style,
+          maxLines: maxLines,
+          overflow: maxLines == null ? null : TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+
   /// 显示同步未完成警告弹窗
   void _showSyncWarningSheet() {
     final sheetTheme = _effectiveDynamicThemeData();
@@ -1775,22 +1813,24 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  book.title,
+                                _buildQuickSearchText(
+                                  text: book.title,
                                   style: Theme.of(context).textTheme.titleLarge
                                       ?.copyWith(fontWeight: FontWeight.bold),
                                   maxLines: 4,
-                                  overflow: TextOverflow.ellipsis,
+                                  semanticsLabel: '搜索书名 ${book.title}',
                                 ),
                                 if (book.author.isNotEmpty) ...[
                                   const SizedBox(height: 4),
-                                  Text(
-                                    book.author,
+                                  _buildQuickSearchText(
+                                    text: book.author,
                                     style: Theme.of(
                                       context,
                                     ).textTheme.bodyMedium?.copyWith(
                                       color: colorScheme.onSurfaceVariant,
                                     ),
+                                    semanticsLabel: '搜索作者 ${book.author}',
+                                    exact: true,
                                   ),
                                 ],
                               ],

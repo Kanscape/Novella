@@ -16,7 +16,10 @@ import 'package:novella/src/widgets/book_type_badge.dart';
 import 'package:novella/src/widgets/book_cover_previewer.dart';
 
 class SearchPage extends ConsumerStatefulWidget {
-  const SearchPage({super.key});
+  final String? initialKeyword;
+  final bool initialExact;
+
+  const SearchPage({super.key, this.initialKeyword, this.initialExact = false});
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
@@ -45,10 +48,29 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   @override
   void initState() {
     super.initState();
-    _loadHistory();
-    // 自动聚焦搜索框
+    _initializeSearchPage();
+  }
+
+  Future<void> _initializeSearchPage() async {
+    final initialKeyword = widget.initialKeyword?.trim() ?? '';
+    if (initialKeyword.isNotEmpty) {
+      _searchController.text = initialKeyword;
+    }
+
+    await _loadHistory();
+    if (!mounted) return;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
+      if (!mounted) return;
+
+      if (initialKeyword.isNotEmpty) {
+        _submitSearch(
+          overrideKeyword: initialKeyword,
+          exact: widget.initialExact,
+        );
+      } else {
+        _focusNode.requestFocus();
+      }
     });
   }
 
@@ -78,6 +100,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   Future<void> _loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final history = prefs.getStringList('search_history') ?? [];
+    if (!mounted) return;
     setState(() {
       _history = history;
     });
