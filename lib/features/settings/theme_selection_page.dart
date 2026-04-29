@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:novella/core/theme/app_color_profiles.dart';
 import 'settings_page.dart';
 import 'widgets/color_picker_sheet.dart';
 
@@ -135,12 +136,25 @@ class _ThemeSelectionPageState extends ConsumerState<ThemeSelectionPage> {
           );
         }
 
+        if (settings.oledBlack && previewBrightness == Brightness.dark) {
+          previewColorScheme = AppColorProfiles.oledBlackScheme(
+            previewColorScheme,
+          );
+        }
+
         final previewTheme = ThemeData(
           useMaterial3: true,
           colorScheme: previewColorScheme,
+          scaffoldBackgroundColor: previewColorScheme.surface,
+          canvasColor: previewColorScheme.surface,
           fontFamily:
               Theme.of(context).textTheme.bodyMedium?.fontFamily ??
               (Platform.isWindows ? 'Microsoft YaHei' : null),
+          appBarTheme: AppBarTheme(
+            backgroundColor: previewColorScheme.surface,
+            foregroundColor: previewColorScheme.onSurface,
+            surfaceTintColor: Colors.transparent,
+          ),
         );
 
         // 整个页面使用 AnimatedTheme 实现平滑过渡
