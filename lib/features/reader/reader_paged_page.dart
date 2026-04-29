@@ -14,6 +14,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:novella/core/layout/app_window_class.dart';
+import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:novella/core/utils/font_manager.dart';
 import 'package:novella/core/utils/time_utils.dart';
@@ -2244,7 +2245,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cacheKey = '${widget.bid}_${isDark ? 'dark' : 'light'}';
+    final colorProfile = AppColorProfiles.profileFor(
+      isDark: isDark,
+      oledBlackEnabled: settings.oledBlack,
+    );
+    final cacheKey = '${widget.bid}_$colorProfile';
 
     if (_schemeCache.containsKey(cacheKey)) {
       if (mounted) {
@@ -2257,9 +2262,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
 
     final seedColor = CoverUrlUtils.extractSeedColor(widget.coverUrl);
     if (seedColor != null && mounted) {
-      final scheme = ColorScheme.fromSeed(
-        seedColor: seedColor,
-        brightness: isDark ? Brightness.dark : Brightness.light,
+      final scheme = AppColorProfiles.colorSchemeFromCoverSeed(
+        seedColor,
+        profile: colorProfile,
       );
       _schemeCache[cacheKey] = scheme;
       setState(() {

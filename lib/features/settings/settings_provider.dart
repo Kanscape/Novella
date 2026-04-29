@@ -618,22 +618,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   void setOledBlack(bool value) {
-    // 只有在禁用封面取色时才允许开启纯黑模式
-    // UI 层也应做限制，这里做二次防护
-    if (state.coverColorExtraction && value) {
-      return;
-    }
     state = state.copyWith(oledBlack: value);
     _save();
+    BookDetailPageState.clearColorCache();
   }
 
   void setCoverColorExtraction(bool value) {
-    // 开启封面取色时，强制关闭纯黑模式
-    if (value) {
-      state = state.copyWith(coverColorExtraction: value, oledBlack: false);
-    } else {
-      state = state.copyWith(coverColorExtraction: value);
-    }
+    state = state.copyWith(coverColorExtraction: value);
     _save();
     // 清除缓存以重新提取（或不再提取）
     BookDetailPageState.clearColorCache();

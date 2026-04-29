@@ -264,15 +264,10 @@ class AppearanceSettingsPage extends ConsumerWidget {
               SwitchListTile(
                 secondary: const Icon(Icons.contrast),
                 title: const Text('纯黑模式'),
-                subtitle: Text(
-                  settings.coverColorExtraction
-                      ? '需先关闭封面取色'
-                      : '在深色模式下使用更纯的黑色背景',
-                ),
+                subtitle: const Text('在深色模式下使用更纯的黑色背景'),
                 value: settings.oledBlack,
                 onChanged:
-                    (colorScheme.brightness == Brightness.dark &&
-                            !settings.coverColorExtraction)
+                    colorScheme.brightness == Brightness.dark
                         ? (value) => notifier.setOledBlack(value)
                         : null,
               ),

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/comment.dart';
@@ -90,7 +91,11 @@ class _CommentPageState extends ConsumerState<CommentPage> {
     }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cacheKey = '${widget.id}_${isDark ? 'dark' : 'light'}';
+    final colorProfile = AppColorProfiles.profileFor(
+      isDark: isDark,
+      oledBlackEnabled: settings.oledBlack,
+    );
+    final cacheKey = '${widget.id}_$colorProfile';
 
     if (_schemeCache.containsKey(cacheKey)) {
       if (mounted) {
@@ -103,9 +108,9 @@ class _CommentPageState extends ConsumerState<CommentPage> {
 
     final seedColor = CoverUrlUtils.extractSeedColor(coverUrl);
     if (seedColor != null && mounted) {
-      final scheme = ColorScheme.fromSeed(
-        seedColor: seedColor,
-        brightness: isDark ? Brightness.dark : Brightness.light,
+      final scheme = AppColorProfiles.colorSchemeFromCoverSeed(
+        seedColor,
+        profile: colorProfile,
       );
       _schemeCache[cacheKey] = scheme;
       setState(() {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
@@ -1525,7 +1526,11 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     if (!settings.coverColorExtraction) return;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cacheKey = '${widget.bid}_${isDark ? 'dark' : 'light'}';
+    final colorProfile = AppColorProfiles.profileFor(
+      isDark: isDark,
+      oledBlackEnabled: settings.oledBlack,
+    );
+    final cacheKey = '${widget.bid}_$colorProfile';
 
     // 优先检查缓存
     if (_schemeCache.containsKey(cacheKey)) {
@@ -1540,9 +1545,9 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     // 从 BlurHash DC 分量同步提取主色
     final seedColor = CoverUrlUtils.extractSeedColor(widget.coverUrl);
     if (seedColor != null && mounted) {
-      final scheme = ColorScheme.fromSeed(
-        seedColor: seedColor,
-        brightness: isDark ? Brightness.dark : Brightness.light,
+      final scheme = AppColorProfiles.colorSchemeFromCoverSeed(
+        seedColor,
+        profile: colorProfile,
       );
       _schemeCache[cacheKey] = scheme;
       setState(() {

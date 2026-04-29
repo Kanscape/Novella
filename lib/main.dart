@@ -12,6 +12,7 @@ import 'package:novella/core/logging/log_buffer_service.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/core/storage/secret_storage_service.dart';
+import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/auth/login_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
@@ -524,11 +525,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
         // 应用 OLED 黑优化
         if (settings.oledBlack) {
-          darkScheme = darkScheme.copyWith(
-            surface: Colors.black,
-            surfaceContainer: const Color(0xFF121212),
-            surfaceContainerHigh: const Color(0xFF1E1E1E),
-          );
+          darkScheme = AppColorProfiles.oledBlackScheme(darkScheme);
         }
 
         return MaterialApp(

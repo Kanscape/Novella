@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/core/layout/app_window_class.dart';
+import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -334,13 +335,12 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   BookMarkStatus _currentMark = BookMarkStatus.none;
 
   // 颜色提取缓存（静态共享）
-  // 键格式："bookId_dark" 或 "bookId_light"
+  // 键格式："bookId_light"、"bookId_dark" 或 "bookId_oledBlack"
   static final Map<String, List<Color>> _colorCache = {};
   // ColorScheme 缓存（静态共享）
   static final Map<String, ColorScheme> _schemeCache = {};
 
-  // 监听亮度变化以更新主题
-  Brightness? _currentBrightness;
+  String? _currentColorProfile;
 
   /// 清除所有颜色缓存
   static void clearColorCache() {
@@ -430,71 +430,121 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final brightness = Theme.of(context).brightness;
-    final isDark = brightness == Brightness.dark;
+    final settings = ref.read(settingsProvider);
+    final colorProfile = _colorProfileForSettings(settings);
 
-    if (_currentBrightness == null) {
-      // 首次调用：尝试恢复缓存或提取颜色
-      _tryRestoreCachedColors(isDark);
+    if (_currentColorProfile == null) {
+      _currentColorProfile = colorProfile;
+      _tryRestoreCachedColors(colorProfile);
       if (!_colorsExtracted) {
         final coverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
         if (_hasCoverColorSeed(coverUrl)) {
-          _extractColors(coverUrl!, isDark);
+          _extractColors(coverUrl!, colorProfile);
         }
       }
-    } else if (_currentBrightness != brightness) {
-      // 主题变化：重新提取
+    } else if (_currentColorProfile != colorProfile) {
       _logger.info(
-        'Theme changed from $_currentBrightness to $brightness, re-extracting colors',
+        'Color profile changed from $_currentColorProfile to $colorProfile, re-extracting colors',
       );
-      _gradientColors = null;
-      _dynamicColorScheme = null;
-      _colorsExtracted = false;
+      _resetExtractedColors();
+      _currentColorProfile = colorProfile;
       final coverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
       if (_hasCoverColorSeed(coverUrl)) {
-        _extractColors(coverUrl!, isDark);
+        _extractColors(coverUrl!, colorProfile);
       }
     }
-    _currentBrightness = brightness;
+  }
+
+  String _colorProfileForSettings(AppSettings settings) {
+    return AppColorProfiles.profileFor(
+      isDark: Theme.of(context).brightness == Brightness.dark,
+      oledBlackEnabled: settings.oledBlack,
+    );
+  }
+
+  String _colorCacheKey(String colorProfile) =>
+      '${widget.bookId}_$colorProfile';
+
+  List<Color> _headerTransitionColorsForSettings(
+    BuildContext context,
+    AppSettings settings,
+  ) {
+    final scaffoldBackground = Theme.of(context).scaffoldBackgroundColor;
+    final isRegularDark =
+        _colorProfileForSettings(settings) == AppColorProfiles.dark;
+    return [
+      scaffoldBackground.withAlpha(0),
+      scaffoldBackground.withAlpha(0),
+      scaffoldBackground.withAlpha(isRegularDark ? 56 : 40),
+      scaffoldBackground.withAlpha(isRegularDark ? 144 : 120),
+      scaffoldBackground.withAlpha(isRegularDark ? 216 : 200),
+      scaffoldBackground,
+    ];
+  }
+
+  void _resetExtractedColors() {
+    _gradientColors = null;
+    _dynamicColorScheme = null;
+    _colorsExtracted = false;
+  }
+
+  void _ensureColorProfile(AppSettings settings) {
+    final colorProfile = _colorProfileForSettings(settings);
+    if (_currentColorProfile == colorProfile) {
+      final coverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
+      if (settings.coverColorExtraction &&
+          !_colorsExtracted &&
+          _gradientColors == null &&
+          _hasCoverColorSeed(coverUrl)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final latestSettings = ref.read(settingsProvider);
+          if (_colorProfileForSettings(latestSettings) != colorProfile) return;
+          _extractColors(coverUrl!, colorProfile);
+        });
+      }
+      return;
+    }
+
+    _currentColorProfile = colorProfile;
+    _resetExtractedColors();
+    if (_tryRestoreCachedColors(colorProfile)) {
+      return;
+    }
+
+    final coverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
+    if (!settings.coverColorExtraction || !_hasCoverColorSeed(coverUrl)) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final latestSettings = ref.read(settingsProvider);
+      if (_colorProfileForSettings(latestSettings) != colorProfile) return;
+      _extractColors(coverUrl!, colorProfile);
+    });
   }
 
   /// 尝试同步恢复缓存颜色
-  void _tryRestoreCachedColors(bool isDark) {
-    final cacheKey = '${widget.bookId}_${isDark ? 'dark' : 'light'}';
+  bool _tryRestoreCachedColors(String colorProfile) {
+    final cacheKey = _colorCacheKey(colorProfile);
 
     if (_colorCache.containsKey(cacheKey) &&
         _schemeCache.containsKey(cacheKey)) {
       _gradientColors = _colorCache[cacheKey]!;
       _dynamicColorScheme = _schemeCache[cacheKey]!;
       _colorsExtracted = true;
+      return true;
     }
+    return false;
   }
 
   bool _hasCoverColorSeed(String? coverUrl) {
     return CoverUrlUtils.extractBlurHash(coverUrl) != null;
   }
 
-  /// 根据主题调整颜色以提升质感
-  Color _adjustColorForTheme(Color color, bool isDark) {
-    final hsl = HSLColor.fromColor(color);
-    if (isDark) {
-      // 深色模式：显著降低亮度
-      // 保持 0.05-0.25 区间
-      return hsl
-          .withLightness((hsl.lightness * 0.4).clamp(0.05, 0.25))
-          .withSaturation((hsl.saturation * 1.1).clamp(0.0, 1.0))
-          .toColor();
-    } else {
-      // 浅色模式：提升亮度，柔化饱和度
-      return hsl
-          .withLightness((hsl.lightness * 0.8 + 0.3).clamp(0.5, 0.85))
-          .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.8))
-          .toColor();
-    }
-  }
-
   /// 从封面 BlurHash 提取主色调生成渐变背景
-  void _extractColors(String coverUrl, bool isDark) {
+  void _extractColors(String coverUrl, String colorProfile) {
     final settings = ref.read(settingsProvider);
     // 如果禁用了封面取色，则不执行
     if (!settings.coverColorExtraction) {
@@ -507,7 +557,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
 
     // 优先检查缓存
-    final cacheKey = '${widget.bookId}_${isDark ? 'dark' : 'light'}';
+    final cacheKey = _colorCacheKey(colorProfile);
     if (_colorCache.containsKey(cacheKey) &&
         _schemeCache.containsKey(cacheKey)) {
       _gradientColors = _colorCache[cacheKey]!;
@@ -530,22 +580,18 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       return;
     }
 
-    // 构建渐变色
-    final color1 = _adjustColorForTheme(seedColor, isDark);
-    final color2 = _adjustColorForTheme(
-      Color.lerp(seedColor, isDark ? Colors.black : Colors.white, 0.4)!,
-      isDark,
+    final adjustedColors = AppColorProfiles.coverGradientColors(
+      seedColor,
+      colorProfile,
     );
-    final middleColor = Color.lerp(color1, color2, 0.5)!;
-    final adjustedColors = [color1, middleColor, color2];
 
     // 缓存渐变色
     _colorCache[cacheKey] = List.from(adjustedColors);
 
     // 生成 ColorScheme
-    final dynamicScheme = ColorScheme.fromSeed(
-      seedColor: color1,
-      brightness: isDark ? Brightness.dark : Brightness.light,
+    final dynamicScheme = AppColorProfiles.colorSchemeFromCoverSeed(
+      seedColor,
+      profile: colorProfile,
     );
     _schemeCache[cacheKey] = dynamicScheme;
 
@@ -578,8 +624,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
             !_colorsExtracted &&
             _gradientColors == null &&
             _hasCoverColorSeed(cached.cover)) {
-          final isDark = Theme.of(context).brightness == Brightness.dark;
-          _extractColors(cached.cover, isDark);
+          _extractColors(cached.cover, _colorProfileForSettings(settings));
         }
 
         // 后台同步最新数据
@@ -672,8 +717,6 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       await _userService.ensureInitialized();
 
       if (mounted) {
-        // 检查主题以调整颜色
-        final isDark = Theme.of(context).brightness == Brightness.dark;
         // 加载本地标记
         final mark = await _bookMarkService.getBookMark(widget.bookId);
         setState(() {
@@ -687,7 +730,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         if (!_colorsExtracted &&
             _gradientColors == null &&
             _hasCoverColorSeed(info.cover)) {
-          _extractColors(info.cover, isDark);
+          _extractColors(info.cover, _colorProfileForSettings(settings));
         }
         // 缓存书籍信息
         if (settings.bookDetailCacheEnabled) {
@@ -1292,17 +1335,12 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   Widget build(BuildContext context) {
     // Check OLED black mode setting
     final settings = ref.watch(settingsProvider);
-    final isOled =
-        settings.oledBlack && Theme.of(context).brightness == Brightness.dark;
+    _ensureColorProfile(settings);
 
-    // Use dynamic ColorScheme if available AND not in OLED mode
-    // OLED mode uses system default colors for pure black experience
-    // Also check coverColorExtraction setting
+    // Use dynamic ColorScheme if available.
     final baseColorScheme = Theme.of(context).colorScheme;
     final colorScheme =
-        (isOled ||
-                _dynamicColorScheme == null ||
-                !settings.coverColorExtraction)
+        (_dynamicColorScheme == null || !settings.coverColorExtraction)
             ? baseColorScheme
             : _dynamicColorScheme!;
 
@@ -1319,14 +1357,12 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     // 1. 尚未提取完成
     // 2. 封面加载未标记失败
     // 3. 确实有封面 URL (无封面则不等待)
-    // 4. 非 OLED 模式 (OLED 模式不提取颜色)
-    // 5. 开启了封面取色
+    // 4. 开启了封面取色
     final shouldWaitColors =
         !_colorsExtracted &&
         !_coverLoadFailed &&
         hasCover &&
         hasCoverColorSeed &&
-        !isOled &&
         settings.coverColorExtraction;
 
     // 加载中 OR 需要等待颜色提取时，显示预览/骨架屏
@@ -1340,7 +1376,6 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           context,
           colorScheme,
           _buildLoadingPreview(colorScheme),
-          isOled: isOled,
         );
       }
     }
@@ -1353,36 +1388,33 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           : _error != null
           ? _buildErrorView()
           : _buildContent(colorScheme),
-      isOled: isOled,
     );
   }
 
   /// 动态配色可用时使用动画过渡
   /// 使用 AnimatedTheme 平滑过渡
   /// 缓存恢复时跳过动画防闪烁
-  /// OLED 模式禁用动态配色
   Widget _buildThemedScaffold(
     BuildContext context,
     ColorScheme colorScheme,
-    Widget body, {
-    bool isOled = false,
-  }) {
+    Widget body,
+  ) {
+    final settings = ref.read(settingsProvider);
     // 已提取（缓存）则跳过动画
     // 防止导航闪烁
     final shouldAnimate = !_colorsExtracted || _dynamicColorScheme == null;
 
-    // OLED 模式强制使用系统主题
     final effectiveColorScheme =
-        isOled
-            ? Theme.of(context).colorScheme
-            : (_dynamicColorScheme ?? Theme.of(context).colorScheme);
+        settings.coverColorExtraction
+            ? (_dynamicColorScheme ?? Theme.of(context).colorScheme)
+            : Theme.of(context).colorScheme;
 
     return AnimatedTheme(
       // 600ms 平滑淡入时长
       duration:
           shouldAnimate ? const Duration(milliseconds: 600) : Duration.zero,
       curve: Curves.easeInOutCubic,
-      data: Theme.of(context).copyWith(colorScheme: effectiveColorScheme),
+      data: _themeDataForColorScheme(Theme.of(context), effectiveColorScheme),
       child: Scaffold(body: body),
     );
   }
@@ -1390,15 +1422,18 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   ThemeData _effectiveDynamicThemeData() {
     final settings = ref.read(settingsProvider);
     final baseTheme = Theme.of(context);
-    final isOled =
-        settings.oledBlack && baseTheme.brightness == Brightness.dark;
     final colorScheme =
-        (isOled ||
-                _dynamicColorScheme == null ||
-                !settings.coverColorExtraction)
+        (_dynamicColorScheme == null || !settings.coverColorExtraction)
             ? baseTheme.colorScheme
             : _dynamicColorScheme!;
 
+    return _themeDataForColorScheme(baseTheme, colorScheme);
+  }
+
+  ThemeData _themeDataForColorScheme(
+    ThemeData baseTheme,
+    ColorScheme colorScheme,
+  ) {
     return baseTheme.copyWith(
       colorScheme: colorScheme,
       scaffoldBackgroundColor: colorScheme.surface,
@@ -1462,8 +1497,6 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   Widget _buildLoadingPreview(ColorScheme colorScheme) {
     final settings = ref.watch(settingsProvider);
-    final isOled =
-        settings.oledBlack && Theme.of(context).brightness == Brightness.dark;
     final coverUrl = widget.initialCoverUrl ?? '';
     final title = widget.initialTitle ?? '';
     return LayoutBuilder(
@@ -1489,8 +1522,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                     fit: StackFit.expand,
                     children: [
                       // 渐变背景或加载占位
-                      if (!isOled &&
-                          _gradientColors != null &&
+                      if (_gradientColors != null &&
                           settings.coverColorExtraction)
                         Container(
                           decoration: BoxDecoration(
@@ -1503,10 +1535,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                         )
                       else
                         Container(
-                          color:
-                              isOled
-                                  ? Colors.black
-                                  : Theme.of(context).scaffoldBackgroundColor,
+                          color: Theme.of(context).scaffoldBackgroundColor,
                         ),
                       // Gradient overlay
                       Container(
@@ -1514,24 +1543,10 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [
-                              Theme.of(
-                                context,
-                              ).scaffoldBackgroundColor.withAlpha(0),
-                              Theme.of(
-                                context,
-                              ).scaffoldBackgroundColor.withAlpha(0),
-                              Theme.of(
-                                context,
-                              ).scaffoldBackgroundColor.withAlpha(40),
-                              Theme.of(
-                                context,
-                              ).scaffoldBackgroundColor.withAlpha(120),
-                              Theme.of(
-                                context,
-                              ).scaffoldBackgroundColor.withAlpha(200),
-                              Theme.of(context).scaffoldBackgroundColor,
-                            ],
+                            colors: _headerTransitionColorsForSettings(
+                              context,
+                              settings,
+                            ),
                             stops: const [0.0, 0.3, 0.5, 0.7, 0.9, 1.0],
                           ),
                         ),
@@ -1678,8 +1693,6 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   Widget _buildContent(ColorScheme colorScheme) {
     final settings = ref.watch(settingsProvider);
-    final isOled =
-        settings.oledBlack && Theme.of(context).brightness == Brightness.dark;
     final book = _bookInfo!;
     // 复用封面 URL 利用缓存
     final coverUrl =
@@ -1711,8 +1724,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                   fit: StackFit.expand,
                   children: [
                     // 提取色渐变背景或降级
-                    if (!isOled &&
-                        _gradientColors != null &&
+                    if (_gradientColors != null &&
                         !_coverLoadFailed &&
                         settings.coverColorExtraction)
                       Container(
@@ -1761,10 +1773,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                     else
                       // 默认背景：使用 Scaffold 背景色
                       Container(
-                        color:
-                            isOled
-                                ? Colors.black
-                                : Theme.of(context).scaffoldBackgroundColor,
+                        color: Theme.of(context).scaffoldBackgroundColor,
                       ),
                     // 平滑过渡渐变遮罩
                     Container(
@@ -1772,24 +1781,10 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [
-                            Theme.of(
-                              context,
-                            ).scaffoldBackgroundColor.withAlpha(0),
-                            Theme.of(
-                              context,
-                            ).scaffoldBackgroundColor.withAlpha(0),
-                            Theme.of(
-                              context,
-                            ).scaffoldBackgroundColor.withAlpha(40),
-                            Theme.of(
-                              context,
-                            ).scaffoldBackgroundColor.withAlpha(120),
-                            Theme.of(
-                              context,
-                            ).scaffoldBackgroundColor.withAlpha(200),
-                            Theme.of(context).scaffoldBackgroundColor,
-                          ],
+                          colors: _headerTransitionColorsForSettings(
+                            context,
+                            settings,
+                          ),
                           stops: const [0.0, 0.3, 0.5, 0.7, 0.9, 1.0],
                         ),
                       ),
