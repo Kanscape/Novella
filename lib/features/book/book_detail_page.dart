@@ -1462,9 +1462,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           borderRadius: BorderRadius.circular(8),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withAlpha(60),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+              color: Colors.black.withAlpha(45),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
           ],
         ),

@@ -762,7 +762,9 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                             final fromHero = fromHeroContext.widget as Hero;
                             final toHero = toHeroContext.widget as Hero;
                             return direction == HeroFlightDirection.push
-                                ? fromHero.child
+                                ? _ContinueReadingCoverFlight(
+                                  child: fromHero.child,
+                                )
                                 : toHero.child;
                           },
                           child: ClipRRect(
@@ -1257,5 +1259,28 @@ class LocalShelfCover extends StatelessWidget {
 
     // 回退到网络缓存
     return BookCoverImage(imageUrl: coverUrl, width: width, height: height);
+  }
+}
+
+class _ContinueReadingCoverFlight extends StatelessWidget {
+  final Widget child;
+
+  const _ContinueReadingCoverFlight({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(45),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: child,
+    );
   }
 }
