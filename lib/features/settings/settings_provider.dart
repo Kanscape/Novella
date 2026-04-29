@@ -13,6 +13,13 @@ enum ReaderViewMode { scroll, paged }
 
 enum ReaderBatteryIndicatorStyle { capsule, capsuleDynamic, text }
 
+String _normalizeIOSDisplayStyle(String? value) {
+  if (value == 'ios26' && PlatformInfo.isNativeIOS26OrHigher()) {
+    return 'ios26';
+  }
+  return 'md3';
+}
+
 /// 设置状态模型
 class AppSettings {
   final bool isLoaded;
@@ -57,7 +64,7 @@ class AppSettings {
   final int readerPresetIndex; // 预设方案索引 (0-4)
   final bool readerUseCustomColor; // 是否使用自定颜色 Tab (false = 预设)
   // iOS 显示样式（仅 iOS 平台有效）
-  // 'md3' = Material Design 3（默认）, 'ios18' = iOS 18, 'ios26' = iOS 26 液态玻璃
+  // 'md3' = Material Design 3（默认）, 'ios26' = Liquid Glass
   final String iosDisplayStyle;
   final bool autoCheckUpdate;
   final String ignoredUpdateVersion; // 忽略的更新版本号
@@ -136,10 +143,11 @@ class AppSettings {
   });
 
   /// 是否使用 iOS 26 液态玻璃样式
-  bool get useIOS26Style => iosDisplayStyle == 'ios26' && Platform.isIOS;
+  bool get useIOS26Style =>
+      iosDisplayStyle == 'ios26' && PlatformInfo.isNativeIOS26OrHigher();
 
   /// 是否使用 iOS 18 样式
-  bool get useIOS18Style => iosDisplayStyle == 'ios18' && Platform.isIOS;
+  bool get useIOS18Style => false;
 
   bool get supportsTextBatteryIndicator => !Platform.isIOS;
 
@@ -303,6 +311,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final packageInfo = await PackageInfo.fromPlatform();
+    final storedIOSDisplayStyle = prefs.getString('setting_iosDisplayStyle');
+    final normalizedIOSDisplayStyle = _normalizeIOSDisplayStyle(
+      storedIOSDisplayStyle,
+    );
 
     developer.log(
       'Loaded settings: ignoreJapanese=${prefs.getBool('setting_ignoreJapanese')}, ignoreAI=${prefs.getBool('setting_ignoreAI')}',
@@ -378,11 +390,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
       readerPresetIndex: prefs.getInt('setting_readerPresetIndex') ?? 0,
       readerUseCustomColor:
           prefs.getBool('setting_readerUseCustomColor') ?? false,
-      iosDisplayStyle: prefs.getString('setting_iosDisplayStyle') ?? 'md3',
+      iosDisplayStyle: normalizedIOSDisplayStyle,
       autoCheckUpdate: prefs.getBool('setting_autoCheckUpdate') ?? true,
       ignoredUpdateVersion:
           prefs.getString('setting_ignoredUpdateVersion') ?? '',
     );
+
+    if (storedIOSDisplayStyle != normalizedIOSDisplayStyle) {
+      await prefs.setString(
+        'setting_iosDisplayStyle',
+        normalizedIOSDisplayStyle,
+      );
+    }
 
     // 同步 iOS 显示样式到 PlatformInfo
     if (Platform.isIOS) {
@@ -777,11 +796,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   // ==================== iOS 显示样式设置 ====================
 
   void setIosDisplayStyle(String value) {
-    state = state.copyWith(iosDisplayStyle: value);
+    final normalizedValue = _normalizeIOSDisplayStyle(value);
+    state = state.copyWith(iosDisplayStyle: normalizedValue);
     _save();
     // 同步到 PlatformInfo
     if (Platform.isIOS) {
-      PlatformInfo.styleOverride = value;
+      PlatformInfo.styleOverride = normalizedValue;
     }
   }
 

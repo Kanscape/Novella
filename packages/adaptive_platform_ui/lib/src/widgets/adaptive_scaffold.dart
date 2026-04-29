@@ -59,6 +59,36 @@ enum TabBarMinimizeBehavior {
   automatic,
 }
 
+const double _legacyIOS26BottomNavigationLift = 8;
+
+bool _shouldLiftLegacyBottomNavigationBar() {
+  return PlatformInfo.isNativeIOS26OrHigher() &&
+      !PlatformInfo.isIOS26OrHigher();
+}
+
+Widget _liftLegacyBottomNavigationBar(
+  BuildContext context,
+  Widget child, {
+  Color? backgroundColor,
+}) {
+  if (!_shouldLiftLegacyBottomNavigationBar()) {
+    return child;
+  }
+
+  final fillColor =
+      backgroundColor ??
+      Theme.of(context).navigationBarTheme.backgroundColor ??
+      Theme.of(context).colorScheme.surfaceContainer;
+
+  return ColoredBox(
+    color: fillColor,
+    child: Padding(
+      padding: const EdgeInsets.only(bottom: _legacyIOS26BottomNavigationLift),
+      child: child,
+    ),
+  );
+}
+
 /// An adaptive scaffold that renders platform-specific navigation
 class AdaptiveScaffold extends StatefulWidget {
   const AdaptiveScaffold({
@@ -281,7 +311,8 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
         }
 
         // Determine which tab bar to use based on platform and configuration
-        Widget? tabBar;
+        Widget tabBar;
+        Color? tabBarBackgroundColor;
 
         // iOS 26+ with useNativeBottomBar=true -> Use native tab bar
         if (PlatformInfo.isIOS26OrHigher() && useNativeBottomBar) {
@@ -301,17 +332,24 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
         else {
           // Priority 1: Custom CupertinoTabBar (if provided)
           if (widget.bottomNavigationBar!.cupertinoTabBar != null) {
-            tabBar = widget.bottomNavigationBar!.cupertinoTabBar;
+            final customTabBar = widget.bottomNavigationBar!.cupertinoTabBar!;
+            tabBar = customTabBar;
+            tabBarBackgroundColor = customTabBar.backgroundColor;
           }
           // Priority 2: Build from items
           else {
             final unselectedColor =
                 widget.bottomNavigationBar!.unselectedItemColor;
+            tabBarBackgroundColor = CupertinoDynamicColor.resolve(
+              CupertinoColors.systemBackground,
+              context,
+            );
 
             tabBar = CupertinoTabBar(
               currentIndex: widget.bottomNavigationBar!.selectedIndex!,
               onTap: widget.bottomNavigationBar!.onTap!,
               activeColor: widget.bottomNavigationBar!.selectedItemColor,
+              backgroundColor: tabBarBackgroundColor,
               items: widget.bottomNavigationBar!.items!.map((dest) {
                 // Convert icon to IconData if it's a String (SF Symbol)
                 final IconData iconData = dest.icon is String
@@ -360,6 +398,12 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
           }
         }
 
+        tabBar = _liftLegacyBottomNavigationBar(
+          context,
+          tabBar,
+          backgroundColor: tabBarBackgroundColor,
+        );
+
         // Wrap body with Stack if floatingActionButton is provided
         Widget bodyWidget = Column(
           children: [
@@ -382,7 +426,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            child: tabBar!,
+                            child: tabBar,
                           ),
                         ],
                       )
@@ -390,7 +434,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
               ),
             ),
             // Show tab bar at bottom for non-native cases
-            if (!PlatformInfo.isIOS26OrHigher() || !useNativeBottomBar) tabBar!,
+            if (!PlatformInfo.isIOS26OrHigher() || !useNativeBottomBar) tabBar,
           ],
         );
 
@@ -556,6 +600,9 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
 
       // Determine which bottom navigation bar to use
       Widget? bottomNavBar;
+      final bottomNavBarBackgroundColor =
+          Theme.of(context).navigationBarTheme.backgroundColor ??
+          Theme.of(context).colorScheme.surfaceContainer;
 
       // Priority 1: Custom BottomNavigationBar (if provided)
       if (widget.bottomNavigationBar!.bottomNavigationBar != null) {
@@ -566,6 +613,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
         bottomNavBar = NavigationBar(
           selectedIndex: widget.bottomNavigationBar!.selectedIndex!,
           onDestinationSelected: widget.bottomNavigationBar!.onTap!,
+          backgroundColor: bottomNavBarBackgroundColor,
           indicatorColor: widget.bottomNavigationBar!.selectedItemColor,
           destinations: widget.bottomNavigationBar!.items!.map((dest) {
             // Convert icon to IconData if it's a String (SF Symbol - fallback to Icons)
@@ -608,6 +656,12 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
           }).toList(),
         );
       }
+
+      bottomNavBar = _liftLegacyBottomNavigationBar(
+        context,
+        bottomNavBar!,
+        backgroundColor: bottomNavBarBackgroundColor,
+      );
 
       return Scaffold(
         appBar: appBar,

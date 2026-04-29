@@ -276,7 +276,7 @@ class AppearanceSettingsPage extends ConsumerWidget {
                         ? (value) => notifier.setOledBlack(value)
                         : null,
               ),
-              if (Platform.isIOS)
+              if (Platform.isIOS && PlatformInfo.isNativeIOS26OrHigher())
                 ListTile(
                   leading: const Icon(Icons.phone_iphone),
                   title: const Text('iOS 显示样式'),
@@ -287,8 +287,7 @@ class AppearanceSettingsPage extends ConsumerWidget {
                       Text(
                         const {
                               'md3': 'Material',
-                              'ios18': 'iOS 18',
-                              'ios26': 'iOS 26',
+                              'ios26': 'Liquid Glass',
                             }[settings.iosDisplayStyle] ??
                             'Material',
                         style: TextStyle(
@@ -302,14 +301,9 @@ class AppearanceSettingsPage extends ConsumerWidget {
                   onTap: () {
                     final options = {
                       'md3': 'Material Design 3',
-                      'ios18': 'iOS 18',
+                      'ios26': 'Liquid Glass',
                     };
-                    final icons = {'md3': Icons.android, 'ios18': Icons.apple};
-
-                    if (PlatformInfo.isNativeIOS26OrHigher()) {
-                      options['ios26'] = 'iOS 26';
-                      icons['ios26'] = Icons.blur_on;
-                    }
+                    final icons = {'md3': Icons.android, 'ios26': Icons.apple};
 
                     SettingsUIHelper.showSelectionSheet<String>(
                       context: context,

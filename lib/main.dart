@@ -76,6 +76,54 @@ String? rustLibInitError;
 const double _macOSTitleBarFallbackInset = 28;
 double _initialDesktopWindowTopInset = 0;
 
+int? _parseAppleMajorVersion(String version) {
+  final versionMatch = RegExp(r'Version\s+(\d+)').firstMatch(version);
+  if (versionMatch != null) {
+    return int.tryParse(versionMatch.group(1)!);
+  }
+
+  final firstNumber = RegExp(r'\d+').firstMatch(version);
+  if (firstNumber == null) {
+    return null;
+  }
+  return int.tryParse(firstNumber.group(0)!);
+}
+
+bool get _isIOS26OrLater {
+  if (!Platform.isIOS) {
+    return false;
+  }
+
+  final majorVersion = _parseAppleMajorVersion(Platform.operatingSystemVersion);
+  return majorVersion != null && majorVersion >= 26;
+}
+
+class _IOS26HomeIndicatorMediaQuery extends StatelessWidget {
+  const _IOS26HomeIndicatorMediaQuery({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isIOS26OrLater) {
+      return child;
+    }
+
+    final mediaQuery = MediaQuery.of(context);
+    if (mediaQuery.padding.bottom == 0 && mediaQuery.viewPadding.bottom == 0) {
+      return child;
+    }
+
+    return MediaQuery(
+      data: mediaQuery.copyWith(
+        padding: mediaQuery.padding.copyWith(bottom: 0),
+        viewPadding: mediaQuery.viewPadding.copyWith(bottom: 0),
+      ),
+      child: child,
+    );
+  }
+}
+
 class _DesktopWindowTopInset extends StatefulWidget {
   const _DesktopWindowTopInset({required this.child});
 
@@ -517,8 +565,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
             return AnnotatedRegion<SystemUiOverlayStyle>(
               value: style,
-              child: _DesktopWindowTopInset(
-                child: child ?? const SizedBox.shrink(),
+              child: _IOS26HomeIndicatorMediaQuery(
+                child: _DesktopWindowTopInset(
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             );
           },
