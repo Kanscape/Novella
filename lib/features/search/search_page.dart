@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/core/layout/app_window_class.dart';
@@ -12,8 +11,9 @@ import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/src/widgets/book_cover_card.dart';
+import 'package:novella/src/widgets/book_grid_title.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
-import 'package:novella/src/widgets/book_cover_previewer.dart';
 
 class SearchPage extends ConsumerStatefulWidget {
   final String? initialKeyword;
@@ -511,8 +511,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   Widget _buildBookCard(BuildContext context, Book book) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final heroTag = 'search_cover_${book.id}';
 
     return GestureDetector(
@@ -533,25 +531,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           Expanded(
             child: Hero(
               tag: heroTag,
-              child: Stack(
-                children: [
-                  Card(
-                    elevation: 2,
-                    shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: BookCoverPreviewer(
-                      coverUrl: book.cover,
-                      child: BookCoverImage(
-                        imageUrl: book.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      ),
-                    ),
-                  ),
-                  // 书籍类型角标（Hero 内部）
+              child: BookCoverCard(
+                coverUrl: book.cover,
+                overlays: [
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled('search'))
@@ -564,22 +546,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               ),
             ),
           ),
-          SizedBox(
-            height: 36, // 固定高度容纳两行文字
-            child: Padding(
-              padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
-              child: Text(
-                book.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface,
-                  height: 1.2,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
+          BookGridTitle(title: book.title),
         ],
       ),
     );

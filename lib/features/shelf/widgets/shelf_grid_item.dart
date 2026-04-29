@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/features/settings/settings_provider.dart';
+import 'package:novella/src/widgets/book_cover_card.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
-import 'package:novella/src/widgets/book_cover_previewer.dart';
+import 'package:novella/src/widgets/book_grid_title.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 
 class ShelfBookGridItem extends ConsumerWidget {
@@ -45,8 +45,6 @@ class ShelfBookGridItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final displayTitle =
         book?.title ??
         (shelfTitle?.isNotEmpty == true ? shelfTitle! : titleHint ?? '加载中');
@@ -62,39 +60,7 @@ class ShelfBookGridItem extends ConsumerWidget {
                     ? Hero(tag: heroTag, child: _buildCardContent(context, ref))
                     : _buildCardContent(context, ref),
           ),
-          SizedBox(
-            height: 36,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  final slide = Tween<Offset>(
-                    begin: const Offset(0, 0.08),
-                    end: Offset.zero,
-                  ).animate(animation);
-
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(position: slide, child: child),
-                  );
-                },
-                child: Text(
-                  displayTitle,
-                  key: ValueKey(displayTitle),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurface,
-                    height: 1.2,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          ),
+          BookGridTitle(title: displayTitle, animated: true),
         ],
       ),
     );
@@ -107,49 +73,20 @@ class ShelfBookGridItem extends ConsumerWidget {
         book != null ||
         (resolveHintCoverImage && coverUrlHint?.isNotEmpty == true);
 
-    return Stack(
-      children: [
-        Card(
-          elevation: sortMode ? 0 : 2,
-          shadowColor:
-              sortMode
-                  ? Colors.transparent
-                  : colorScheme.shadow.withValues(alpha: 0.3),
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (resolvedCoverUrl.isNotEmpty)
-                BookCoverPreviewer(
-                  coverUrl: resolvedCoverUrl,
-                  child: BookCoverImage(
-                    imageUrl: resolvedCoverUrl,
-                    width: double.infinity,
-                    height: double.infinity,
-                    showLoading: !canResolveNetworkImage || enablePreview,
-                    resolveNetworkImage: canResolveNetworkImage,
-                    revealedBefore: coverRevealed,
-                    onRevealed: onCoverRevealed,
-                    animateSynchronouslyLoadedImage: book != null,
-                  ),
-                )
-              else
-                ColoredBox(
-                  color: colorScheme.surfaceContainerHighest,
-                  child: Center(
-                    child: M3ELoadingIndicator(
-                      size: 28,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                ),
-              _ShelfCardOverlay(selected: selected, sortMode: sortMode),
-            ],
-          ),
-        ),
+    return BookCoverCard(
+      coverUrl: resolvedCoverUrl,
+      elevation: sortMode ? 0 : 2,
+      shadowColor:
+          sortMode
+              ? Colors.transparent
+              : colorScheme.shadow.withValues(alpha: 0.3),
+      showLoading: !canResolveNetworkImage || enablePreview,
+      resolveNetworkImage: canResolveNetworkImage,
+      revealedBefore: coverRevealed,
+      onRevealed: onCoverRevealed,
+      animateSynchronouslyLoadedImage: book != null,
+      cardForeground: _ShelfCardOverlay(selected: selected, sortMode: sortMode),
+      overlays: [
         if (ref.watch(settingsProvider).isBookTypeBadgeEnabled(badgeContext))
           BookTypeBadge(
             category: book?.category,
@@ -194,7 +131,6 @@ class ShelfFolderGridItem extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final displayTitle = title.isEmpty ? '未命名文件夹' : title;
     final showBadge = ref
         .watch(settingsProvider)
@@ -264,22 +200,7 @@ class ShelfFolderGridItem extends ConsumerWidget {
                 ],
               ),
             ),
-            SizedBox(
-              height: 36,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
-                child: Text(
-                  displayTitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurface,
-                    height: 1.2,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
+            BookGridTitle(title: displayTitle),
           ],
         ),
       ),

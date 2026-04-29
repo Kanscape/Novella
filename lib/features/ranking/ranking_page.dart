@@ -1,4 +1,3 @@
-import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -9,8 +8,9 @@ import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/src/widgets/book_cover_card.dart';
+import 'package:novella/src/widgets/book_grid_title.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
-import 'package:novella/src/widgets/book_cover_previewer.dart';
 
 class RankingPage extends ConsumerStatefulWidget {
   final String initialType; // 'daily'（日）, 'weekly'（周）, 'monthly'（月）
@@ -201,7 +201,6 @@ class _RankingPageState extends ConsumerState<RankingPage>
   }
 
   Widget _buildBookCard(BuildContext context, Book book, int rank) {
-    final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final heroTag = 'ranking_cover_${book.id}';
 
@@ -223,25 +222,9 @@ class _RankingPageState extends ConsumerState<RankingPage>
           Expanded(
             child: Hero(
               tag: heroTag,
-              child: Stack(
-                children: [
-                  Card(
-                    elevation: 2,
-                    shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: BookCoverPreviewer(
-                      coverUrl: book.cover,
-                      child: BookCoverImage(
-                        imageUrl: book.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      ),
-                    ),
-                  ),
-                  // 前三名排行角标（Hero 内部）
+              child: BookCoverCard(
+                coverUrl: book.cover,
+                overlays: [
                   if (rank <= 3)
                     Positioned(
                       left: 4,
@@ -271,7 +254,6 @@ class _RankingPageState extends ConsumerState<RankingPage>
                         ),
                       ),
                     ),
-                  // 书籍类型角标（Hero 内部）
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled('ranking'))
@@ -284,22 +266,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
               ),
             ),
           ),
-          SizedBox(
-            height: 36, // 固定高度容纳两行文字
-            child: Padding(
-              padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
-              child: Text(
-                book.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface,
-                  height: 1.2,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
+          BookGridTitle(title: book.title),
         ],
       ),
     );

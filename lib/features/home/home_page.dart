@@ -8,6 +8,7 @@ import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
+import 'package:novella/src/widgets/book_cover_card.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
@@ -19,8 +20,8 @@ import 'package:novella/features/search/search_page.dart';
 import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/src/widgets/book_grid_title.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
-import 'package:novella/src/widgets/book_cover_previewer.dart';
 import 'package:novella/main.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -1108,7 +1109,6 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     int rank,
     String source,
   ) {
-    final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final heroTag = 'home_${source}_cover_${book.id}';
 
@@ -1133,25 +1133,9 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
           Expanded(
             child: Hero(
               tag: heroTag,
-              child: Stack(
-                children: [
-                  Card(
-                    elevation: 2,
-                    shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: BookCoverPreviewer(
-                      coverUrl: book.cover,
-                      child: BookCoverImage(
-                        imageUrl: book.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      ),
-                    ),
-                  ),
-                  // 前三名排行角标（Hero 内部）
+              child: BookCoverCard(
+                coverUrl: book.cover,
+                overlays: [
                   if (rank <= 3 && rank > 0)
                     Positioned(
                       left: 4,
@@ -1181,7 +1165,6 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                         ),
                       ),
                     ),
-                  // 书籍类型角标（Hero 内部）
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled(
@@ -1196,22 +1179,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
               ),
             ),
           ),
-          SizedBox(
-            height: 36, // 固定高度容纳两行文字
-            child: Padding(
-              padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
-              child: Text(
-                book.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface,
-                  height: 1.2,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
+          BookGridTitle(title: book.title),
         ],
       ),
     );
