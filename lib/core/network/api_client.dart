@@ -32,7 +32,10 @@ class ApiClient {
         },
         onError: (DioException e, handler) async {
           // 统一处理 401 令牌过期
-          if (e.response?.statusCode == 401) {
+          final isRefreshTokenRequest = e.requestOptions.path.contains(
+            '/api/user/refresh_token',
+          );
+          if (e.response?.statusCode == 401 && !isRefreshTokenRequest) {
             developer.log(
               'API returned 401, attempting to refresh token...',
               name: 'AUTH',

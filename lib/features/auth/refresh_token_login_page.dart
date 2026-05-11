@@ -74,30 +74,25 @@ class _RefreshTokenLoginPageState extends State<RefreshTokenLoginPage> {
         return;
       }
 
-      // 校验失败：清除无效凭据，避免下次冷启动自动登录循环失败。
-      await _secretStorage.deleteMany(const [
-        SecretStorageKeys.authToken,
-        SecretStorageKeys.refreshToken,
-      ]);
+      await _secretStorage.delete(SecretStorageKeys.authToken);
       _authService.invalidateSessionTokenCache();
 
       if (!mounted) return;
       setState(() {
-        _errorText = 'RefreshToken 无效或已过期，请在网页端重新获取';
+        _errorText =
+            '验证失败：${_authService.lastSessionRefreshError ?? '没有拿到新的 SessionToken'}';
       });
     } on Object catch (e) {
-      // 发生异常也尽量不要污染后续登录流程
+      // 验证失败时保留 RefreshToken，便于用户查看日志后重试。
       try {
-        await _secretStorage.deleteMany(const [
-          SecretStorageKeys.authToken,
-          SecretStorageKeys.refreshToken,
-        ]);
+        await _secretStorage.delete(SecretStorageKeys.authToken);
         _authService.invalidateSessionTokenCache();
       } on Object catch (_) {}
 
       if (!mounted) return;
       setState(() {
-        _errorText = '验证失败：$e';
+        final detail = _authService.lastSessionRefreshError;
+        _errorText = detail == null ? '验证失败：$e' : '验证失败：$detail';
       });
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -190,6 +185,7 @@ class _RefreshTokenLoginPageState extends State<RefreshTokenLoginPage> {
                       hintText: '在此处粘贴',
                       prefixIcon: const Icon(Icons.key_outlined),
                       errorText: _errorText,
+                      errorMaxLines: 8,
                       filled: true,
                       fillColor:
                           Theme.of(context).colorScheme.surfaceContainerLowest,

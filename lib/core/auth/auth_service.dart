@@ -37,16 +37,90 @@ class AuthService {
 
   // 令牌刷新互斥锁
   Future<String?>? _refreshFuture;
+  String? _lastSessionRefreshError;
 
-  /// 从 DioException 提取服务端返回的错误文案（对齐 Web getErrMsg）。
-  String? _extractServerMessage(DioException e) {
-    final data = e.response?.data;
+  String? get lastSessionRefreshError => _lastSessionRefreshError;
+
+  Object? _redactSensitiveResponseData(Object? value) {
+    if (value is Map) {
+      return value.map((key, mapValue) {
+        final keyText = key.toString();
+        final lowerKey = keyText.toLowerCase();
+        if (lowerKey.contains('token') || lowerKey.contains('authorization')) {
+          return MapEntry(key, '<redacted>');
+        }
+        return MapEntry(key, _redactSensitiveResponseData(mapValue));
+      });
+    }
+    if (value is List) {
+      return value.map(_redactSensitiveResponseData).toList();
+    }
+    return value;
+  }
+
+  String _formatResponseData(Object? data, {int maxLength = 300}) {
+    if (data == null) return '无响应内容';
+    final redacted = _redactSensitiveResponseData(data);
+    String text;
+    try {
+      text = redacted is String ? redacted : jsonEncode(redacted);
+    } catch (_) {
+      text = redacted.toString();
+    }
+    if (text.length <= maxLength) return text;
+    return '${text.substring(0, maxLength)}...';
+  }
+
+  String? _extractServerMessageFromData(Object? data) {
     if (data is Map) {
       return (data['message'] ?? data['Message'] ?? data['msg'] ?? data['Msg'])
           ?.toString();
     }
     if (data is String && data.isNotEmpty) return data;
     return null;
+  }
+
+  void _setSessionRefreshError(String message) {
+    _lastSessionRefreshError = message;
+  }
+
+  void _clearSessionRefreshError() {
+    _lastSessionRefreshError = null;
+  }
+
+  String _describeRefreshDioException(DioException e) {
+    final response = e.response;
+    final statusCode = response?.statusCode;
+    final serverMessage = _extractServerMessageFromData(response?.data);
+    final parts = <String>['刷新会话令牌失败'];
+
+    if (statusCode != null) {
+      parts.add('HTTP $statusCode');
+    } else {
+      parts.add('没有收到服务端响应');
+    }
+
+    if (serverMessage != null && serverMessage.isNotEmpty) {
+      parts.add('服务端返回：$serverMessage');
+    } else if (response?.data != null) {
+      parts.add('响应内容：${_formatResponseData(response?.data)}');
+    }
+
+    if (e.type != DioExceptionType.badResponse) {
+      parts.add('错误类型：${e.type.name}');
+    }
+
+    final message = e.message;
+    if (message != null && message.isNotEmpty) {
+      parts.add('错误信息：$message');
+    }
+
+    return parts.join('；');
+  }
+
+  /// 从 DioException 提取服务端返回的错误文案（对齐 Web getErrMsg）。
+  String? _extractServerMessage(DioException e) {
+    return _extractServerMessageFromData(e.response?.data);
   }
 
   /// 用户登录（需要 Cloudflare Turnstile token）。
@@ -318,7 +392,10 @@ class AuthService {
     final refreshToken = await _secretStorage.read(
       SecretStorageKeys.refreshToken,
     );
-    if (refreshToken == null || refreshToken.isEmpty) return '';
+    if (refreshToken == null || refreshToken.isEmpty) {
+      _setSessionRefreshError('本地没有 RefreshToken');
+      return '';
+    }
 
     if (isSessionTokenExpiredOrExpiringSoon(threshold: threshold)) {
       return await forceRefreshSessionToken();
@@ -346,7 +423,9 @@ class AuthService {
         _logger.info('No session token, attempting to refresh...');
         final tokenCandidate = await _refreshSessionToken(refreshToken);
         if (tokenCandidate == null) {
-          throw Exception('Failed to refresh session token');
+          throw Exception(
+            lastSessionRefreshError ?? 'Failed to refresh session token',
+          );
         }
       }
     }
@@ -381,6 +460,7 @@ class AuthService {
     if (!force) {
       if (_sessionToken != null && _lastRefreshTime != null) {
         if (DateTime.now().difference(_lastRefreshTime!) < _tokenValidity) {
+          _clearSessionRefreshError();
           return _sessionToken;
         }
       }
@@ -390,6 +470,7 @@ class AuthService {
     _refreshFuture = completer.future;
 
     try {
+      _clearSessionRefreshError();
       _logger.info('Performing network refresh for session token...');
       final response = await _apiClient.dio.post(
         '/api/user/refresh_token',
@@ -413,6 +494,7 @@ class AuthService {
         if (newToken != null && newToken.isNotEmpty) {
           _sessionToken = newToken;
           _lastRefreshTime = DateTime.now();
+          _clearSessionRefreshError();
 
           await _secretStorage.write(SecretStorageKeys.authToken, newToken);
 
@@ -422,15 +504,25 @@ class AuthService {
         }
       }
 
-      _logger.warning('Refresh token API returned unexpected response');
+      final serverMessage = _extractServerMessageFromData(response.data);
+      final detail =
+          serverMessage != null && serverMessage.isNotEmpty
+              ? '刷新会话令牌失败；HTTP ${response.statusCode}；服务端返回：$serverMessage'
+              : '刷新会话令牌失败；HTTP ${response.statusCode}；响应内容：${_formatResponseData(response.data)}';
+      _setSessionRefreshError(detail);
+      _logger.warning(detail);
       completer.complete(null);
       return null;
     } on DioException catch (e) {
-      _logger.severe('DioException in refresh: ${e.message}');
+      final detail = _describeRefreshDioException(e);
+      _setSessionRefreshError(detail);
+      _logger.severe(detail);
       completer.complete(null);
       return null;
     } catch (e) {
-      _logger.severe('Failed to refresh session token: $e');
+      final detail = '刷新会话令牌失败；$e';
+      _setSessionRefreshError(detail);
+      _logger.severe(detail);
       completer.complete(null);
       return null;
     } finally {
@@ -445,7 +537,10 @@ class AuthService {
     final refreshToken = await _secretStorage.read(
       SecretStorageKeys.refreshToken,
     );
-    if (refreshToken == null || refreshToken.isEmpty) return '';
+    if (refreshToken == null || refreshToken.isEmpty) {
+      _setSessionRefreshError('本地没有 RefreshToken');
+      return '';
+    }
     return await _refreshSessionToken(refreshToken, force: true) ?? '';
   }
 
@@ -470,7 +565,10 @@ class AuthService {
     final refreshToken = await _secretStorage.read(
       SecretStorageKeys.refreshToken,
     );
-    if (refreshToken == null || refreshToken.isEmpty) return '';
+    if (refreshToken == null || refreshToken.isEmpty) {
+      _setSessionRefreshError('本地没有 RefreshToken');
+      return '';
+    }
 
     return await _refreshSessionToken(refreshToken) ?? '';
   }
@@ -483,6 +581,7 @@ class AuthService {
     );
 
     if (refreshToken == null || refreshToken.isEmpty) {
+      _setSessionRefreshError('本地没有 RefreshToken');
       _logger.info('No refresh token found');
       return false;
     }
@@ -492,7 +591,10 @@ class AuthService {
     // 尝试刷新 session token 来验证 refresh token 有效性
     final newToken = await _refreshSessionToken(refreshToken);
     if (newToken == null) {
-      _logger.warning('Failed to refresh session token, token may be invalid');
+      _logger.warning(
+        lastSessionRefreshError ??
+            'Failed to refresh session token, token may be invalid',
+      );
       return false;
     }
 

@@ -10,6 +10,7 @@ import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/features/auth/login_turnstile_page.dart';
 import 'package:novella/features/main_page.dart';
+import 'package:novella/features/settings/log_viewer_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// MD3 风格登录/引导页
@@ -24,11 +25,35 @@ class _LoginPageState extends State<LoginPage> {
   final AuthService _authService = AuthService();
   final SecretStorageService _secretStorage = SecretStorageService();
   bool _checkingLogin = true;
+  int _logIconTapCount = 0;
+  Timer? _logIconTapResetTimer;
 
   @override
   void initState() {
     super.initState();
     _checkAutoLogin();
+  }
+
+  @override
+  void dispose() {
+    _logIconTapResetTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleWelcomeIconTap() {
+    _logIconTapResetTimer?.cancel();
+    _logIconTapResetTimer = Timer(const Duration(seconds: 2), () {
+      _logIconTapCount = 0;
+    });
+
+    _logIconTapCount += 1;
+    if (_logIconTapCount < 3) return;
+
+    _logIconTapResetTimer?.cancel();
+    _logIconTapCount = 0;
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const LogViewerPage()));
   }
 
   Future<void> _checkAutoLogin() async {
@@ -87,24 +112,29 @@ class _LoginPageState extends State<LoginPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 60),
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: colorScheme.primary.withValues(alpha: 0.3),
-                              blurRadius: 16,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.login_rounded,
-                          size: 36,
-                          color: colorScheme.onPrimary,
+                      GestureDetector(
+                        onTap: _handleWelcomeIconTap,
+                        child: Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: colorScheme.primary.withValues(
+                                  alpha: 0.3,
+                                ),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.login_rounded,
+                            size: 36,
+                            color: colorScheme.onPrimary,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 32),
@@ -260,7 +290,7 @@ class _LoginPageState extends State<LoginPage> {
         if (refreshToken == null || refreshToken.isEmpty) {
           // 没有找到 refresh token
           if (context.mounted) {
-            _showTokenInvalidWarning(context, '未找到登录凭据');
+            _showTokenInvalidWarning(context, '未找到登录凭据，请使用网页登录重新获取');
           }
           return;
         }
@@ -276,10 +306,13 @@ class _LoginPageState extends State<LoginPage> {
             MaterialPageRoute(builder: (_) => const MainPage()),
           );
         } else {
-          // 凭据无效，清除并显示警告
-          await _authService.logout();
+          await _secretStorage.delete(SecretStorageKeys.authToken);
+          _authService.invalidateSessionTokenCache();
           if (context.mounted) {
-            _showTokenInvalidWarning(context, '云端保存的登录凭据已过期或无效');
+            _showTokenInvalidWarning(
+              context,
+              _authService.lastSessionRefreshError ?? '云端保存的登录凭据无法通过验证',
+            );
           }
         }
       } else {
@@ -328,7 +361,7 @@ class _LoginPageState extends State<LoginPage> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Text(
-                  '$message，请使用网页登录重新获取',
+                  message,
                   style: textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
