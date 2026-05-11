@@ -187,7 +187,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   Map<int, double> _pendingMeasuredBlockHeights = const {};
   bool _loading = true;
   bool _measurementFlushScheduled = false;
-  int _currentPage = 0;
+  final ValueNotifier<int> _currentPageNotifier = ValueNotifier<int>(0);
+  int get _currentPage => _currentPageNotifier.value;
+  set _currentPage(int value) => _currentPageNotifier.value = value;
   late int _targetSortNum;
   int _loadVersion = 0;
   String _activeMeasureKey = '';
@@ -278,6 +280,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     _timeStringNotifier.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
+    _currentPageNotifier.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -3026,10 +3029,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                                 _FootnoteAnchor.dismissCurrent();
                                                 final xPath =
                                                     spreads[index].xPath;
-                                                setState(() {
-                                                  _currentPage = index;
-                                                  _currentXPath = xPath;
-                                                });
+                                                _currentPage = index;
+                                                _currentXPath = xPath;
                                                 unawaited(
                                                   _saveCurrentPosition(
                                                     xPath: xPath,
@@ -3222,15 +3223,24 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                                   ),
                                                 ),
                                                 const SizedBox(width: 6),
-                                                Text(
-                                                  '${_currentPage + 1}/${spreads.length}',
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                        color: textColor
-                                                            .withValues(
-                                                              alpha: 0.85,
+                                                ValueListenableBuilder<int>(
+                                                  valueListenable:
+                                                      _currentPageNotifier,
+                                                  builder:
+                                                      (
+                                                        context,
+                                                        currentPage,
+                                                        _,
+                                                      ) => Text(
+                                                        '${currentPage + 1}/${spreads.length}',
+                                                        style: Theme.of(context)
+                                                            .textTheme
+                                                            .bodySmall
+                                                            ?.copyWith(
+                                                              color: textColor
+                                                                  .withValues(
+                                                                    alpha: 0.85,
+                                                                  ),
                                                             ),
                                                       ),
                                                 ),
