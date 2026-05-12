@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
@@ -27,6 +28,7 @@ import 'package:novella/src/widgets/book_cover_previewer.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
+import 'package:share_plus/share_plus.dart';
 
 /// 骨架屏加载效果组件
 
@@ -322,6 +324,9 @@ class BookDetailPage extends ConsumerStatefulWidget {
 }
 
 class BookDetailPageState extends ConsumerState<BookDetailPage> {
+  static const _bookShareHost = 'www.lightnovel.app';
+  static const _topBarShareTapInterval = Duration(milliseconds: 500);
+
   final _logger = Logger('BookDetailPage');
   final _bookService = BookService();
   final _progressService = ReadingProgressService();
@@ -373,6 +378,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   // 从阅读器返回后的短暂窗口：优先展示本地刚更新的进度，避免服务端进度延迟导致按钮不更新或回退
   DateTime? _suppressServerPositionUntil;
+  Timer? _topBarShareTapResetTimer;
+  DateTime? _lastTopBarShareTapAt;
+  int _topBarShareTapCount = 0;
 
   // 基于封面的动态配色方案
   ColorScheme? _dynamicColorScheme;
@@ -422,6 +430,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   @override
   void dispose() {
+    _topBarShareTapResetTimer?.cancel();
     // 退出详情页时清除阅读器缓存
     clearReaderCache();
     super.dispose();
@@ -1024,6 +1033,86 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     _startReading(sortNum: sortNum, allowServerOverrideOnOpen: true);
   }
 
+  Uri _bookShareUri() {
+    return Uri.https(_bookShareHost, '/book/info/${widget.bookId}');
+  }
+
+  String _bookShareText(Uri uri) {
+    final title = (_bookInfo?.title ?? widget.initialTitle ?? '').trim();
+    final author = (_bookInfo?.author ?? '').trim();
+    final label =
+        title.isEmpty
+            ? '轻书架书籍'
+            : author.isEmpty
+            ? '《$title》'
+            : '《$title》 - $author';
+    return '$label\n$uri';
+  }
+
+  Future<void> _shareBookLink(BuildContext originContext) async {
+    final uri = _bookShareUri();
+    final box = originContext.findRenderObject() as RenderBox?;
+    final sharePositionOrigin =
+        box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: _bookShareText(uri),
+          title: _bookInfo?.title ?? widget.initialTitle ?? '分享书籍',
+          sharePositionOrigin: sharePositionOrigin,
+        ),
+      );
+    } catch (e) {
+      _logger.warning('Failed to share book link: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('分享失败'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _handleTopBarShareTap(BuildContext originContext) {
+    final now = DateTime.now();
+    final lastTap = _lastTopBarShareTapAt;
+    if (lastTap == null || now.difference(lastTap) > _topBarShareTapInterval) {
+      _topBarShareTapCount = 0;
+    }
+
+    _lastTopBarShareTapAt = now;
+    _topBarShareTapCount += 1;
+    _topBarShareTapResetTimer?.cancel();
+
+    if (_topBarShareTapCount >= 3) {
+      _topBarShareTapCount = 0;
+      _lastTopBarShareTapAt = null;
+      _shareBookLink(originContext);
+      return;
+    }
+
+    _topBarShareTapResetTimer = Timer(_topBarShareTapInterval, () {
+      _topBarShareTapCount = 0;
+      _lastTopBarShareTapAt = null;
+    });
+  }
+
+  Widget _buildTopBarShareTapTarget() {
+    return Builder(
+      builder:
+          (context) => GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => _handleTopBarShareTap(context),
+            child: const SizedBox(
+              width: double.infinity,
+              height: kToolbarHeight,
+            ),
+          ),
+    );
+  }
+
   void _openQuickSearch(String keyword, {bool exact = false}) {
     final trimmedKeyword = keyword.trim();
     if (trimmedKeyword.isEmpty) return;
@@ -1516,6 +1605,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                 elevation: 0,
                 scrolledUnderElevation: 0,
                 backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                title: _buildTopBarShareTapTarget(),
                 flexibleSpace: FlexibleSpaceBar(
                   collapseMode: CollapseMode.parallax,
                   background: Stack(
@@ -1716,6 +1806,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
               elevation: 0,
               scrolledUnderElevation: 0,
               backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              title: _buildTopBarShareTapTarget(),
               // 调整右侧按钮边距以匹配左侧返回按钮视觉位置
               actionsPadding: const EdgeInsets.only(right: 12),
               flexibleSpace: FlexibleSpaceBar(
