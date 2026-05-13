@@ -78,6 +78,39 @@ class _ReaderPageSpread {
   }
 }
 
+class _ReaderPagedChapterData {
+  final ChapterContent chapter;
+  final String? fontFamily;
+  final _FootnoteProcessingResult footnotes;
+  final List<_ReaderBlock> blocks;
+  final Map<String, int> indexByXPath;
+
+  const _ReaderPagedChapterData({
+    required this.chapter,
+    required this.fontFamily,
+    required this.footnotes,
+    required this.blocks,
+    required this.indexByXPath,
+  });
+}
+
+class _ReaderPagedSpread {
+  final _ReaderPagedChapterData chapterData;
+  final _ReaderPageSpread spread;
+  final int localIndex;
+  final int localCount;
+
+  const _ReaderPagedSpread({
+    required this.chapterData,
+    required this.spread,
+    required this.localIndex,
+    required this.localCount,
+  });
+
+  int get sortNum => chapterData.chapter.sortNum;
+  String get xPath => spread.xPath;
+}
+
 class _FootnoteProcessingResult {
   final String html;
   final Map<String, String> notesById;
@@ -175,16 +208,21 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   ChapterContent? _chapter;
   List<_ReaderBlock> _blocks = const [];
   Map<String, int> _indexByXPath = const {};
+  final Map<int, _ReaderPagedChapterData> _chapterDataCache = {};
+  final Set<int> _preloadingSortNums = {};
+  final Map<int, Map<int, double>> _measuredBlockHeightsBySortNum = {};
+  final Map<int, String> _lastMeasureKeyBySortNum = {};
+  final Map<int, Map<int, double>> _pendingMeasuredHeightsBySortNum = {};
+  final Map<int, String> _pendingMeasureKeyBySortNum = {};
+  final Set<String> _activeMeasureKeys = {};
   String? _fontFamily;
   String? _error;
   ColorScheme? _dynamicColorScheme;
   String? _pendingRestoreXPath;
+  int? _pendingRestoreSortNum;
   String _currentXPath = '//*';
   String _lastLayoutKey = '';
   String _restoredLayoutKey = '';
-  String _lastMeasureKey = '';
-  Map<int, double> _measuredBlockHeights = const {};
-  Map<int, double> _pendingMeasuredBlockHeights = const {};
   bool _loading = true;
   bool _measurementFlushScheduled = false;
   final ValueNotifier<int> _currentPageNotifier = ValueNotifier<int>(0);
@@ -192,8 +230,6 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   set _currentPage(int value) => _currentPageNotifier.value = value;
   late int _targetSortNum;
   int _loadVersion = 0;
-  String _activeMeasureKey = '';
-  String _pendingMeasureKey = '';
   String _measurementLayerCacheKey = '';
   double _manualPageDragOffset = 0;
   double? _stableAndroidBottomPadding;
@@ -501,6 +537,121 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     }
   }
 
+  _ReaderPagedChapterData? get _activeChapterData {
+    final chapter = _chapter;
+    if (chapter == null) return null;
+    return _chapterDataCache[chapter.sortNum];
+  }
+
+  void _activateChapterData(_ReaderPagedChapterData data) {
+    _chapter = data.chapter;
+    _fontFamily = data.fontFamily;
+    _blocks = data.blocks;
+    _indexByXPath = data.indexByXPath;
+    _footnoteNotesById = data.footnotes.notesById;
+    _targetSortNum = data.chapter.sortNum;
+  }
+
+  String _contentCacheKey(AppSettings settings) {
+    return settings.convertType == 'none' ? 'none' : settings.convertType;
+  }
+
+  String _activeContentCacheKey = '';
+
+  void _ensureChapterCacheForSettings(AppSettings settings) {
+    final key = _contentCacheKey(settings);
+    if (_activeContentCacheKey == key) {
+      return;
+    }
+    _activeContentCacheKey = key;
+    _chapterDataCache.clear();
+    _preloadingSortNums.clear();
+    _measuredBlockHeightsBySortNum.clear();
+    _lastMeasureKeyBySortNum.clear();
+    _pendingMeasuredHeightsBySortNum.clear();
+    _pendingMeasureKeyBySortNum.clear();
+  }
+
+  Future<_ReaderPagedChapterData> _prepareChapterData(
+    ChapterContent chapter,
+    AppSettings settings,
+  ) async {
+    final fontFamily =
+        chapter.fontUrl == null
+            ? null
+            : await _fontManager.loadFont(
+              chapter.fontUrl,
+              cacheEnabled: settings.fontCacheEnabled,
+              cacheLimit: settings.fontCacheLimit,
+            );
+    final invisibleCodepoints = _fontManager.getInvisibleCodepoints(fontFamily);
+    final sanitizedContent = sanitizeReaderHtmlTextNodes(
+      chapter.content,
+      invisibleCodepoints,
+    );
+    final processed = _processFootnotes(sanitizedContent);
+    await _primeImageAspectRatios(processed.html);
+    final blocks = _buildBlocks(processed.html);
+    return _ReaderPagedChapterData(
+      chapter: chapter,
+      fontFamily: fontFamily,
+      footnotes: processed,
+      blocks: blocks.$1,
+      indexByXPath: blocks.$2,
+    );
+  }
+
+  Future<_ReaderPagedChapterData> _fetchAndPrepareChapterData(
+    int sortNum,
+    AppSettings settings,
+  ) async {
+    _ensureChapterCacheForSettings(settings);
+    final cached = _chapterDataCache[sortNum];
+    if (cached != null) {
+      return cached;
+    }
+
+    final chapter = await _chapterService.getNovelContent(
+      widget.bid,
+      sortNum,
+      convert: settings.convertType == 'none' ? null : settings.convertType,
+    );
+    return _prepareChapterData(chapter, settings);
+  }
+
+  Future<void> _preloadAdjacentChapters(int sortNum, int version) async {
+    final settings = ref.read(settingsProvider);
+    _ensureChapterCacheForSettings(settings);
+    final targets = <int>[
+      if (sortNum > 1) sortNum - 1,
+      if (sortNum < widget.totalChapters) sortNum + 1,
+    ];
+
+    for (final target in targets) {
+      if (_chapterDataCache.containsKey(target) ||
+          !_preloadingSortNums.add(target)) {
+        continue;
+      }
+
+      unawaited(
+        _fetchAndPrepareChapterData(target, settings)
+            .then((data) {
+              _preloadingSortNums.remove(target);
+              if (!mounted || version != _loadVersion) return;
+              setState(() {
+                _chapterDataCache[data.chapter.sortNum] = data;
+                _measurementLayerCacheKey = '';
+                _cachedMeasurementLayer = null;
+              });
+            })
+            .catchError((Object error, StackTrace stackTrace) {
+              _preloadingSortNums.remove(target);
+              return null;
+            }),
+      );
+    }
+  }
+
   Future<void> _loadChapter(
     int sortNum, {
     _ReaderChapterOpenPosition openPosition = _ReaderChapterOpenPosition.start,
@@ -508,74 +659,103 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     final version = ++_loadVersion;
     _FootnoteAnchor.dismissCurrent();
     if (_chapter != null) unawaited(_saveCurrentPosition());
+
+    final settings = ref.read(settingsProvider);
+    _ensureChapterCacheForSettings(settings);
+    final cached = _chapterDataCache[sortNum];
+    if (cached != null) {
+      final localPosition =
+          openPosition == _ReaderChapterOpenPosition.saved
+              ? await _progressService.getLocalPosition(widget.bid)
+              : null;
+      if (!mounted || version != _loadVersion) return;
+      final initialRestoreXPath = _resolveInitialRestoreXPath(
+        openPosition,
+        cached.blocks,
+        localPosition,
+        sortNum,
+      );
+      setState(() {
+        _loading = false;
+        _error = null;
+        _pendingRestoreXPath = initialRestoreXPath;
+        _pendingRestoreSortNum = sortNum;
+        _currentPage = 0;
+        _currentXPath =
+            cached.blocks.isEmpty ? '//*' : cached.blocks.first.xPath;
+        _lastLayoutKey = '';
+        _restoredLayoutKey = '';
+        _activateChapterData(cached);
+        _measurementLayerCacheKey = '';
+        _cachedMeasurementLayer = null;
+      });
+      unawaited(_preloadAdjacentChapters(sortNum, version));
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
       _pendingRestoreXPath = null;
+      _pendingRestoreSortNum = sortNum;
       _currentPage = 0;
       _currentXPath = '//*';
       _lastLayoutKey = '';
       _restoredLayoutKey = '';
-      _lastMeasureKey = '';
-      _measuredBlockHeights = const {};
-      _pendingMeasuredBlockHeights = const {};
       _footnoteNotesById = const {};
     });
     _measurementFlushScheduled = false;
-    _pendingMeasureKey = '';
-    _activeMeasureKey = '';
     _measurementLayerCacheKey = '';
     _cachedMeasurementLayer = null;
     await SchedulerBinding.instance.endOfFrame;
     if (!mounted || version != _loadVersion) return;
     try {
-      final settings = ref.read(settingsProvider);
-      final chapter = await _chapterService.getNovelContent(
-        widget.bid,
-        sortNum,
-        convert: settings.convertType == 'none' ? null : settings.convertType,
-      );
+      final currentData = await _fetchAndPrepareChapterData(sortNum, settings);
       if (version != _loadVersion) return;
-      final fontFamily =
-          chapter.fontUrl == null
-              ? null
-              : await _fontManager.loadFont(
-                chapter.fontUrl,
-                cacheEnabled: settings.fontCacheEnabled,
-                cacheLimit: settings.fontCacheLimit,
-              );
-      if (version != _loadVersion) return;
-      final invisibleCodepoints = _fontManager.getInvisibleCodepoints(
-        fontFamily,
+
+      final adjacentSortNums = <int>[
+        if (sortNum > 1) sortNum - 1,
+        if (sortNum < widget.totalChapters) sortNum + 1,
+      ];
+      final adjacentResults = await Future.wait(
+        adjacentSortNums.map((target) async {
+          try {
+            return await _fetchAndPrepareChapterData(target, settings);
+          } catch (_) {
+            return null;
+          }
+        }),
       );
-      final sanitizedContent = sanitizeReaderHtmlTextNodes(
-        chapter.content,
-        invisibleCodepoints,
-      );
-      final processed = _processFootnotes(sanitizedContent);
-      await _primeImageAspectRatios(processed.html);
+
       if (version != _loadVersion) return;
-      final blocks = _buildBlocks(processed.html);
-      final localPosition = await _progressService.getLocalPosition(widget.bid);
+      final localPosition =
+          openPosition == _ReaderChapterOpenPosition.saved
+              ? await _progressService.getLocalPosition(widget.bid)
+              : null;
       if (!mounted || version != _loadVersion) return;
       final initialRestoreXPath = _resolveInitialRestoreXPath(
         openPosition,
-        blocks.$1,
+        currentData.blocks,
         localPosition,
         sortNum,
       );
       setState(() {
-        _chapter = chapter;
-        _fontFamily = fontFamily;
-        _blocks = blocks.$1;
-        _indexByXPath = blocks.$2;
-        _footnoteNotesById = processed.notesById;
+        _chapterDataCache[sortNum] = currentData;
+        for (final data in adjacentResults) {
+          if (data != null) {
+            _chapterDataCache[data.chapter.sortNum] = data;
+          }
+        }
+        _activateChapterData(currentData);
         _indentedBlockHtmlCache.clear();
         _loading = false;
-        _targetSortNum = sortNum;
         _currentXPath = _blocks.isEmpty ? '//*' : _blocks.first.xPath;
         _pendingRestoreXPath = initialRestoreXPath;
+        _pendingRestoreSortNum = sortNum;
+        _measurementLayerCacheKey = '';
+        _cachedMeasurementLayer = null;
       });
+      unawaited(_preloadAdjacentChapters(sortNum, version));
     } catch (e) {
       if (!mounted || version != _loadVersion) return;
       setState(() {
@@ -899,12 +1079,17 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     return normalizeReaderText(text);
   }
 
-  String _getRenderedBlockHtml(_ReaderBlock block, AppSettings settings) {
+  String _getRenderedBlockHtml(
+    _ReaderBlock block,
+    AppSettings settings, {
+    _ReaderPagedChapterData? chapterData,
+  }) {
     if (!settings.readerFirstLineIndent) {
       return block.html;
     }
 
-    final cacheKey = '${_chapter?.id ?? 0}:${block.xPath}';
+    final chapterId = chapterData?.chapter.id ?? _chapter?.id ?? 0;
+    final cacheKey = '$chapterId:${block.xPath}';
     return _indentedBlockHtmlCache.putIfAbsent(
       cacheKey,
       () => _applyFirstLineIndent(block.html),
@@ -1476,11 +1661,15 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     }
   }
 
-  double _paragraphSpacingBeforeBlock(int blockIndex, AppSettings settings) {
-    if (blockIndex <= 0 || blockIndex >= _blocks.length) {
+  double _paragraphSpacingBeforeBlock(
+    List<_ReaderBlock> blocks,
+    int blockIndex,
+    AppSettings settings,
+  ) {
+    if (blockIndex <= 0 || blockIndex >= blocks.length) {
       return 0;
     }
-    return _blockUsesReaderParagraphSpacing(_blocks[blockIndex - 1])
+    return _blockUsesReaderParagraphSpacing(blocks[blockIndex - 1])
         ? settings.readerParagraphSpacing
         : 0.0;
   }
@@ -1732,13 +1921,22 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     _ReaderBlock block,
     AppSettings settings,
     Color textColor,
-    Color linkColor,
-  ) {
-    final renderedHtml = _getRenderedBlockHtml(block, settings);
+    Color linkColor, {
+    _ReaderPagedChapterData? chapterData,
+  }) {
+    final activeData = chapterData ?? _activeChapterData;
+    final renderedHtml = _getRenderedBlockHtml(
+      block,
+      settings,
+      chapterData: activeData,
+    );
+    final fontFamily = activeData?.fontFamily ?? _fontFamily;
+    final footnotes = activeData?.footnotes.notesById ?? _footnoteNotesById;
+    final chapterId = activeData?.chapter.id ?? _chapter?.id ?? 0;
     return HtmlWidget(
       renderedHtml,
       textStyle: TextStyle(
-        fontFamily: _fontFamily,
+        fontFamily: fontFamily,
         fontSize: settings.fontSize,
         height: settings.readerLineHeight,
         color: textColor,
@@ -1844,16 +2042,15 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                   : null);
 
           final footnoteId = (rawId ?? '').trim();
-          final noteHtml =
-              footnoteId.isNotEmpty ? _footnoteNotesById[footnoteId] : null;
+          final noteHtml = footnoteId.isNotEmpty ? footnotes[footnoteId] : null;
 
           return _FootnoteAnchor(
-            key: ValueKey('footnote_${footnoteId}_${_chapter?.id ?? 0}'),
+            key: ValueKey('footnote_${footnoteId}_$chapterId'),
             footnoteId: footnoteId,
             noteHtml: noteHtml,
             baseFontSize: settings.fontSize,
             lineHeight: settings.readerLineHeight,
-            fontFamily: _fontFamily,
+            fontFamily: fontFamily,
             readerBackgroundColor: _readerBackgroundColor(settings, context),
             readerTextColor: textColor,
           );
@@ -1876,26 +2073,33 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     );
   }
 
-  void _onMeasuredBlock(int index, double height, String measureKey) {
+  void _onMeasuredBlock(
+    int sortNum,
+    int index,
+    double height,
+    String measureKey,
+  ) {
     final normalizedHeight = height.isFinite ? height : 0.0;
-    if (normalizedHeight <= 0 || !mounted || measureKey != _activeMeasureKey) {
+    if (normalizedHeight <= 0 ||
+        !mounted ||
+        !_activeMeasureKeys.contains(measureKey)) {
       return;
     }
 
     final previous =
-        measureKey == _lastMeasureKey
-            ? _measuredBlockHeights[index]
-            : _pendingMeasuredBlockHeights[index];
+        measureKey == _lastMeasureKeyBySortNum[sortNum]
+            ? (_measuredBlockHeightsBySortNum[sortNum]?[index])
+            : (_pendingMeasuredHeightsBySortNum[sortNum]?[index]);
     if (previous != null && (previous - normalizedHeight).abs() < 0.5) {
       return;
     }
 
-    if (_pendingMeasureKey != measureKey) {
-      _pendingMeasureKey = measureKey;
-      _pendingMeasuredBlockHeights = {index: normalizedHeight};
+    if (_pendingMeasureKeyBySortNum[sortNum] != measureKey) {
+      _pendingMeasureKeyBySortNum[sortNum] = measureKey;
+      _pendingMeasuredHeightsBySortNum[sortNum] = {index: normalizedHeight};
     } else {
-      _pendingMeasuredBlockHeights = {
-        ..._pendingMeasuredBlockHeights,
+      _pendingMeasuredHeightsBySortNum[sortNum] = {
+        ...?_pendingMeasuredHeightsBySortNum[sortNum],
         index: normalizedHeight,
       };
     }
@@ -1907,46 +2111,57 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     _measurementFlushScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _measurementFlushScheduled = false;
-      if (!mounted ||
-          _pendingMeasureKey.isEmpty ||
-          _pendingMeasuredBlockHeights.isEmpty) {
+      if (!mounted || _pendingMeasuredHeightsBySortNum.isEmpty) {
         return;
       }
 
-      final flushedMeasureKey = _pendingMeasureKey;
-      final pendingHeights = _pendingMeasuredBlockHeights;
-      _pendingMeasureKey = '';
-      _pendingMeasuredBlockHeights = const {};
+      final pendingMeasureKeys = Map<int, String>.from(
+        _pendingMeasureKeyBySortNum,
+      );
+      final pendingHeights = Map<int, Map<int, double>>.from(
+        _pendingMeasuredHeightsBySortNum,
+      );
+      _pendingMeasureKeyBySortNum.clear();
+      _pendingMeasuredHeightsBySortNum.clear();
 
       setState(() {
-        if (_lastMeasureKey != flushedMeasureKey) {
-          _lastMeasureKey = flushedMeasureKey;
-          _measuredBlockHeights = pendingHeights;
-          return;
-        }
+        pendingHeights.forEach((pendingSortNum, heights) {
+          final flushedMeasureKey = pendingMeasureKeys[pendingSortNum];
+          if (flushedMeasureKey == null) {
+            return;
+          }
 
-        final merged = Map<int, double>.from(_measuredBlockHeights);
-        var changed = false;
-        pendingHeights.forEach((blockIndex, blockHeight) {
-          final existing = merged[blockIndex];
-          if (existing == null || (existing - blockHeight).abs() >= 0.5) {
-            merged[blockIndex] = blockHeight;
-            changed = true;
+          if (_lastMeasureKeyBySortNum[pendingSortNum] != flushedMeasureKey) {
+            _lastMeasureKeyBySortNum[pendingSortNum] = flushedMeasureKey;
+            _measuredBlockHeightsBySortNum[pendingSortNum] = heights;
+          } else {
+            final merged = Map<int, double>.from(
+              _measuredBlockHeightsBySortNum[pendingSortNum] ?? const {},
+            );
+            var changed = false;
+            heights.forEach((blockIndex, blockHeight) {
+              final existing = merged[blockIndex];
+              if (existing == null || (existing - blockHeight).abs() >= 0.5) {
+                merged[blockIndex] = blockHeight;
+                changed = true;
+              }
+            });
+            if (changed) {
+              _measuredBlockHeightsBySortNum[pendingSortNum] = merged;
+            }
           }
         });
-
-        if (changed) {
-          _measuredBlockHeights = merged;
-        }
       });
     });
   }
 
-  int _resolveBlockIndex(String xPath) {
-    if (_blocks.isEmpty) return 0;
+  int _resolveBlockIndex(String xPath, {_ReaderPagedChapterData? chapterData}) {
+    final blocks = chapterData?.blocks ?? _blocks;
+    final indexByXPath = chapterData?.indexByXPath ?? _indexByXPath;
+    if (blocks.isEmpty) return 0;
     var cleanXPath = XPathUtils.cleanXPath(xPath);
     while (cleanXPath.isNotEmpty) {
-      final index = _indexByXPath[cleanXPath];
+      final index = indexByXPath[cleanXPath];
       if (index != null) return index;
       final slash = cleanXPath.lastIndexOf('/');
       if (slash <= 0) break;
@@ -1998,28 +2213,31 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   }
 
   List<_ReaderPageSlice> _buildPages(
+    _ReaderPagedChapterData chapterData,
+    Map<int, double> measuredBlockHeights,
     BuildContext context,
     BoxConstraints constraints,
     AppSettings settings,
   ) {
-    if (_blocks.isEmpty) return const [];
+    final blocks = chapterData.blocks;
+    if (blocks.isEmpty) return const [];
     final budget = _pageContentHeight(context, constraints);
     final pages = <_ReaderPageSlice>[];
     var start = 0;
     var cost = 0.0;
-    for (var i = 0; i < _blocks.length; i++) {
-      final blockHeight = _measuredBlockHeights[i] ?? budget;
+    for (var i = 0; i < blocks.length; i++) {
+      final blockHeight = measuredBlockHeights[i] ?? budget;
       final blockCost =
-          blockHeight + _paragraphSpacingBeforeBlock(i, settings) + 4;
+          blockHeight + _paragraphSpacingBeforeBlock(blocks, i, settings) + 4;
       if (i > start && cost + blockCost > budget) {
-        pages.add(_makePage(start, i));
+        pages.add(_makePage(blocks, start, i));
         start = i;
         cost = blockHeight + 4;
       } else {
         cost += blockCost;
       }
     }
-    pages.add(_makePage(start, _blocks.length));
+    pages.add(_makePage(blocks, start, blocks.length));
     return pages;
   }
 
@@ -2041,15 +2259,19 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     return spreads;
   }
 
-  _ReaderPageSlice _makePage(int start, int end) {
-    final html = _blocks
+  _ReaderPageSlice _makePage(List<_ReaderBlock> blocks, int start, int end) {
+    final html = blocks
         .sublist(start, end)
         .map((block) => block.html)
         .join('\n');
-    return _ReaderPageSlice(start, end, _blocks[start].xPath, html);
+    return _ReaderPageSlice(start, end, blocks[start].xPath, html);
   }
 
-  bool _isImageOnlyPage(_ReaderPageSlice page) {
+  bool _isImageOnlyPage(
+    _ReaderPageSlice page, {
+    _ReaderPagedChapterData? chapterData,
+  }) {
+    final blocks = chapterData?.blocks ?? _blocks;
     if (page.end <= page.start) {
       return false;
     }
@@ -2058,11 +2280,14 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       return false;
     }
 
-    return _isStandaloneImageBlock(_blocks[page.start]);
+    return _isStandaloneImageBlock(blocks[page.start]);
   }
 
-  String? _extractPrimaryImageSrc(_ReaderPageSlice page) {
-    if (!_isImageOnlyPage(page)) {
+  String? _extractPrimaryImageSrc(
+    _ReaderPageSlice page, {
+    _ReaderPagedChapterData? chapterData,
+  }) {
+    if (!_isImageOnlyPage(page, chapterData: chapterData)) {
       return null;
     }
 
@@ -2071,6 +2296,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   }
 
   Widget _buildReaderPageContent({
+    required _ReaderPagedChapterData chapterData,
     required _ReaderPageSlice page,
     required double contentWidth,
     required double contentHeight,
@@ -2078,10 +2304,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     required Color textColor,
     required Color linkColor,
   }) {
-    final imageOnly = _isImageOnlyPage(page);
-    final imageUrl = _extractPrimaryImageSrc(page);
+    final imageOnly = _isImageOnlyPage(page, chapterData: chapterData);
+    final imageUrl = _extractPrimaryImageSrc(page, chapterData: chapterData);
     return imageOnly && imageUrl != null
         ? _buildImageOnlyPage(
+          chapterData: chapterData,
           page: page,
           imageUrl: imageUrl,
           width: contentWidth,
@@ -2091,6 +2318,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           linkColor: linkColor,
         )
         : _buildHtmlPage(
+          chapterData: chapterData,
           page: page,
           width: contentWidth,
           maxHeight: contentHeight,
@@ -2131,7 +2359,135 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     }
   }
 
-  void _scheduleRestore(List<_ReaderPageSpread> spreads, String layoutKey) {
+  List<_ReaderPagedChapterData> _windowChapterData() {
+    final activeSortNum = _chapter?.sortNum ?? _targetSortNum;
+    if (!_chapterDataCache.containsKey(activeSortNum)) {
+      return const [];
+    }
+
+    var start = activeSortNum;
+    while (start > 1 && _chapterDataCache.containsKey(start - 1)) {
+      start--;
+    }
+
+    var end = activeSortNum;
+    while (end < widget.totalChapters &&
+        _chapterDataCache.containsKey(end + 1)) {
+      end++;
+    }
+
+    return [
+      for (var sortNum = start; sortNum <= end; sortNum++)
+        if (_chapterDataCache[sortNum] != null) _chapterDataCache[sortNum]!,
+    ];
+  }
+
+  List<_ReaderPagedChapterData> _readyWindowChapterData(
+    List<_ReaderPagedChapterData> chapters,
+    Map<int, String> measureKeys,
+  ) {
+    final activeSortNum = _chapter?.sortNum ?? _targetSortNum;
+    final bySortNum = {
+      for (final chapterData in chapters)
+        chapterData.chapter.sortNum: chapterData,
+    };
+    final active = bySortNum[activeSortNum];
+    if (active == null ||
+        !_isChapterMeasurementReady(active, measureKeys[activeSortNum] ?? '')) {
+      return const [];
+    }
+
+    var start = activeSortNum;
+    while (true) {
+      final previous = bySortNum[start - 1];
+      if (previous == null ||
+          !_isChapterMeasurementReady(
+            previous,
+            measureKeys[previous.chapter.sortNum] ?? '',
+          )) {
+        break;
+      }
+      start--;
+    }
+
+    var end = activeSortNum;
+    while (true) {
+      final next = bySortNum[end + 1];
+      if (next == null ||
+          !_isChapterMeasurementReady(
+            next,
+            measureKeys[next.chapter.sortNum] ?? '',
+          )) {
+        break;
+      }
+      end++;
+    }
+
+    return [
+      for (var sortNum = start; sortNum <= end; sortNum++)
+        if (bySortNum[sortNum] != null) bySortNum[sortNum]!,
+    ];
+  }
+
+  String _measureKeyForChapter({
+    required _ReaderPagedChapterData chapterData,
+    required double contentWidth,
+    required AppSettings settings,
+    required bool useDoublePage,
+  }) {
+    return '${chapterData.chapter.id}|${contentWidth.toStringAsFixed(1)}|'
+        '${settings.fontSize.toStringAsFixed(2)}|'
+        '${settings.readerLineHeight.toStringAsFixed(2)}|'
+        '${settings.readerParagraphSpacing.toStringAsFixed(1)}|'
+        '${settings.readerSidePadding.toStringAsFixed(1)}|'
+        '${settings.readerFirstLineIndent}|'
+        '${useDoublePage ? 'double' : 'single'}|'
+        '${chapterData.fontFamily ?? ''}';
+  }
+
+  bool _isChapterMeasurementReady(
+    _ReaderPagedChapterData chapterData,
+    String measureKey,
+  ) {
+    final sortNum = chapterData.chapter.sortNum;
+    return _lastMeasureKeyBySortNum[sortNum] == measureKey &&
+        (_measuredBlockHeightsBySortNum[sortNum]?.length ?? 0) ==
+            chapterData.blocks.length;
+  }
+
+  List<_ReaderPagedSpread> _buildCombinedSpreads({
+    required List<_ReaderPagedChapterData> chapters,
+    required BuildContext context,
+    required BoxConstraints constraints,
+    required AppSettings settings,
+    required bool useDoublePage,
+  }) {
+    final combined = <_ReaderPagedSpread>[];
+    for (final chapterData in chapters) {
+      final sortNum = chapterData.chapter.sortNum;
+      final pages = _buildPages(
+        chapterData,
+        _measuredBlockHeightsBySortNum[sortNum] ?? const {},
+        context,
+        constraints,
+        settings,
+      );
+      final spreads = _buildPageSpreads(pages, useDoublePage: useDoublePage);
+      for (var index = 0; index < spreads.length; index++) {
+        combined.add(
+          _ReaderPagedSpread(
+            chapterData: chapterData,
+            spread: spreads[index],
+            localIndex: index,
+            localCount: spreads.length,
+          ),
+        );
+      }
+    }
+    return combined;
+  }
+
+  void _scheduleRestore(List<_ReaderPagedSpread> spreads, String layoutKey) {
     if (_lastLayoutKey == layoutKey) return;
     _lastLayoutKey = layoutKey;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -2144,20 +2500,52 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         return;
       }
       var targetPage = _currentPage.clamp(0, spreads.length - 1);
-      if (_pendingRestoreXPath != null && _pendingRestoreXPath!.isNotEmpty) {
-        final blockIndex = _resolveBlockIndex(_pendingRestoreXPath!);
+      final pendingSortNum = _pendingRestoreSortNum;
+      if (pendingSortNum != null &&
+          _pendingRestoreXPath != null &&
+          _pendingRestoreXPath!.isNotEmpty) {
+        final chapterData = _chapterDataCache[pendingSortNum];
+        final blockIndex =
+            chapterData == null
+                ? 0
+                : _resolveBlockIndex(
+                  _pendingRestoreXPath!,
+                  chapterData: chapterData,
+                );
         targetPage = spreads.indexWhere(
-          (spread) => spread.containsBlockIndex(blockIndex),
+          (entry) =>
+              entry.sortNum == pendingSortNum &&
+              entry.spread.containsBlockIndex(blockIndex),
         );
         if (targetPage < 0) targetPage = 0;
+      } else if (_chapter != null && _currentXPath.isNotEmpty) {
+        final currentSortNum = _chapter!.sortNum;
+        final chapterData = _chapterDataCache[currentSortNum];
+        if (chapterData != null) {
+          final blockIndex = _resolveBlockIndex(
+            _currentXPath,
+            chapterData: chapterData,
+          );
+          final resolvedPage = spreads.indexWhere(
+            (entry) =>
+                entry.sortNum == currentSortNum &&
+                entry.spread.containsBlockIndex(blockIndex),
+          );
+          if (resolvedPage >= 0) {
+            targetPage = resolvedPage;
+          }
+        }
       }
       _pageController.jumpToPage(targetPage);
-      final xPath = spreads[targetPage].xPath;
+      final entry = spreads[targetPage];
+      final xPath = entry.xPath;
       if (!mounted) return;
       setState(() {
+        _activateChapterData(entry.chapterData);
         _currentPage = targetPage;
         _currentXPath = xPath;
         _pendingRestoreXPath = null;
+        _pendingRestoreSortNum = null;
         _restoredLayoutKey = layoutKey;
       });
       await _saveCurrentPosition(xPath: xPath);
@@ -2396,6 +2784,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
 */
 
   Widget _buildImageOnlyPage({
+    required _ReaderPagedChapterData chapterData,
     required _ReaderPageSlice page,
     required String imageUrl,
     required double width,
@@ -2404,7 +2793,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     required Color textColor,
     required Color linkColor,
   }) {
-    final block = _blocks[page.start];
+    final block = chapterData.blocks[page.start];
 
     return SizedBox.expand(
       child: ClipRect(
@@ -2417,7 +2806,13 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
               child: SizedBox(
                 key: ValueKey('image_only_$imageUrl'),
                 width: width,
-                child: _buildBlockWidget(block, settings, textColor, linkColor),
+                child: _buildBlockWidget(
+                  block,
+                  settings,
+                  textColor,
+                  linkColor,
+                  chapterData: chapterData,
+                ),
               ),
             ),
           ),
@@ -2427,6 +2822,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   }
 
   Widget _buildHtmlPage({
+    required _ReaderPagedChapterData chapterData,
     required _ReaderPageSlice page,
     required double width,
     required double maxHeight,
@@ -2434,20 +2830,32 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     required Color textColor,
     required Color linkColor,
   }) {
+    final blocks = chapterData.blocks;
+    final measuredHeights =
+        _measuredBlockHeightsBySortNum[chapterData.chapter.sortNum] ??
+        const <int, double>{};
     final blockWidgets = <Widget>[];
     for (int i = page.start; i < page.end; i++) {
       final topSpacing =
-          i > page.start ? _paragraphSpacingBeforeBlock(i, settings) : 0.0;
+          i > page.start
+              ? _paragraphSpacingBeforeBlock(blocks, i, settings)
+              : 0.0;
       if (topSpacing > 0) {
         blockWidgets.add(SizedBox(height: topSpacing));
       }
       blockWidgets.add(
-        _buildBlockWidget(_blocks[i], settings, textColor, linkColor),
+        _buildBlockWidget(
+          blocks[i],
+          settings,
+          textColor,
+          linkColor,
+          chapterData: chapterData,
+        ),
       );
     }
     final measuredHeight = List<double>.generate(
       page.end - page.start,
-      (offset) => _measuredBlockHeights[page.start + offset] ?? 0,
+      (offset) => measuredHeights[page.start + offset] ?? 0,
     ).fold<double>(0, (sum, value) => sum + value);
     final requiresScaleDown =
         page.end - page.start == 1 &&
@@ -2475,7 +2883,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   }
 
   Widget _buildMeasurementLayer({
-    required String measureKey,
+    required List<_ReaderPagedChapterData> chapters,
+    required Map<int, String> measureKeys,
     required double width,
     required AppSettings settings,
     required Color textColor,
@@ -2489,17 +2898,24 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (int i = 0; i < _blocks.length; i++)
-                _MeasureSize(
-                  onChange:
-                      (size) => _onMeasuredBlock(i, size.height, measureKey),
-                  child: _buildBlockWidget(
-                    _blocks[i],
-                    settings,
-                    textColor,
-                    linkColor,
+              for (final chapterData in chapters)
+                for (int i = 0; i < chapterData.blocks.length; i++)
+                  _MeasureSize(
+                    onChange:
+                        (size) => _onMeasuredBlock(
+                          chapterData.chapter.sortNum,
+                          i,
+                          size.height,
+                          measureKeys[chapterData.chapter.sortNum] ?? '',
+                        ),
+                    child: _buildBlockWidget(
+                      chapterData.blocks[i],
+                      settings,
+                      textColor,
+                      linkColor,
+                      chapterData: chapterData,
+                    ),
                   ),
-                ),
             ],
           ),
         ),
@@ -2508,20 +2924,28 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   }
 
   Widget _measurementLayerFor({
-    required String measureKey,
+    required List<_ReaderPagedChapterData> chapters,
+    required Map<int, String> measureKeys,
     required double width,
     required AppSettings settings,
     required Color textColor,
     required Color linkColor,
   }) {
+    final chapterSignature = chapters
+        .map(
+          (data) =>
+              '${data.chapter.sortNum}:${measureKeys[data.chapter.sortNum] ?? ''}',
+        )
+        .join('|');
     final cacheKey =
-        '$measureKey|${width.toStringAsFixed(1)}|'
+        '$chapterSignature|${width.toStringAsFixed(1)}|'
         '${textColor.toARGB32()}|${linkColor.toARGB32()}';
     if (_measurementLayerCacheKey != cacheKey ||
         _cachedMeasurementLayer == null) {
       _measurementLayerCacheKey = cacheKey;
       _cachedMeasurementLayer = _buildMeasurementLayer(
-        measureKey: measureKey,
+        chapters: chapters,
+        measureKeys: measureKeys,
         width: width,
         settings: settings,
         textColor: textColor,
@@ -2947,43 +3371,45 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                               );
                               final contentBottomPadding =
                                   _bottomContentPadding(context);
-                              final measureKey =
-                                  '${_chapter?.id}|${contentWidth.toStringAsFixed(1)}|'
-                                  '${settings.fontSize.toStringAsFixed(2)}|'
-                                  '${settings.readerLineHeight.toStringAsFixed(2)}|'
-                                  '${settings.readerParagraphSpacing.toStringAsFixed(1)}|'
-                                  '${settings.readerSidePadding.toStringAsFixed(1)}|'
-                                  '${settings.readerFirstLineIndent}|'
-                                  '${useDoublePage ? 'double' : 'single'}|'
-                                  '${_fontFamily ?? ''}';
-                              _activeMeasureKey = measureKey;
+                              final chapters = _windowChapterData();
+                              final measureKeys = {
+                                for (final chapterData in chapters)
+                                  chapterData
+                                      .chapter
+                                      .sortNum: _measureKeyForChapter(
+                                    chapterData: chapterData,
+                                    contentWidth: contentWidth,
+                                    settings: settings,
+                                    useDoublePage: useDoublePage,
+                                  ),
+                              };
+                              _activeMeasureKeys
+                                ..clear()
+                                ..addAll(measureKeys.values);
+                              final displayChapters = _readyWindowChapterData(
+                                chapters,
+                                measureKeys,
+                              );
                               final measurementReady =
-                                  _lastMeasureKey == measureKey &&
-                                  _measuredBlockHeights.length ==
-                                      _blocks.length;
-                              final pages =
-                                  measurementReady
-                                      ? _buildPages(
-                                        context,
-                                        constraints,
-                                        settings,
-                                      )
-                                      : const <_ReaderPageSlice>[];
+                                  displayChapters.isNotEmpty;
                               final spreads =
                                   measurementReady
-                                      ? _buildPageSpreads(
-                                        pages,
+                                      ? _buildCombinedSpreads(
+                                        chapters: displayChapters,
+                                        context: context,
+                                        constraints: constraints,
+                                        settings: settings,
                                         useDoublePage: useDoublePage,
                                       )
-                                      : const <_ReaderPageSpread>[];
-                              final pageSignature = pages
+                                      : const <_ReaderPagedSpread>[];
+                              final pageSignature = spreads
                                   .map(
-                                    (page) =>
-                                        '${page.start}-${page.end}:${page.xPath}',
+                                    (entry) =>
+                                        '${entry.sortNum}:${entry.localIndex}/${entry.localCount}:${entry.xPath}',
                                   )
                                   .join('|');
                               final layoutKey =
-                                  '${_chapter?.id}|${constraints.maxWidth.toStringAsFixed(1)}|'
+                                  '${constraints.maxWidth.toStringAsFixed(1)}|'
                                   '${constraints.maxHeight.toStringAsFixed(1)}|'
                                   '${contentWidth.toStringAsFixed(1)}|'
                                   '${settings.fontSize.toStringAsFixed(2)}|'
@@ -2996,20 +3422,24 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                               final pageDisplayReady =
                                   measurementReady &&
                                   spreads.isNotEmpty &&
-                                  _restoredLayoutKey == layoutKey;
+                                  (_restoredLayoutKey == layoutKey ||
+                                      (_restoredLayoutKey.isNotEmpty &&
+                                          _pendingRestoreXPath == null &&
+                                          _pendingRestoreSortNum == null));
                               if (measurementReady && spreads.isNotEmpty) {
                                 _scheduleRestore(spreads, layoutKey);
                               }
                               return Stack(
                                 children: [
                                   _measurementLayerFor(
-                                    measureKey: measureKey,
+                                    chapters: chapters,
+                                    measureKeys: measureKeys,
                                     width: contentWidth,
                                     settings: settings,
                                     textColor: textColor,
                                     linkColor: linkColor,
                                   ),
-                                  if (measurementReady && pages.isNotEmpty)
+                                  if (measurementReady && spreads.isNotEmpty)
                                     IgnorePointer(
                                       ignoring: !pageDisplayReady,
                                       child: Opacity(
@@ -3027,10 +3457,32 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                               itemCount: spreads.length,
                                               onPageChanged: (index) {
                                                 _FootnoteAnchor.dismissCurrent();
-                                                final xPath =
-                                                    spreads[index].xPath;
-                                                _currentPage = index;
-                                                _currentXPath = xPath;
+                                                final entry = spreads[index];
+                                                final xPath = entry.xPath;
+                                                final chapterChanged =
+                                                    _chapter?.sortNum !=
+                                                    entry.sortNum;
+                                                if (chapterChanged) {
+                                                  unawaited(
+                                                    _saveCurrentPosition(),
+                                                  );
+                                                  setState(() {
+                                                    _activateChapterData(
+                                                      entry.chapterData,
+                                                    );
+                                                    _currentPage = index;
+                                                    _currentXPath = xPath;
+                                                  });
+                                                  unawaited(
+                                                    _preloadAdjacentChapters(
+                                                      entry.sortNum,
+                                                      _loadVersion,
+                                                    ),
+                                                  );
+                                                } else {
+                                                  _currentPage = index;
+                                                  _currentXPath = xPath;
+                                                }
                                                 unawaited(
                                                   _saveCurrentPosition(
                                                     xPath: xPath,
@@ -3038,13 +3490,18 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                                 );
                                               },
                                               itemBuilder: (context, index) {
-                                                final spread = spreads[index];
+                                                final entry = spreads[index];
+                                                final spread = entry.spread;
 
                                                 Widget buildSpreadPage(
                                                   _ReaderPageSlice page,
                                                 ) {
                                                   final imageOnly =
-                                                      _isImageOnlyPage(page);
+                                                      _isImageOnlyPage(
+                                                        page,
+                                                        chapterData:
+                                                            entry.chapterData,
+                                                      );
                                                   final pageBottomPadding =
                                                       imageOnly
                                                           ? _imageOnlyBottomContentPadding(
@@ -3073,6 +3530,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                                     ),
                                                     child:
                                                         _buildReaderPageContent(
+                                                          chapterData:
+                                                              entry.chapterData,
                                                           page: page,
                                                           contentWidth:
                                                               contentWidth,
@@ -3226,23 +3685,35 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                                 ValueListenableBuilder<int>(
                                                   valueListenable:
                                                       _currentPageNotifier,
-                                                  builder:
-                                                      (
-                                                        context,
-                                                        currentPage,
-                                                        _,
-                                                      ) => Text(
-                                                        '${currentPage + 1}/${spreads.length}',
-                                                        style: Theme.of(context)
-                                                            .textTheme
-                                                            .bodySmall
-                                                            ?.copyWith(
-                                                              color: textColor
-                                                                  .withValues(
-                                                                    alpha: 0.85,
-                                                                  ),
-                                                            ),
-                                                      ),
+                                                  builder: (
+                                                    context,
+                                                    currentPage,
+                                                    _,
+                                                  ) {
+                                                    final entry =
+                                                        currentPage >= 0 &&
+                                                                currentPage <
+                                                                    spreads
+                                                                        .length
+                                                            ? spreads[currentPage]
+                                                            : null;
+                                                    final pageText =
+                                                        entry == null
+                                                            ? '${currentPage + 1}/${spreads.length}'
+                                                            : '${entry.localIndex + 1}/${entry.localCount}';
+                                                    return Text(
+                                                      pageText,
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .bodySmall
+                                                          ?.copyWith(
+                                                            color: textColor
+                                                                .withValues(
+                                                                  alpha: 0.85,
+                                                                ),
+                                                          ),
+                                                    );
+                                                  },
                                                 ),
                                               ],
                                             ),
@@ -3251,7 +3722,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                                       ),
                                     ),
                                   if (measurementReady &&
-                                      pages.isNotEmpty &&
+                                      spreads.isNotEmpty &&
                                       !settings.readerPagedShowSystemStatusBar)
                                     Positioned(
                                       left: 16,
