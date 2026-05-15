@@ -331,11 +331,14 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       }
 
       final firstTextNode = _findFirstIndentableTextNode(root);
-      if (firstTextNode == null) {
+      if (firstTextNode == null ||
+          _textAlreadyHasFirstLineIndent(firstTextNode.text)) {
         return html;
       }
 
-      firstTextNode.text = _prependFirstLineIndent(firstTextNode.text);
+      if (!_insertFirstLineIndentMarker(root, firstTextNode)) {
+        return html;
+      }
       return _serializeFragmentNodes(fragment.nodes);
     } catch (_) {
       return html;
@@ -431,7 +434,10 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     if (node is! dom.Element) {
       return null;
     }
-    if (node.localName == 'img' || node.localName == 'hr') {
+    if (node.localName == 'img' ||
+        node.localName == 'hr' ||
+        node.localName == 'rt' ||
+        node.localName == 'rp') {
       return null;
     }
 
@@ -445,16 +451,40 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     return null;
   }
 
-  String _prependFirstLineIndent(String text) {
-    final trimmedLeft = text.trimLeft();
-    if (trimmedLeft.isEmpty || trimmedLeft.startsWith('\u3000\u3000')) {
-      return text;
+  bool _textAlreadyHasFirstLineIndent(String text) {
+    return text.trimLeft().startsWith('\u3000\u3000');
+  }
+
+  bool _insertFirstLineIndentMarker(dom.Element root, dom.Text firstTextNode) {
+    if (_hasFirstLineIndentMarker(root)) {
+      return true;
     }
 
-    final leadingLength = text.length - trimmedLeft.length;
-    final leadingWhitespace =
-        leadingLength > 0 ? text.substring(0, leadingLength) : '';
-    return '$leadingWhitespace\u3000\u3000$trimmedLeft';
+    dom.Node insertionTarget = firstTextNode;
+    while (insertionTarget.parentNode != null &&
+        !identical(insertionTarget.parentNode, root)) {
+      insertionTarget = insertionTarget.parentNode!;
+    }
+    if (!identical(insertionTarget.parentNode, root)) {
+      return false;
+    }
+
+    final marker = dom.Element.tag('span')
+      ..attributes['data-reader-first-line-indent'] = 'true';
+    root.insertBefore(marker, insertionTarget);
+    return true;
+  }
+
+  bool _hasFirstLineIndentMarker(dom.Element root) {
+    for (final child in root.nodes) {
+      if (child is dom.Text &&
+          child.text.replaceAll('\u200B', '').trim().isEmpty) {
+        continue;
+      }
+      return child is dom.Element &&
+          child.attributes['data-reader-first-line-indent'] == 'true';
+    }
+    return false;
   }
 
   static const double _kImageWeight = 280.0;
@@ -2291,6 +2321,13 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     }
 
     Widget? customWidgetBuilder(dom.Element element) {
+      if (element.attributes['data-reader-first-line-indent'] == 'true') {
+        return InlineCustomWidget(
+          alignment: PlaceholderAlignment.middle,
+          child: SizedBox(width: settings.fontSize * 2, height: 0),
+        );
+      }
+
       // 0) 脚注/注释触发点（对标 Web: a.duokan-footnote）
       // Web 用 <a.duokan-footnote href="#noteX"><sup><img class="footnote" .../></sup></a>
       // App 直接拦截 <a.duokan-footnote>，替换为 Flutter 原生图标 + Popover，避免 img 加载失败。
