@@ -1865,15 +1865,19 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           final footnoteId = (rawId ?? '').trim();
           final noteHtml = footnoteId.isNotEmpty ? footnotes[footnoteId] : null;
 
-          return _FootnoteAnchor(
-            key: ValueKey('footnote_${footnoteId}_$chapterId'),
-            footnoteId: footnoteId,
-            noteHtml: noteHtml,
-            baseFontSize: settings.fontSize,
-            lineHeight: settings.readerLineHeight,
-            fontFamily: fontFamily,
-            readerBackgroundColor: _readerBackgroundColor(settings, context),
-            readerTextColor: textColor,
+          return InlineCustomWidget(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: _FootnoteAnchor(
+              key: ValueKey('footnote_${footnoteId}_$chapterId'),
+              footnoteId: footnoteId,
+              noteHtml: noteHtml,
+              baseFontSize: settings.fontSize,
+              lineHeight: settings.readerLineHeight,
+              fontFamily: fontFamily,
+              readerBackgroundColor: _readerBackgroundColor(settings, context),
+              readerTextColor: textColor,
+            ),
           );
         }
 
@@ -3906,8 +3910,9 @@ class _FootnoteAnchorState extends State<_FootnoteAnchor>
 
   @override
   Widget build(BuildContext context) {
-    final iconSize = (widget.baseFontSize * 0.85).clamp(12.0, 18.0).toDouble();
-    final iconColor = Theme.of(context).colorScheme.primary;
+    final markerSize =
+        (widget.baseFontSize * 1.05).clamp(13.0, 20.0).toDouble();
+    final markerColor = Theme.of(context).colorScheme.primary;
 
     return CompositedTransformTarget(
       link: _layerLink,
@@ -3916,10 +3921,15 @@ class _FootnoteAnchorState extends State<_FootnoteAnchor>
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _toggle,
-          child: Icon(
-            Icons.note_alt_outlined,
-            size: iconSize,
-            color: iconColor,
+          child: Text(
+            '*',
+            style: TextStyle(
+              fontFamily: widget.fontFamily,
+              fontSize: markerSize,
+              height: 1,
+              fontWeight: FontWeight.w800,
+              color: markerColor,
+            ),
           ),
         ),
       ),
