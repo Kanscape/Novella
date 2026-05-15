@@ -25,6 +25,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:novella/features/reader/reader_background_page.dart';
 import 'package:novella/features/reader/shared/reader_battery_indicator.dart';
 import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
+import 'package:novella/features/reader/shared/reader_footnote_processor.dart';
 import 'package:novella/features/reader/shared/reader_image_view.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
 import 'package:novella/features/reader/shared/reader_title_sheet.dart';
@@ -39,16 +40,6 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 enum _ReaderLayoutMode { standard, immersive, center }
 
 enum _ReaderChapterOpenPosition { saved, start, end }
-
-class _FootnoteProcessingResult {
-  final String html;
-  final Map<String, String> notesById;
-
-  const _FootnoteProcessingResult({
-    required this.html,
-    required this.notesById,
-  });
-}
 
 class _ReaderLayoutInfo {
   final _ReaderLayoutMode mode;
@@ -2303,13 +2294,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       // 0) 脚注/注释触发点（对标 Web: a.duokan-footnote）
       // Web 用 <a.duokan-footnote href="#noteX"><sup><img class="footnote" .../></sup></a>
       // App 直接拦截 <a.duokan-footnote>，替换为 Flutter 原生图标 + Popover，避免 img 加载失败。
-      if (element.localName == 'a' &&
-          element.classes.contains('duokan-footnote')) {
-        final rawId =
-            element.attributes['data-footnote-id'] ??
-            (element.attributes['href']?.startsWith('#') == true
-                ? element.attributes['href']!.substring(1)
-                : null);
+      if (element.classes.contains('duokan-footnote')) {
+        final rawId = readerFootnoteIdFromElement(element);
 
         final footnoteId = (rawId ?? '').trim();
         final noteHtml =
@@ -2707,276 +2693,8 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     );
   }
 
-  /// 预处理章节 HTML：抽离脚注/注释内容并从正文中移除，避免注释直接跟在文字后面。
-  ///
-  /// 对标 Web 端：
-  /// - 遍历 `.duokan-footnote` 获取 href 的 id
-  /// - 从 DOM 中找到对应 id 的注释节点并隐藏/移除，同时缓存其 innerHTML
-  /// - 禁用默认跳转（移除 href），后续由 Flutter 的 Popover 交互接管
-  _FootnoteProcessingResult _processFootnotes(String html) {
-    if (html.isEmpty) {
-      return const _FootnoteProcessingResult(html: '', notesById: {});
-    }
-
-    try {
-      final doc = html_parser.parse(html);
-
-      final Map<String, String> notesById = {};
-
-      String shortenForLog(String input, {int max = 420}) {
-        final normalized =
-            input
-                .replaceAll('\u200B', '')
-                .replaceAll('\r', '')
-                .replaceAll('\n', ' ')
-                .replaceAll(RegExp(r'\s+'), ' ')
-                .trim();
-        if (normalized.length <= max) return normalized;
-        return '${normalized.substring(0, max)}…';
-      }
-
-      String? findSnippet(String raw, String token, {int radius = 140}) {
-        final idx = raw.indexOf(token);
-        if (idx < 0) return null;
-        final start = (idx - radius).clamp(0, raw.length).toInt();
-        final end = (idx + token.length + radius).clamp(0, raw.length).toInt();
-        return raw.substring(start, end);
-      }
-
-      // 说明（对标 Web）：
-      // Web 直接用 `document.getElementById(id)` 获取注释节点并读取 `innerHTML`。
-      // 但服务端内容偶尔会出现“重复 id / 嵌套 id”（例如：
-      // <li id="x"><a id="x">到</a>译注：日本的高龄驾驶标志</li>）。
-      // 浏览器在重复 id 情况下会返回文档序中更靠前（通常是外层 li）的元素；
-      // 而 `package:html` 的 `getElementById` 在重复 id 时可能返回内层 a，导致只取到“到”。
-      //
-      // 为了对齐 Web 行为，这里手动遍历 DOM（文档序）建立 id/name 索引，并优先选择“文本最多”的元素。
-
-      String normalizeText(String text) {
-        // 去掉我们注入的零宽空格，避免干扰长度判断
-        return text.replaceAll('\u200B', '').trim();
-      }
-
-      int textScore(dom.Element el) {
-        return normalizeText(el.text).length;
-      }
-
-      bool isPreferredNoteContainerTag(String? tag) {
-        const preferredTags = {
-          'li',
-          'p',
-          'div',
-          'section',
-          'aside',
-          'blockquote',
-          'dd',
-        };
-        return preferredTags.contains(tag);
-      }
-
-      dom.Element promoteNoteContainer(dom.Element element) {
-        var container = element;
-        while (true) {
-          final parent = container.parent;
-          if (parent is! dom.Element) {
-            break;
-          }
-
-          final parentTag = parent.localName;
-          final containerTag = container.localName;
-          final containerScore = textScore(container);
-          final parentScore = textScore(parent);
-          final shouldPromote =
-              (!isPreferredNoteContainerTag(containerTag) ||
-                  containerScore <= 2) &&
-              isPreferredNoteContainerTag(parentTag) &&
-              parentScore > containerScore;
-          if (!shouldPromote) {
-            break;
-          }
-          container = parent;
-        }
-        return container;
-      }
-
-      int noteContainerPriority(dom.Element element) {
-        if (isPreferredNoteContainerTag(element.localName)) {
-          return 0;
-        }
-        const inlineAnchorTags = {'a', 'span', 'sup', 'sub'};
-        if (inlineAnchorTags.contains(element.localName)) {
-          return 2;
-        }
-        return 1;
-      }
-
-      String? attrValue(dom.Element el, String nameLower) {
-        for (final entry in el.attributes.entries) {
-          final keyLower = entry.key.toString().toLowerCase();
-          if (keyLower == nameLower) return entry.value;
-        }
-        return null;
-      }
-
-      Iterable<dom.Element> walkElements(dom.Node node) sync* {
-        if (node is dom.Element) {
-          yield node;
-        }
-        for (final child in node.nodes) {
-          yield* walkElements(child);
-        }
-      }
-
-      // 文档序索引 id/name（不依赖 selector 引擎，避免大小写/重复 id 解析差异）
-      final Map<String, List<dom.Element>> idIndex = {};
-      final Map<String, List<dom.Element>> nameIndex = {};
-      final root = doc.documentElement ?? doc;
-      for (final el in walkElements(root)) {
-        final idValue = attrValue(el, 'id');
-        if (idValue != null && idValue.isNotEmpty) {
-          (idIndex[idValue] ??= []).add(el);
-        }
-        final nameValue = attrValue(el, 'name');
-        if (nameValue != null && nameValue.isNotEmpty) {
-          (nameIndex[nameValue] ??= []).add(el);
-        }
-      }
-
-      dom.Element? findBestNoteContainer(String id) {
-        final candidates = <dom.Element>[
-          ...(idIndex[id] ?? const []),
-          ...(nameIndex[id] ?? const []),
-        ];
-
-        if (candidates.isEmpty) {
-          // 最后兜底：保留原 getElementById 行为
-          final fallback = doc.getElementById(id);
-          return fallback == null ? null : promoteNoteContainer(fallback);
-        }
-
-        dom.Element? best;
-        var bestScore = -1;
-        var bestPriority = 1 << 30;
-        var bestSize = 1 << 30;
-        final seen = <dom.Element>{};
-        for (final candidate in candidates) {
-          final container = promoteNoteContainer(candidate);
-          if (!seen.add(container)) {
-            continue;
-          }
-
-          final score = textScore(container);
-          final priority = noteContainerPriority(container);
-          final size = container.outerHtml.length;
-          final shouldUse =
-              best == null ||
-              score > bestScore ||
-              (score == bestScore && priority < bestPriority) ||
-              (score == bestScore &&
-                  priority == bestPriority &&
-                  size < bestSize);
-          if (shouldUse) {
-            best = container;
-            bestScore = score;
-            bestPriority = priority;
-            bestSize = size;
-          }
-        }
-
-        // Return the promoted container with the most visible note text.
-        return best;
-      }
-
-      for (final a in doc.querySelectorAll('a.duokan-footnote')) {
-        final href = a.attributes['href'];
-        if (href == null || !href.startsWith('#') || href.length <= 1) {
-          continue;
-        }
-
-        final id = href.substring(1);
-        if (id.isEmpty) continue;
-
-        final noteElement = findBestNoteContainer(id);
-        if (noteElement != null) {
-          // Web: content = noteElement.innerHTML
-          // App：直接对齐 Web 行为，不做“按 id 移除子节点”的清理。
-          // 说明：真实内容可能就在 <li id="noteX">...</li> 里，如果清理会把内容删光。
-          final extractedHtml = noteElement.innerHtml.trim();
-          final noteOuterHtmlForLog = shortenForLog(noteElement.outerHtml);
-
-          notesById.putIfAbsent(id, () => extractedHtml);
-
-          final extractedPreview = normalizeText(extractedHtml);
-          if (extractedPreview.length <= 2) {
-            final raw = html.replaceAll('\u200B', '');
-            final snippetHref = findSnippet(raw, 'href="#$id"');
-            final snippetId1 = findSnippet(raw, 'id="$id"');
-            final snippetId2 = findSnippet(raw, "id='$id'");
-            final snippetName1 = findSnippet(raw, 'name="$id"');
-            final snippetName2 = findSnippet(raw, "name='$id'");
-
-            // 候选元素概要（用于判断是否选错容器）
-            final candidates = <dom.Element>[
-              ...(idIndex[id] ?? const []),
-              ...(nameIndex[id] ?? const []),
-            ];
-            final candidateSummary =
-                candidates.isEmpty
-                    ? '[]'
-                    : candidates
-                            .take(4)
-                            .map(
-                              (e) =>
-                                  '${e.localName}:${textScore(e)}:${shortenForLog(e.outerHtml, max: 120)}',
-                            )
-                            .join(' | ') +
-                        (candidates.length > 4
-                            ? ' …(+${candidates.length - 4})'
-                            : '');
-
-            _logger.warning(
-              'FOOTNOTE_EXTRACT_SHORT id=$id '
-              'tag=${noteElement.localName} '
-              'extracted="${shortenForLog(extractedHtml, max: 120)}" '
-              'noteOuter="$noteOuterHtmlForLog" '
-              'anchor="${shortenForLog(a.outerHtml, max: 180)}" '
-              'candidates=$candidateSummary '
-              'snipHref="${shortenForLog(snippetHref ?? '', max: 160)}" '
-              'snipId="${shortenForLog(snippetId1 ?? snippetId2 ?? '', max: 160)}" '
-              'snipName="${shortenForLog(snippetName1 ?? snippetName2 ?? '', max: 160)}"',
-            );
-          }
-
-          // ⚠️ 极其重要：为了保持与 Web 端的 DOM 节点计数与结构绝对一致（保证双边生成的 XPath index 相同）
-          // 我们必须如同 Web(style.display = 'none') 那样仅仅将其 CSS 隐藏。
-          // 绝不能调用 remove()，否则后续所有标签的下标将发生毁灭性漂移！
-          final currentStyle = noteElement.attributes['style'] ?? '';
-          noteElement.attributes['style'] = '$currentStyle; display: none;';
-        }
-
-        // 禁用默认跳转行为，交由 Flutter 手势处理
-        a.attributes['data-footnote-id'] = id;
-        a.attributes.remove('href');
-
-        // 清理脚注锚点内部的 <sup>/<img>，避免正文容器被误判为“包含图片”从而触发插图样式（居中/无 padding）。
-        // 视觉由 Flutter 的 customWidgetBuilder 接管。
-        a.innerHtml = '';
-      }
-
-      // 清理残留的脚注小图标（有些内容会把 marker 渲染成独立的 img.footnote）
-      for (final img in doc.querySelectorAll('img.footnote')) {
-        img.remove();
-      }
-
-      final processedHtml = doc.body?.innerHtml ?? html;
-      return _FootnoteProcessingResult(
-        html: processedHtml,
-        notesById: notesById,
-      );
-    } catch (_) {
-      // 解析失败则回退到原文
-      return _FootnoteProcessingResult(html: html, notesById: const {});
-    }
+  ReaderFootnoteProcessingResult _processFootnotes(String html) {
+    return processReaderFootnotesLikeWeb(html);
   }
 
   // ==================== 悬浮控件 ====================

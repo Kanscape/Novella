@@ -26,6 +26,7 @@ import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/features/reader/reader_background_page.dart';
 import 'package:novella/features/reader/shared/reader_battery_indicator.dart';
 import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
+import 'package:novella/features/reader/shared/reader_footnote_processor.dart';
 import 'package:novella/features/reader/shared/reader_image_view.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
 import 'package:novella/features/reader/shared/reader_title_sheet.dart';
@@ -81,7 +82,7 @@ class _ReaderPageSpread {
 class _ReaderPagedChapterData {
   final ChapterContent chapter;
   final String? fontFamily;
-  final _FootnoteProcessingResult footnotes;
+  final ReaderFootnoteProcessingResult footnotes;
   final List<_ReaderBlock> blocks;
   final Map<String, int> indexByXPath;
 
@@ -109,16 +110,6 @@ class _ReaderPagedSpread {
 
   int get sortNum => chapterData.chapter.sortNum;
   String get xPath => spread.xPath;
-}
-
-class _FootnoteProcessingResult {
-  final String html;
-  final Map<String, String> notesById;
-
-  const _FootnoteProcessingResult({
-    required this.html,
-    required this.notesById,
-  });
 }
 
 enum _ReaderChapterOpenPosition { saved, start, end }
@@ -798,6 +789,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           currentPath.isEmpty
               ? '//*/$tag[$index]'
               : '$currentPath/$tag[$index]';
+      if (_isElementHidden(node)) {
+        return;
+      }
       if (_shouldUseAsBlock(node)) {
         add(node, path);
         return;
@@ -903,176 +897,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     return RegExp(r'display\s*:\s*none').hasMatch(style);
   }
 
-  _FootnoteProcessingResult _processFootnotes(String html) {
-    if (html.isEmpty) {
-      return const _FootnoteProcessingResult(html: '', notesById: {});
-    }
-
-    try {
-      final doc = html_parser.parse(html);
-      final notesById = <String, String>{};
-
-      String? attrValue(dom.Element element, String nameLower) {
-        for (final entry in element.attributes.entries) {
-          if (entry.key.toString().toLowerCase() == nameLower) {
-            return entry.value;
-          }
-        }
-        return null;
-      }
-
-      Iterable<dom.Element> walkElements(dom.Node node) sync* {
-        if (node is dom.Element) {
-          yield node;
-        }
-        for (final child in node.nodes) {
-          yield* walkElements(child);
-        }
-      }
-
-      int textScore(dom.Element element) {
-        return _normalizeText(element.text).length;
-      }
-
-      bool isPreferredNoteContainerTag(String? tag) {
-        const preferredTags = {
-          'li',
-          'p',
-          'div',
-          'section',
-          'aside',
-          'blockquote',
-          'dd',
-        };
-        return preferredTags.contains(tag);
-      }
-
-      dom.Element promoteNoteContainer(dom.Element element) {
-        var container = element;
-        while (true) {
-          final parent = container.parent;
-          if (parent is! dom.Element) {
-            break;
-          }
-
-          final parentTag = parent.localName;
-          final containerTag = container.localName;
-          final containerScore = textScore(container);
-          final parentScore = textScore(parent);
-          final shouldPromote =
-              (!isPreferredNoteContainerTag(containerTag) ||
-                  containerScore <= 2) &&
-              isPreferredNoteContainerTag(parentTag) &&
-              parentScore > containerScore;
-          if (!shouldPromote) {
-            break;
-          }
-          container = parent;
-        }
-        return container;
-      }
-
-      int noteContainerPriority(dom.Element element) {
-        if (isPreferredNoteContainerTag(element.localName)) {
-          return 0;
-        }
-        const inlineAnchorTags = {'a', 'span', 'sup', 'sub'};
-        if (inlineAnchorTags.contains(element.localName)) {
-          return 2;
-        }
-        return 1;
-      }
-
-      final idIndex = <String, List<dom.Element>>{};
-      final nameIndex = <String, List<dom.Element>>{};
-      final root = doc.documentElement ?? doc;
-      for (final element in walkElements(root)) {
-        final idValue = attrValue(element, 'id');
-        if (idValue != null && idValue.isNotEmpty) {
-          (idIndex[idValue] ??= <dom.Element>[]).add(element);
-        }
-        final nameValue = attrValue(element, 'name');
-        if (nameValue != null && nameValue.isNotEmpty) {
-          (nameIndex[nameValue] ??= <dom.Element>[]).add(element);
-        }
-      }
-
-      dom.Element? findBestNoteContainer(String id) {
-        final candidates = <dom.Element>[
-          ...(idIndex[id] ?? const <dom.Element>[]),
-          ...(nameIndex[id] ?? const <dom.Element>[]),
-        ];
-        if (candidates.isEmpty) {
-          final fallback = doc.getElementById(id);
-          return fallback == null ? null : promoteNoteContainer(fallback);
-        }
-
-        dom.Element? best;
-        var bestScore = -1;
-        var bestPriority = 1 << 30;
-        var bestSize = 1 << 30;
-        final seen = <dom.Element>{};
-        for (final candidate in candidates) {
-          final container = promoteNoteContainer(candidate);
-          if (!seen.add(container)) {
-            continue;
-          }
-
-          final candidateScore = textScore(container);
-          final priority = noteContainerPriority(container);
-          final size = container.outerHtml.length;
-          final shouldUse =
-              best == null ||
-              candidateScore > bestScore ||
-              (candidateScore == bestScore && priority < bestPriority) ||
-              (candidateScore == bestScore &&
-                  priority == bestPriority &&
-                  size < bestSize);
-          if (shouldUse) {
-            best = container;
-            bestScore = candidateScore;
-            bestPriority = priority;
-            bestSize = size;
-          }
-        }
-
-        return best;
-      }
-
-      for (final anchor in doc.querySelectorAll('a.duokan-footnote')) {
-        final href = anchor.attributes['href'];
-        if (href == null || !href.startsWith('#') || href.length <= 1) {
-          continue;
-        }
-
-        final id = href.substring(1);
-        if (id.isEmpty) {
-          continue;
-        }
-
-        final noteElement = findBestNoteContainer(id);
-        if (noteElement != null) {
-          notesById.putIfAbsent(id, () => noteElement.innerHtml.trim());
-          final currentStyle = noteElement.attributes['style'] ?? '';
-          noteElement.attributes['style'] = '$currentStyle; display: none;';
-        }
-
-        anchor.attributes['data-footnote-id'] = id;
-        anchor.attributes.remove('href');
-        anchor.innerHtml = '';
-      }
-
-      for (final img in doc.querySelectorAll('img.footnote')) {
-        img.remove();
-      }
-
-      return _FootnoteProcessingResult(
-        html: doc.body?.innerHtml ?? html,
-        notesById: notesById,
-      );
-    } catch (_) {
-      return _FootnoteProcessingResult(html: html, notesById: const {});
-    }
+  ReaderFootnoteProcessingResult _processFootnotes(String html) {
+    return processReaderFootnotesLikeWeb(html);
   }
 
   String _normalizeText(String text) {
@@ -2033,13 +1859,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         return style.isEmpty ? null : style;
       },
       customWidgetBuilder: (element) {
-        if (element.localName == 'a' &&
-            element.classes.contains('duokan-footnote')) {
-          final rawId =
-              element.attributes['data-footnote-id'] ??
-              (element.attributes['href']?.startsWith('#') == true
-                  ? element.attributes['href']!.substring(1)
-                  : null);
+        if (element.classes.contains('duokan-footnote')) {
+          final rawId = readerFootnoteIdFromElement(element);
 
           final footnoteId = (rawId ?? '').trim();
           final noteHtml = footnoteId.isNotEmpty ? footnotes[footnoteId] : null;
