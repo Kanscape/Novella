@@ -37,6 +37,7 @@ class _SystemUiDebug {
       'src=$source',
       'statusColor=${style.statusBarColor}',
       'statusIcon=${style.statusBarIconBrightness}',
+      'statusContrast=${style.systemStatusBarContrastEnforced}',
       'navColor=${style.systemNavigationBarColor}',
       'navDivider=${style.systemNavigationBarDividerColor}',
       'navIcon=${style.systemNavigationBarIconBrightness}',
@@ -262,6 +263,7 @@ void main() async {
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
+      systemStatusBarContrastEnforced: false,
       systemNavigationBarColor: Colors.transparent,
       systemNavigationBarDividerColor: Colors.transparent,
       systemNavigationBarContrastEnforced: false,
@@ -272,6 +274,7 @@ void main() async {
     _SystemUiDebug.logOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
+        systemStatusBarContrastEnforced: false,
         systemNavigationBarColor: Colors.transparent,
         systemNavigationBarDividerColor: Colors.transparent,
         systemNavigationBarContrastEnforced: false,
@@ -546,6 +549,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               // iOS 会用到；Android 可忽略，但设置不会有副作用。
               statusBarBrightness: brightness,
 
+              systemStatusBarContrastEnforced: false,
               systemNavigationBarColor: Colors.transparent,
               systemNavigationBarDividerColor: Colors.transparent,
               systemNavigationBarIconBrightness: systemIconsBrightness,
@@ -593,6 +597,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.dark,
+                systemStatusBarContrastEnforced: false,
                 systemNavigationBarColor: Colors.transparent,
                 systemNavigationBarDividerColor: Colors.transparent,
                 systemNavigationBarContrastEnforced: false,
@@ -608,6 +613,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               systemOverlayStyle: SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.light,
+                systemStatusBarContrastEnforced: false,
                 systemNavigationBarColor: Colors.transparent,
                 systemNavigationBarDividerColor: Colors.transparent,
                 systemNavigationBarContrastEnforced: false,
