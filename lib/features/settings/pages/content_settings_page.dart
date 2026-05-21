@@ -416,11 +416,10 @@ class ContentSettingsPage extends ConsumerWidget {
                       shrinkWrap: true,
                       buildDefaultDragHandles: false,
                       physics: const NeverScrollableScrollPhysics(),
-                      onReorder: (oldIndex, newIndex) {
+                      onReorderItem: (oldIndex, newIndex) {
                         final newEnabledOrder = List<String>.from(
                           enabledModules,
                         );
-                        if (newIndex > oldIndex) newIndex -= 1;
                         final item = newEnabledOrder.removeAt(oldIndex);
                         newEnabledOrder.insert(newIndex, item);
                         final newOrder = [

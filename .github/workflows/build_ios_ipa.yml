@@ -35,6 +35,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.44.0'
           cache: true
 
       # 预缓存 iOS 引擎工件
