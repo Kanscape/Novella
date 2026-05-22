@@ -227,6 +227,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   bool? _lastAppliedShowSystemStatusBar;
   int? _lastAppliedSystemOverlayBackgroundColor;
   Widget? _cachedMeasurementLayer;
+  List<_ReaderPagedSpread> _latestTitleSheetSpreads = const [];
 
   @override
   void initState() {
@@ -2828,6 +2829,58 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     );
   }
 
+  ReaderTitleSheetPageProgressData? _buildTitleSheetPageProgressData() {
+    if (_loading || _error != null) {
+      return null;
+    }
+
+    final spreads = _latestTitleSheetSpreads;
+    if (spreads.isEmpty) {
+      return null;
+    }
+
+    final currentPage = _currentPage;
+    if (currentPage < 0 || currentPage >= spreads.length) {
+      return null;
+    }
+
+    final currentEntry = spreads[currentPage];
+    if (currentEntry.localCount <= 1) {
+      return null;
+    }
+
+    return ReaderTitleSheetPageProgressData(
+      currentPage: currentEntry.localIndex + 1,
+      pageCount: currentEntry.localCount,
+      onPageSelected: (page) {
+        _goToChapterLocalPage(
+          sortNum: currentEntry.sortNum,
+          localPage: page,
+          pageCount: currentEntry.localCount,
+        );
+      },
+    );
+  }
+
+  void _goToChapterLocalPage({
+    required int sortNum,
+    required int localPage,
+    required int pageCount,
+  }) {
+    final targetLocalIndex = localPage.clamp(1, pageCount) - 1;
+    final targetGlobalIndex = _latestTitleSheetSpreads.indexWhere(
+      (entry) =>
+          entry.sortNum == sortNum && entry.localIndex == targetLocalIndex,
+    );
+    if (targetGlobalIndex < 0 || targetGlobalIndex == _currentPage) {
+      return;
+    }
+
+    _FootnoteAnchor.dismissCurrent();
+    final settings = ref.read(settingsProvider);
+    _goToPage(targetGlobalIndex, animated: !settings.readerPagedNoAnimation);
+  }
+
   void _showTitleSheet(BuildContext context) {
     unawaited(
       showReaderTitleSheet(
@@ -2835,6 +2888,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         bookId: widget.bid,
         bookTitle: widget.bookTitle,
         chapterTitle: _chapter?.title,
+        pageProgress: _buildTitleSheetPageProgressData(),
       ),
     );
   }
@@ -3291,6 +3345,8 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
                               if (measurementReady && spreads.isNotEmpty) {
                                 _scheduleRestore(spreads, layoutKey);
                               }
+                              _latestTitleSheetSpreads =
+                                  pageDisplayReady ? spreads : const [];
                               return Stack(
                                 children: [
                                   _measurementLayerFor(

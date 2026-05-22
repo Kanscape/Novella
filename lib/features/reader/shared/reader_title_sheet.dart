@@ -6,6 +6,7 @@ Future<void> showReaderTitleSheet(
   required int bookId,
   String? bookTitle,
   String? chapterTitle,
+  ReaderTitleSheetPageProgressData? pageProgress,
 }) async {
   final normalizedBookTitle = bookTitle?.trim();
   final normalizedChapterTitle = chapterTitle?.trim();
@@ -13,13 +14,15 @@ Future<void> showReaderTitleSheet(
       normalizedBookTitle != null && normalizedBookTitle.isNotEmpty;
   final hasChapterTitle =
       normalizedChapterTitle != null && normalizedChapterTitle.isNotEmpty;
+  final hasPageProgress = pageProgress != null && pageProgress.pageCount > 1;
 
-  if (!hasBookTitle && !hasChapterTitle) {
+  if (!hasBookTitle && !hasChapterTitle && !hasPageProgress) {
     return;
   }
 
   await showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
     builder: (context) {
@@ -27,24 +30,40 @@ Future<void> showReaderTitleSheet(
         bookId: bookId,
         bookTitle: normalizedBookTitle,
         chapterTitle: normalizedChapterTitle,
+        pageProgress: pageProgress,
       );
     },
   );
+}
+
+class ReaderTitleSheetPageProgressData {
+  final int currentPage;
+  final int pageCount;
+  final ValueChanged<int> onPageSelected;
+
+  const ReaderTitleSheetPageProgressData({
+    required this.currentPage,
+    required this.pageCount,
+    required this.onPageSelected,
+  });
 }
 
 class _ReaderTitleSheetContent extends StatefulWidget {
   final int bookId;
   final String? bookTitle;
   final String? chapterTitle;
+  final ReaderTitleSheetPageProgressData? pageProgress;
 
   const _ReaderTitleSheetContent({
     required this.bookId,
     required this.bookTitle,
     required this.chapterTitle,
+    required this.pageProgress,
   });
 
   @override
-  State<_ReaderTitleSheetContent> createState() => _ReaderTitleSheetContentState();
+  State<_ReaderTitleSheetContent> createState() =>
+      _ReaderTitleSheetContentState();
 }
 
 class _ReaderTitleSheetContentState extends State<_ReaderTitleSheetContent> {
@@ -101,9 +120,12 @@ class _ReaderTitleSheetContentState extends State<_ReaderTitleSheetContent> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
-    final hasBookTitle = widget.bookTitle != null && widget.bookTitle!.isNotEmpty;
+    final hasBookTitle =
+        widget.bookTitle != null && widget.bookTitle!.isNotEmpty;
     final hasChapterTitle =
         widget.chapterTitle != null && widget.chapterTitle!.isNotEmpty;
+    final pageProgress = widget.pageProgress;
+    final hasPageProgress = pageProgress != null && pageProgress.pageCount > 1;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -142,14 +164,16 @@ class _ReaderTitleSheetContentState extends State<_ReaderTitleSheetContent> {
               _ReaderMarkChip(
                 icon: Icons.schedule,
                 label: '待读',
-                selected: !_loadingMark && _currentMark == BookMarkStatus.toRead,
+                selected:
+                    !_loadingMark && _currentMark == BookMarkStatus.toRead,
                 busy: _savingMark,
                 onTap: () => _setMark(BookMarkStatus.toRead),
               ),
               _ReaderMarkChip(
                 icon: Icons.auto_stories,
                 label: '在读',
-                selected: !_loadingMark && _currentMark == BookMarkStatus.reading,
+                selected:
+                    !_loadingMark && _currentMark == BookMarkStatus.reading,
                 busy: _savingMark,
                 onTap: () => _setMark(BookMarkStatus.reading),
               ),
@@ -177,6 +201,123 @@ class _ReaderTitleSheetContentState extends State<_ReaderTitleSheetContent> {
               label: '章节名称',
               value: widget.chapterTitle!,
             ),
+          if ((hasBookTitle || hasChapterTitle) && hasPageProgress)
+            const SizedBox(height: 18),
+          if (hasPageProgress)
+            ReaderTitleSheetPageProgress(
+              currentPage: pageProgress.currentPage,
+              pageCount: pageProgress.pageCount,
+              onPageSelected: pageProgress.onPageSelected,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class ReaderTitleSheetPageProgress extends StatefulWidget {
+  final int currentPage;
+  final int pageCount;
+  final ValueChanged<int> onPageSelected;
+
+  const ReaderTitleSheetPageProgress({
+    super.key,
+    required this.currentPage,
+    required this.pageCount,
+    required this.onPageSelected,
+  });
+
+  @override
+  State<ReaderTitleSheetPageProgress> createState() =>
+      _ReaderTitleSheetPageProgressState();
+}
+
+class _ReaderTitleSheetPageProgressState
+    extends State<ReaderTitleSheetPageProgress> {
+  late double _pageValue;
+
+  int get _clampedCurrentPage =>
+      widget.currentPage.clamp(1, widget.pageCount).toInt();
+
+  @override
+  void initState() {
+    super.initState();
+    _pageValue = _clampedCurrentPage.toDouble();
+  }
+
+  @override
+  void didUpdateWidget(ReaderTitleSheetPageProgress oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentPage != widget.currentPage ||
+        oldWidget.pageCount != widget.pageCount) {
+      _pageValue = _clampedCurrentPage.toDouble();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final pageCount = widget.pageCount.clamp(1, 1000000).toInt();
+    final displayPage = _pageValue.round().clamp(1, pageCount).toInt();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.linear_scale_rounded, color: colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '章节进度',
+                  style: textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                '$displayPage / $pageCount',
+                style: textTheme.labelLarge?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Slider(
+            min: 1,
+            max: pageCount.toDouble(),
+            divisions: pageCount > 1 ? pageCount - 1 : null,
+            value: _pageValue.clamp(1, pageCount).toDouble(),
+            onChanged:
+                pageCount > 1
+                    ? (value) {
+                      setState(() {
+                        _pageValue = value;
+                      });
+                    }
+                    : null,
+            onChangeEnd:
+                pageCount > 1
+                    ? (value) {
+                      final selectedPage = value.round().clamp(1, pageCount);
+                      setState(() {
+                        _pageValue = selectedPage.toDouble();
+                      });
+                      widget.onPageSelected(selectedPage);
+                    }
+                    : null,
+          ),
         ],
       ),
     );
