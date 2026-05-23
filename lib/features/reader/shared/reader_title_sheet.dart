@@ -264,59 +264,78 @@ class _ReaderTitleSheetPageProgressState
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.linear_scale_rounded, color: colorScheme.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '章节进度',
-                  style: textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
+          Icon(
+            Icons.linear_scale_rounded,
+            color: colorScheme.primary,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '章节进度',
+                        style: textTheme.labelMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$displayPage / $pageCount',
+                      style: textTheme.labelLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SliderTheme(
+                  data: SliderTheme.of(
+                    context,
+                  ).copyWith(padding: EdgeInsets.zero),
+                  child: Slider(
+                    min: 1,
+                    max: pageCount.toDouble(),
+                    divisions: pageCount > 1 ? pageCount - 1 : null,
+                    value: _pageValue.clamp(1, pageCount).toDouble(),
+                    onChanged:
+                        pageCount > 1
+                            ? (value) {
+                              setState(() {
+                                _pageValue = value;
+                              });
+                            }
+                            : null,
+                    onChangeEnd:
+                        pageCount > 1
+                            ? (value) {
+                              final selectedPage = value.round().clamp(
+                                1,
+                                pageCount,
+                              );
+                              setState(() {
+                                _pageValue = selectedPage.toDouble();
+                              });
+                              widget.onPageSelected(selectedPage);
+                            }
+                            : null,
                   ),
                 ),
-              ),
-              Text(
-                '$displayPage / $pageCount',
-                style: textTheme.labelLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Slider(
-            min: 1,
-            max: pageCount.toDouble(),
-            divisions: pageCount > 1 ? pageCount - 1 : null,
-            value: _pageValue.clamp(1, pageCount).toDouble(),
-            onChanged:
-                pageCount > 1
-                    ? (value) {
-                      setState(() {
-                        _pageValue = value;
-                      });
-                    }
-                    : null,
-            onChangeEnd:
-                pageCount > 1
-                    ? (value) {
-                      final selectedPage = value.round().clamp(1, pageCount);
-                      setState(() {
-                        _pageValue = selectedPage.toDouble();
-                      });
-                      widget.onPageSelected(selectedPage);
-                    }
-                    : null,
+              ],
+            ),
           ),
         ],
       ),
