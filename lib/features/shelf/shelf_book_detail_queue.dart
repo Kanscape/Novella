@@ -19,7 +19,7 @@ class ShelfBookDetailQueue {
 
   final BookService _bookService;
   final bool Function(int id) hasBook;
-  final void Function(List<Book> books) onBooksLoaded;
+  final void Function(List<Book?> books, List<int> ids) onBooksLoaded;
   final void Function(Object error)? onError;
   final String? requestScope;
   final RequestPriority priority;
@@ -129,7 +129,13 @@ class ShelfBookDetailQueue {
       if (_disposed) {
         return;
       }
-      onBooksLoaded(books);
+      for (var index = 0; index < batch.length; index++) {
+        final book = index < books.length ? books[index] : null;
+        if (book == null) {
+          _requestedIds.remove(batch[index]);
+        }
+      }
+      onBooksLoaded(books, batch);
     } catch (error) {
       if (_disposed) {
         return;

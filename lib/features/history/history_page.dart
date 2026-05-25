@@ -123,7 +123,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     _pendingInitialDetailIds.clear();
   }
 
-  void _handleBooksLoaded(List<Book> books) {
+  void _handleBooksLoaded(List<Book?> books, List<int> ids) {
     if (!mounted || !_isTabActive) {
       return;
     }
@@ -131,12 +131,14 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     final activeBookIds = _bookIds.toSet();
     var shouldReleaseGate = false;
     setState(() {
-      for (final book in books) {
-        if (!activeBookIds.contains(book.id)) {
+      for (var index = 0; index < ids.length; index++) {
+        final bookId = ids[index];
+        final book = index < books.length ? books[index] : null;
+        _pendingInitialDetailIds.remove(bookId);
+        if (book == null || !activeBookIds.contains(book.id)) {
           continue;
         }
         _bookDetails[book.id] = book;
-        _pendingInitialDetailIds.remove(book.id);
       }
       if (_waitingForVisibleDetails && _pendingInitialDetailIds.isEmpty) {
         _waitingForVisibleDetails = false;

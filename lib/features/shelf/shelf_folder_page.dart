@@ -119,16 +119,21 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
     _pendingInitialDetailIds.clear();
   }
 
-  void _handleBooksLoaded(List<Book> books) {
+  void _handleBooksLoaded(List<Book?> books, List<int> ids) {
     if (!mounted) {
       return;
     }
 
     var shouldReleaseGate = false;
     setState(() {
-      for (final book in books) {
+      for (var index = 0; index < ids.length; index++) {
+        final bookId = ids[index];
+        final book = index < books.length ? books[index] : null;
+        _pendingInitialDetailIds.remove(bookId);
+        if (book == null) {
+          continue;
+        }
         _bookDetails[book.id] = book;
-        _pendingInitialDetailIds.remove(book.id);
       }
       if (_waitingForVisibleDetails && _pendingInitialDetailIds.isEmpty) {
         _waitingForVisibleDetails = false;

@@ -97,7 +97,7 @@ class BookService {
     }
   }
 
-  Future<List<Book>> getBooksByIds(
+  Future<List<Book?>> getBooksByIds(
     List<int> ids, {
     String? requestScope,
     RequestPriority priority = RequestPriority.normal,
@@ -105,7 +105,7 @@ class BookService {
     if (ids.isEmpty) return [];
 
     // 分块加载，每块最多 24 个（参考 PRD）
-    final List<Book> allBooks = [];
+    final List<Book?> allBooks = [];
     final int chunkSize = 24;
 
     for (var i = 0; i < ids.length; i += chunkSize) {
@@ -125,18 +125,18 @@ class BookService {
           ],
         );
 
-        // 过滤 null 元素（服务端对权限受限书籍可能返回 null）
-        final books =
-            result
-                .whereType<Map<dynamic, dynamic>>()
-                .map((e) => Book.fromJson(e))
-                .toList();
-        _bookCoverHintService.rememberBooks(books);
+        final books = <Book?>[];
+        for (var offset = 0; offset < chunk.length; offset++) {
+          final entry = offset < result.length ? result[offset] : null;
+          books.add(entry is Map ? Book.fromJson(entry) : null);
+        }
+
+        _bookCoverHintService.rememberBooks(books.whereType<Book>());
         allBooks.addAll(books);
       } catch (e) {
         if (isRequestCancelledError(e)) rethrow;
         _logger.severe('Failed to get books chunk $i-$end: $e');
-        // 跳过失败分块，继续处理其他分块
+        allBooks.addAll(List<Book?>.filled(chunk.length, null));
       }
     }
 
