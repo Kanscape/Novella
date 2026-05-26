@@ -624,7 +624,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
     if (SettingsSyncCodec.isEnabled(prefs)) {
       modules[SyncModuleNames.settings] = SyncModule(
         version: 1,
-        updatedAt: DateTime.now(),
+        updatedAt: SettingsSyncCodec.settingsUpdatedAt(prefs),
         data: SettingsSyncCodec.collectGeneralSettings(prefs),
       );
     }
@@ -690,6 +690,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       await SettingsSyncCodec.applyRemoteSettingsIfEnabled(
         prefs,
         settingsModule.data,
+        settingsModule.updatedAt,
       );
     }
 

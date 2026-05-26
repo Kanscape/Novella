@@ -4,6 +4,7 @@ class SettingsSyncCodec {
   static const String enabledKey = 'setting_sync_appSettingsEnabled';
   static const String needsCloudAdoptionKey =
       'setting_sync_appSettingsNeedsCloudAdoption';
+  static const String updatedAtKey = 'setting_sync_appSettingsUpdatedAt';
 
   static const Set<String> excludedKeys = {
     'setting_iosDisplayStyle',
@@ -16,6 +17,7 @@ class SettingsSyncCodec {
     'setting_readerPagedShowSystemStatusBar',
     enabledKey,
     needsCloudAdoptionKey,
+    updatedAtKey,
   };
 
   static const Map<String, Object> _generalDefaults = {
@@ -82,12 +84,21 @@ class SettingsSyncCodec {
   static bool needsCloudAdoption(SharedPreferences prefs) =>
       prefs.getBool(needsCloudAdoptionKey) ?? false;
 
+  static DateTime settingsUpdatedAt(SharedPreferences prefs) {
+    final rawValue = prefs.getString(updatedAtKey);
+    return DateTime.tryParse(rawValue ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  }
+
   static Future<void> setEnabled(SharedPreferences prefs, bool enabled) async {
     final wasEnabled = isEnabled(prefs);
     await prefs.setBool(enabledKey, enabled);
 
     if (enabled && !wasEnabled) {
       await prefs.setBool(needsCloudAdoptionKey, true);
+      if (prefs.getString(updatedAtKey) == null) {
+        await markGeneralSettingsChanged(prefs);
+      }
       return;
     }
 
@@ -98,6 +109,40 @@ class SettingsSyncCodec {
 
   static Future<void> markCloudAdopted(SharedPreferences prefs) async {
     await prefs.setBool(needsCloudAdoptionKey, false);
+  }
+
+  static Future<void> markGeneralSettingsChanged(
+    SharedPreferences prefs, {
+    DateTime? changedAt,
+  }) async {
+    await setSettingsUpdatedAt(prefs, changedAt ?? DateTime.now());
+  }
+
+  static Future<void> setSettingsUpdatedAt(
+    SharedPreferences prefs,
+    DateTime updatedAt,
+  ) async {
+    await prefs.setString(updatedAtKey, updatedAt.toIso8601String());
+  }
+
+  static bool generalSettingsEqual(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    if (left.length != right.length) {
+      return false;
+    }
+
+    for (final entry in left.entries) {
+      if (!right.containsKey(entry.key)) {
+        return false;
+      }
+      if (!_valuesEqual(entry.value, right[entry.key])) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   static Map<String, dynamic> collectGeneralSettings(SharedPreferences prefs) {
@@ -116,6 +161,7 @@ class SettingsSyncCodec {
   static Future<void> applyRemoteSettingsIfEnabled(
     SharedPreferences prefs,
     Map<String, dynamic> data,
+    DateTime updatedAt,
   ) async {
     if (!isEnabled(prefs)) {
       return;
@@ -128,6 +174,24 @@ class SettingsSyncCodec {
       }
       await _writeValue(prefs, key, data[key], entry.value);
     }
+
+    await setSettingsUpdatedAt(prefs, updatedAt);
+  }
+
+  static bool _valuesEqual(Object? left, Object? right) {
+    if (left is List<String> && right is List<String>) {
+      if (left.length != right.length) {
+        return false;
+      }
+      for (var index = 0; index < left.length; index++) {
+        if (left[index] != right[index]) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    return left == right;
   }
 
   static dynamic _readValue(
