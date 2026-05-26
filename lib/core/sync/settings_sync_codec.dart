@@ -118,6 +118,20 @@ class SettingsSyncCodec {
     await setSettingsUpdatedAt(prefs, changedAt ?? DateTime.now());
   }
 
+  static Future<DateTime> ensureSettingsUpdatedAt(
+    SharedPreferences prefs, {
+    DateTime? fallback,
+  }) async {
+    final existing = DateTime.tryParse(prefs.getString(updatedAtKey) ?? '');
+    if (existing != null) {
+      return existing;
+    }
+
+    final initializedAt = fallback ?? DateTime.now();
+    await setSettingsUpdatedAt(prefs, initializedAt);
+    return initializedAt;
+  }
+
   static Future<void> setSettingsUpdatedAt(
     SharedPreferences prefs,
     DateTime updatedAt,

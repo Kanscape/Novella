@@ -622,9 +622,12 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
     }
 
     if (SettingsSyncCodec.isEnabled(prefs)) {
+      final settingsUpdatedAt = await SettingsSyncCodec.ensureSettingsUpdatedAt(
+        prefs,
+      );
       modules[SyncModuleNames.settings] = SyncModule(
         version: 1,
-        updatedAt: SettingsSyncCodec.settingsUpdatedAt(prefs),
+        updatedAt: settingsUpdatedAt,
         data: SettingsSyncCodec.collectGeneralSettings(prefs),
       );
     }
