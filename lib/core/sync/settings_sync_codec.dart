@@ -172,14 +172,16 @@ class SettingsSyncCodec {
     return data;
   }
 
-  static Future<void> applyRemoteSettingsIfEnabled(
+  static Future<bool> applyRemoteSettingsIfEnabled(
     SharedPreferences prefs,
     Map<String, dynamic> data,
     DateTime updatedAt,
   ) async {
     if (!isEnabled(prefs)) {
-      return;
+      return false;
     }
+
+    final previousSettings = collectGeneralSettings(prefs);
 
     for (final entry in _generalDefaults.entries) {
       final key = entry.key;
@@ -190,6 +192,8 @@ class SettingsSyncCodec {
     }
 
     await setSettingsUpdatedAt(prefs, updatedAt);
+    final currentSettings = collectGeneralSettings(prefs);
+    return !generalSettingsEqual(previousSettings, currentSettings);
   }
 
   static bool _valuesEqual(Object? left, Object? right) {
