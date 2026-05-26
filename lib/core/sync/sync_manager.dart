@@ -514,6 +514,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
     _isSyncing = true;
     _status = SyncStatus.syncing;
+    notifyListeners();
 
     try {
       final syncRunId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -524,6 +525,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       if (remoteEncrypted == null) {
         _status = SyncStatus.idle;
         _logger.info('SYNC run=$syncRunId stage=restore_no_remote');
+        notifyListeners();
         return false;
       }
 
@@ -567,6 +569,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       _status = SyncStatus.idle;
       _logger.info('Restore from Gist completed');
       _logger.info('SYNC run=$syncRunId stage=restore_done');
+      notifyListeners();
       return true;
     } catch (e) {
       _logger.severe('Gist sync failed: $e');
@@ -700,6 +703,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
           );
       if (settingsChanged) {
         _settingsRevision++;
+        notifyListeners();
       }
     }
 
