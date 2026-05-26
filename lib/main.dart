@@ -364,18 +364,37 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   final AuthService _authService = AuthService();
   final SignalRService _signalRService = SignalRService();
   final SecretStorageService _secretStorage = SecretStorageService();
+  final SyncManager _syncManager = SyncManager();
+  int _lastSettingsSyncRevision = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _lastSettingsSyncRevision = _syncManager.settingsRevision;
+    _syncManager.addListener(_handleSyncUpdate);
     _checkDisclaimer();
   }
 
   @override
   void dispose() {
+    _syncManager.removeListener(_handleSyncUpdate);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _handleSyncUpdate() {
+    final settingsRevision = _syncManager.settingsRevision;
+    if (settingsRevision == _lastSettingsSyncRevision) {
+      return;
+    }
+
+    _lastSettingsSyncRevision = settingsRevision;
+    if (!mounted) {
+      return;
+    }
+
+    unawaited(ref.read(settingsProvider.notifier).reload());
   }
 
   @override
@@ -438,17 +457,16 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     // 1. 并行加载核心数据与连接 Gist
     final results = await Future.wait([
       SharedPreferences.getInstance(),
-      SyncManager().init(),
+      _syncManager.init(),
     ]);
 
     final prefs = results[0] as SharedPreferences;
     final agreed = prefs.getBool('disclaimer_agreed') ?? false;
 
     // 2. 如果 Gist 已连接，异步触发同步，不阻塞 UI 渲染
-    final syncManager = SyncManager();
-    if (syncManager.isConnected) {
+    if (_syncManager.isConnected) {
       // 在微任务中触发，确保 setState 立即执行
-      Future.microtask(() => syncManager.triggerSync(immediate: true));
+      Future.microtask(() => _syncManager.triggerSync(immediate: true));
     }
 
     if (mounted) {

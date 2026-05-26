@@ -43,6 +43,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
   DateTime? _lastSyncTime;
   String? _errorMessage;
   bool _isSyncing = false; // 防止循环同步
+  int _settingsRevision = 0;
 
   // 缓存 Key (避免重复计算)
   Uint8List? _cachedKey;
@@ -63,6 +64,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
   DateTime? get lastSyncTime => _lastSyncTime;
   String? get errorMessage => _errorMessage;
   bool get isConnected => _gistService.isConnected;
+  int get settingsRevision => _settingsRevision;
 
   Future<bool> isAppSettingsSyncEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -689,12 +691,16 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
     // 应用设置
     final settingsModule = remoteData.modules[SyncModuleNames.settings];
-    if (settingsModule != null) {
-      await SettingsSyncCodec.applyRemoteSettingsIfEnabled(
-        prefs,
-        settingsModule.data,
-        settingsModule.updatedAt,
-      );
+    if (settingsModule != null && SettingsSyncCodec.isEnabled(prefs)) {
+      final settingsChanged =
+          await SettingsSyncCodec.applyRemoteSettingsIfEnabled(
+            prefs,
+            settingsModule.data,
+            settingsModule.updatedAt,
+          );
+      if (settingsChanged) {
+        _settingsRevision++;
+      }
     }
 
     // 应用 RefreshToken

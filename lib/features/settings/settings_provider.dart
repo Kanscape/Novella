@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:novella/core/sync/settings_sync_codec.dart';
+import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/core/utils/app_ui_font_manager.dart';
 import 'package:novella/features/book/book_detail_page.dart'
     show BookDetailPageState;
@@ -410,6 +411,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     }
   }
 
+  Future<void> reload() async {
+    await _loadSettings();
+  }
+
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     final previousGeneralSettings = SettingsSyncCodec.collectGeneralSettings(
@@ -516,6 +521,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       currentGeneralSettings,
     )) {
       await SettingsSyncCodec.markGeneralSettingsChanged(prefs);
+      if (SettingsSyncCodec.isEnabled(prefs)) {
+        SyncManager().triggerSync();
+      }
     }
   }
 
