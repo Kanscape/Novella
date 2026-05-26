@@ -2,8 +2,16 @@ name: Build Android APK
 
 on:
   workflow_dispatch: # 手动触发
+  pull_request:
+    branches: ["main"]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'rust/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/build_android_apk.yml'
   push:
-    branches: ["main", "master"]
+    branches: ["main"]
     paths:
       - 'lib/**'
       - 'android/**'
