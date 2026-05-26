@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart'; // for WidgetsBindingObserver
 import 'package:logging/logging.dart';
 import 'package:novella/core/storage/secret_storage_service.dart';
 import 'package:novella/core/sync/gist_sync_service.dart';
+import 'package:novella/core/sync/settings_sync_codec.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_data_model.dart';
 import 'package:novella/data/services/book_mark_service.dart';
@@ -62,6 +63,17 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
   DateTime? get lastSyncTime => _lastSyncTime;
   String? get errorMessage => _errorMessage;
   bool get isConnected => _gistService.isConnected;
+
+  Future<bool> isAppSettingsSyncEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return SettingsSyncCodec.isEnabled(prefs);
+  }
+
+  Future<void> setAppSettingsSyncEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await SettingsSyncCodec.setEnabled(prefs, enabled);
+    notifyListeners();
+  }
 
   @override
   void dispose() {
@@ -354,8 +366,22 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
         }
       }
 
-      final mergedData =
+      final syncPrefs = await SharedPreferences.getInstance();
+      final shouldAdoptCloudSettings =
+          SettingsSyncCodec.isEnabled(syncPrefs) &&
+          SettingsSyncCodec.needsCloudAdoption(syncPrefs);
+
+      var mergedData =
           remoteData != null ? localData.mergeWith(remoteData) : localData;
+      final remoteSettingsModule =
+          remoteData?.modules[SyncModuleNames.settings];
+      if (shouldAdoptCloudSettings && remoteSettingsModule != null) {
+        mergedData = _replaceModule(
+          mergedData,
+          SyncModuleNames.settings,
+          remoteSettingsModule,
+        );
+      }
 
       // 4. 加密上传 (复用 CachedKey)
       stage = 'encrypt_upload';
@@ -382,14 +408,19 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       // 关键修正：必须应用 mergedData，否则本地的新更改会被远程旧数据覆盖
       stage = 'apply_remote';
       await _applyRemoteData(mergedData);
+      if (shouldAdoptCloudSettings) {
+        await SettingsSyncCodec.markCloudAdopted(syncPrefs);
+      }
 
       // 7. 更新时间
       _lastSyncTime = DateTime.now();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyLastSyncTime, _lastSyncTime!.toIso8601String());
+      await syncPrefs.setString(
+        _keyLastSyncTime,
+        _lastSyncTime!.toIso8601String(),
+      );
       if (mergedData.syncId != null) {
         _lastKnownSyncId = mergedData.syncId;
-        await prefs.setString(_keyLastSyncId, _lastKnownSyncId!);
+        await syncPrefs.setString(_keyLastSyncId, _lastKnownSyncId!);
       }
 
       _status = SyncStatus.idle;
@@ -445,6 +476,18 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
+  SyncData _replaceModule(SyncData data, String moduleName, SyncModule module) {
+    final modules = Map<String, SyncModule>.from(data.modules);
+    modules[moduleName] = module;
+    return SyncData(
+      schemaVersion: SyncData.currentSchemaVersion,
+      appVersion: data.appVersion,
+      syncedAt: DateTime.now(),
+      syncId: DateTime.now().millisecondsSinceEpoch.toString(),
+      modules: modules,
+    );
+  }
+
   /// 判断错误是否应该自动重试
   bool _shouldRetryError(dynamic error) {
     final errorMsg = error.toString().toLowerCase();
@@ -493,6 +536,10 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
       // 应用所有远程数据
       await _applyRemoteData(remoteData);
+      final prefs = await SharedPreferences.getInstance();
+      if (SettingsSyncCodec.isEnabled(prefs)) {
+        await SettingsSyncCodec.markCloudAdopted(prefs);
+      }
 
       // 保存密码
       await _secretStorage.write(SecretStorageKeys.syncPassword, password);
@@ -512,7 +559,6 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       // 更新同步 ID
       if (remoteData.syncId != null) {
         _lastKnownSyncId = remoteData.syncId;
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_keyLastSyncId, _lastKnownSyncId!);
       }
 
@@ -575,6 +621,14 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       );
     }
 
+    if (SettingsSyncCodec.isEnabled(prefs)) {
+      modules[SyncModuleNames.settings] = SyncModule(
+        version: 1,
+        updatedAt: DateTime.now(),
+        data: SettingsSyncCodec.collectGeneralSettings(prefs),
+      );
+    }
+
     // 收集 RefreshToken
     final refreshToken = await _secretStorage.read(
       SecretStorageKeys.refreshToken,
@@ -628,6 +682,15 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
           }
         }
       }
+    }
+
+    // 应用设置
+    final settingsModule = remoteData.modules[SyncModuleNames.settings];
+    if (settingsModule != null) {
+      await SettingsSyncCodec.applyRemoteSettingsIfEnabled(
+        prefs,
+        settingsModule.data,
+      );
     }
 
     // 应用 RefreshToken

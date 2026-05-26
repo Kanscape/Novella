@@ -1,30 +1,35 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:novella/core/storage/secret_storage_warning_sheet.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/sync/gist_sync_service.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_manager.dart';
+import 'package:novella/features/settings/settings_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 增强同步设置区域
-class SyncSettingsSection extends StatefulWidget {
+class SyncSettingsSection extends ConsumerStatefulWidget {
   const SyncSettingsSection({super.key});
 
   @override
-  State<SyncSettingsSection> createState() => _SyncSettingsSectionState();
+  ConsumerState<SyncSettingsSection> createState() =>
+      _SyncSettingsSectionState();
 }
 
-class _SyncSettingsSectionState extends State<SyncSettingsSection> {
+class _SyncSettingsSectionState extends ConsumerState<SyncSettingsSection> {
   final _syncManager = SyncManager();
   bool _loading = false;
+  bool _appSettingsSyncEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _syncManager.init();
     _syncManager.addListener(_onSyncUpdate);
+    _loadAppSettingsSyncState();
   }
 
   @override
@@ -35,6 +40,15 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
 
   void _onSyncUpdate() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadAppSettingsSyncState() async {
+    final enabled = await _syncManager.isAppSettingsSyncEnabled();
+    if (mounted) {
+      setState(() {
+        _appSettingsSyncEnabled = enabled;
+      });
+    }
   }
 
   @override
@@ -65,6 +79,14 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                 _syncManager.lastSyncTime != null
                     ? Text('上次同步: ${_formatTime(_syncManager.lastSyncTime!)}')
                     : const Text('尚未同步'),
+          ),
+
+          SwitchListTile(
+            secondary: const Icon(Icons.settings_suggest_outlined),
+            title: const Text('额外同步'),
+            subtitle: const Text('同步部分偏好设置'),
+            value: _appSettingsSyncEnabled,
+            onChanged: _loading ? null : _handleAppSettingsSyncChanged,
           ),
 
           // 手动同步按钮
@@ -502,6 +524,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
     setState(() => _loading = true);
     try {
       await _syncManager.sync();
+      ref.invalidate(settingsProvider);
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -515,6 +538,53 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
       }
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _handleAppSettingsSyncChanged(bool value) async {
+    final previousValue = _appSettingsSyncEnabled;
+    setState(() {
+      _appSettingsSyncEnabled = value;
+      _loading = true;
+    });
+
+    try {
+      await _syncManager.setAppSettingsSyncEnabled(value);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _appSettingsSyncEnabled = previousValue;
+          _loading = false;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('更新失败: $e')));
+      }
+      return;
+    }
+
+    try {
+      if (value) {
+        await _syncManager.sync();
+        ref.invalidate(settingsProvider);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(value ? '已开启应用设置同步' : '已关闭应用设置同步')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('设置已保存，同步失败: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
