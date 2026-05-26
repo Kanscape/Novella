@@ -30,7 +30,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v5
         with:
-          lfs: true
+          lfs: false
+
+      - name: Restore Git LFS Cache
+        uses: actions/cache@v5
+        with:
+          path: .git/lfs/objects
+          key: lfs-ios-${{ runner.os }}-${{ hashFiles('ios/libs/**', 'ios/Runner/Assets.xcassets/**', 'macos/Novella.icon/**') }}
+          restore-keys: |
+            lfs-ios-${{ runner.os }}-
+
+      - name: Pull Required Git LFS Files
+        run: |
+          git lfs install --local
+          git lfs pull --include="ios,macos/Novella.icon" --exclude=""
 
       - name: Set Commit SHA
         run: echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV

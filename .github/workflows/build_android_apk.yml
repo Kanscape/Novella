@@ -29,7 +29,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v5
         with:
-          lfs: true
+          lfs: false
+
+      - name: Restore Git LFS Cache
+        uses: actions/cache@v5
+        with:
+          path: .git/lfs/objects
+          key: lfs-android-${{ runner.os }}-${{ hashFiles('android/app/src/main/jniLibs/**', 'android/app/src/main/res/**') }}
+          restore-keys: |
+            lfs-android-${{ runner.os }}-
+
+      - name: Pull Required Git LFS Files
+        run: |
+          git lfs install --local
+          git lfs pull --include="android/app/src/main/jniLibs,android/app/src/main/res" --exclude=""
 
       - name: Set Commit SHA
         run: echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
@@ -81,7 +94,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v5
         with:
-          lfs: true
+          lfs: false
+
+      - name: Restore Git LFS Cache
+        uses: actions/cache@v5
+        with:
+          path: .git/lfs/objects
+          key: lfs-android-${{ runner.os }}-${{ hashFiles('android/app/src/main/jniLibs/**', 'android/app/src/main/res/**') }}
+          restore-keys: |
+            lfs-android-${{ runner.os }}-
+
+      - name: Pull Required Git LFS Files
+        run: |
+          git lfs install --local
+          git lfs pull --include="android/app/src/main/jniLibs,android/app/src/main/res" --exclude=""
 
       - name: Set Commit SHA
         run: echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
