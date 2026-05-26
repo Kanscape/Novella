@@ -1,9 +1,18 @@
-name: Build Unsigned IPA
+name: Build iOS IPA
 
 on:
   workflow_dispatch: # 手动触发
+  pull_request:
+    branches: ["main"]
+    paths:
+      - 'lib/**'
+      - 'ios/**'
+      - 'macos/Novella.icon/**'
+      - 'rust/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/build_ios_ipa.yml'
   push:
-    branches: ["main", "master"]
+    branches: ["main"]
     paths:
       - 'lib/**'
       - 'ios/**'
@@ -14,7 +23,7 @@ on:
 
 jobs:
   build-ipa:
-    name: Build iOS IPA
+    name: Build Unsigned IPA
     runs-on: macos-15
     
     steps:

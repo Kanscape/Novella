@@ -2,8 +2,16 @@ name: Build Android APK
 
 on:
   workflow_dispatch: # 手动触发
+  pull_request:
+    branches: ["main"]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'rust/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/build_android_apk.yml'
   push:
-    branches: ["main", "master"]
+    branches: ["main"]
     paths:
       - 'lib/**'
       - 'android/**'
@@ -12,8 +20,61 @@ on:
       - '.github/workflows/build_android_apk.yml'
 
 jobs:
-  build-apk:
-    name: Build Android APK
+  build-unsigned-apk:
+    name: Build Unsigned APK
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+
+      - name: Set Commit SHA
+        run: echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      # 配置 Java 环境
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      # 配置 Flutter
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.44.0'
+          cache: true
+
+      # 获取依赖
+      - name: Flutter Pub Get
+        run: flutter pub get
+
+      # 构建免签 APK
+      - name: Build Unsigned APK
+        run: flutter build apk --release --verbose --dart-define=COMMIT_ID=$COMMIT_SHA
+
+      # 重命名 APK
+      - name: Rename APK
+        run: |
+          APK_PATH="$(find build/app/outputs/flutter-apk -maxdepth 1 -type f -name 'app-release*.apk' -print -quit)"
+          test -n "$APK_PATH"
+          cp "$APK_PATH" novella-unsigned.apk
+
+      # 上传产物
+      - name: Upload APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: novella-android-unsigned-apk
+          path: novella-unsigned.apk
+
+  build-signed-apk:
+    name: Build Signed APK
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
@@ -70,5 +131,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
-          name: novella-android-apk
+          name: novella-android-signed-apk
           path: novella.apk
