@@ -14,6 +14,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:novella/core/layout/app_window_class.dart';
+import 'package:novella/core/system_ui/app_system_ui.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:novella/core/utils/font_manager.dart';
@@ -224,6 +225,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   String _measurementLayerCacheKey = '';
   double _manualPageDragOffset = 0;
   double? _stableAndroidBottomPadding;
+  Brightness _lastAppBrightness = Brightness.light;
   bool? _lastAppliedShowSystemStatusBar;
   int? _lastAppliedSystemOverlayBackgroundColor;
   Widget? _cachedMeasurementLayer;
@@ -309,7 +311,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     _currentPageNotifier.dispose();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    unawaited(AppSystemUi.restoreDefault(_lastAppBrightness));
     super.dispose();
   }
 
@@ -355,14 +357,12 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     }
 
     _lastAppliedShowSystemStatusBar = showStatusBar;
-    unawaited(
-      showStatusBar
-          ? SystemChrome.setEnabledSystemUIMode(
-            SystemUiMode.manual,
-            overlays: const [SystemUiOverlay.top],
-          )
-          : SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
-    );
+    unawaited(AppSystemUi.applyPagedReader(showSystemStatusBar: showStatusBar));
+  }
+
+  Future<void> _restoreDefaultSystemUi(Brightness brightness) async {
+    _lastAppBrightness = brightness;
+    await AppSystemUi.restoreDefault(_lastAppBrightness);
   }
 
   Future<void> _saveProgressForExit() async {
@@ -2895,7 +2895,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
 
   Future<void> _exitPagedReader(BuildContext context) async {
     final navigator = Navigator.of(context);
+    final brightness = Theme.of(context).brightness;
     await _saveProgressForExit();
+    if (mounted) {
+      await _restoreDefaultSystemUi(brightness);
+    }
     if (mounted) {
       navigator.pop();
     }
@@ -3200,6 +3204,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     final settings = ref.watch(settingsProvider);
     _applyReaderSystemUiMode(settings);
     final baseTheme = Theme.of(context);
+    _lastAppBrightness = baseTheme.brightness;
     final currentScheme =
         (settings.coverColorExtraction ? _dynamicColorScheme : null) ??
         baseTheme.colorScheme;
@@ -3234,7 +3239,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           return;
         }
         final navigator = Navigator.of(context);
+        final brightness = Theme.of(context).brightness;
         await _saveProgressForExit();
+        if (mounted) {
+          await _restoreDefaultSystemUi(brightness);
+        }
         if (mounted) {
           navigator.pop(result);
         }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:novella/core/system_ui/app_system_ui.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -209,6 +210,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
 
   bool _exitInProgress = false;
   double? _stableAndroidBottomPadding;
+  Brightness _lastAppBrightness = Brightness.light;
 
   /// 退出阅读器前保存进度。
   ///
@@ -249,12 +251,19 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     if (_exitInProgress) return;
     await _saveProgressForExit();
     if (!mounted) return;
+    await _restoreDefaultSystemUi();
+    if (!mounted) return;
     Navigator.pop(context);
   }
 
   Future<bool> _onWillPop() async {
     await _saveProgressForExit();
+    await _restoreDefaultSystemUi();
     return true;
+  }
+
+  Future<void> _restoreDefaultSystemUi() {
+    return AppSystemUi.restoreDefault(_lastAppBrightness);
   }
 
   /// 获取当前阅读背景色
@@ -1615,7 +1624,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     _batteryStateNotifier.dispose();
     _timeStringNotifier.dispose();
     // 退出阅读页时恢复系统栏显示
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    unawaited(AppSystemUi.restoreDefault(_lastAppBrightness));
     super.dispose();
   }
 
@@ -1635,7 +1644,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
   }
 
   void _applyReaderSystemUiMode() {
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    unawaited(AppSystemUi.applyPagedReader(showSystemStatusBar: false));
   }
 
   double _readerBottomPadding(BuildContext context) {
@@ -2035,6 +2044,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    _lastAppBrightness = Theme.of(context).brightness;
 
     // 计算当前应用的 Theme
     final currentTheme = Theme.of(context).copyWith(
