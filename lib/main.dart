@@ -12,6 +12,7 @@ import 'package:novella/core/logging/log_buffer_service.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/core/storage/secret_storage_service.dart';
+import 'package:novella/core/system_ui/app_system_ui.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/auth/login_page.dart';
@@ -259,26 +260,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 配置边到边显示（Android 小白条沉浸）
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      systemStatusBarContrastEnforced: false,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarDividerColor: Colors.transparent,
-      systemNavigationBarContrastEnforced: false,
-    ),
-  );
+  await AppSystemUi.restoreDefault(Brightness.light);
 
   assert(() {
     _SystemUiDebug.logOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        systemStatusBarContrastEnforced: false,
-        systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarDividerColor: Colors.transparent,
-        systemNavigationBarContrastEnforced: false,
-      ),
+      AppSystemUi.defaultOverlayStyle(Brightness.light),
       source: 'main()',
     );
     return true;
@@ -556,23 +542,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           // 解决“二次启动自动登录 loading -> 主页首次不沉浸；进详情页后恢复并沿用”的样式被覆盖问题。
           builder: (context, child) {
             final brightness = Theme.of(context).brightness;
-            final systemIconsBrightness =
-                brightness == Brightness.dark
-                    ? Brightness.light
-                    : Brightness.dark;
-
-            final style = SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: systemIconsBrightness,
-              // iOS 会用到；Android 可忽略，但设置不会有副作用。
-              statusBarBrightness: brightness,
-
-              systemStatusBarContrastEnforced: false,
-              systemNavigationBarColor: Colors.transparent,
-              systemNavigationBarDividerColor: Colors.transparent,
-              systemNavigationBarIconBrightness: systemIconsBrightness,
-              systemNavigationBarContrastEnforced: false,
-            );
+            final style = AppSystemUi.defaultOverlayStyle(brightness);
 
             assert(() {
               _SystemUiDebug.logOverlayStyle(
