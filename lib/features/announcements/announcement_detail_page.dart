@@ -57,6 +57,10 @@ class _AnnouncementDetailPageState
       }
       final currentItem = widget.item;
       if (currentItem != null) {
+        if (currentItem.source == AnnouncementSource.app &&
+            currentItem.required) {
+          return;
+        }
         unawaited(
           ref.read(announcementProvider.notifier).markRead(currentItem),
         );
