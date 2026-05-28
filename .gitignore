@@ -21,6 +21,7 @@ Thumbs.db
 .svn/
 .swiftpm/
 migrate_working_dir/
+site/web/assets/announcements/index.json
 
 # =====================================================
 # IDE / Editor Configuration

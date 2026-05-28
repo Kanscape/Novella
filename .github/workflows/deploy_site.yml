@@ -78,6 +78,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: dart run tool/fetch_site_data.dart
 
+      - name: Generate announcements index
+        working-directory: site
+        run: dart run tool/generate_announcements.dart
+
       - name: Build CSS
         working-directory: site
         run: npx @tailwindcss/cli -i src/input.css -o web/styles.css --minify

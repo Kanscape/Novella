@@ -13,6 +13,9 @@ import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/book_info_cache_service.dart';
+import 'package:novella/features/announcements/announcement_center_page.dart';
+import 'package:novella/features/announcements/announcement_provider.dart';
+import 'package:novella/features/announcements/required_announcement_coordinator.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/home/recently_updated_page.dart';
 import 'package:novella/features/ranking/ranking_page.dart';
@@ -85,6 +88,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     _isRouteVisible = true;
     _needsContinueReadingRefresh = true;
     _refreshSurfaceOnVisible();
+    unawaited(_checkRequiredAnnouncements());
   }
 
   @override
@@ -113,6 +117,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     }
 
     _refreshSurfaceOnVisible(fetchPrimaryContent: true);
+    unawaited(_checkRequiredAnnouncements());
   }
 
   bool _canApplyRequest(int requestEpoch) {
@@ -169,7 +174,29 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
       _lastIgnoreJapanese = settings.ignoreJapanese;
       _lastIgnoreAI = settings.ignoreAI;
       _lastIgnoreLevel6 = settings.ignoreLevel6;
+      unawaited(_checkRequiredAnnouncements());
     });
+  }
+
+  Future<void> _openAnnouncementCenter() async {
+    await AppRouteLauncher.pushDetail(
+      context,
+      (_) => const AnnouncementCenterPage(),
+    );
+    if (!mounted) {
+      return;
+    }
+    unawaited(ref.read(announcementProvider.notifier).refresh(silent: true));
+    unawaited(_checkRequiredAnnouncements());
+  }
+
+  Future<void> _checkRequiredAnnouncements() async {
+    if (!mounted || !_isTabActive || !_isRouteVisible) {
+      return;
+    }
+    await ref
+        .read(requiredAnnouncementCoordinatorProvider)
+        .check(context: context, ref: ref);
   }
 
   /// 检查过滤设置是否变更
@@ -565,6 +592,9 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final settings = ref.watch(settingsProvider);
+    final hasUnreadAnnouncement = ref
+        .watch(announcementProvider)
+        .maybeWhen(data: (state) => state.hasUnread, orElse: () => false);
 
     // 检测过滤设置变更并标记需要刷新
     _checkFilterSettingsChanged();
@@ -599,16 +629,21 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
               child: SafeArea(
                 bottom: false,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                  padding: const EdgeInsets.fromLTRB(24, 24, 16, 8),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '发现',
-                        style: textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
+                      Expanded(
+                        child: Text(
+                          '发现',
+                          style: textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
+                          ),
                         ),
+                      ),
+                      AnnouncementIconButton(
+                        hasUnread: hasUnreadAnnouncement,
+                        onPressed: _openAnnouncementCenter,
                       ),
                       IconButton(
                         icon: const Icon(Icons.search),
