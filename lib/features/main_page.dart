@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -8,12 +10,14 @@ import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/services/update_service.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/features/announcements/required_announcement_coordinator.dart';
 import 'package:novella/features/community/community_page.dart';
 import 'package:novella/features/community/notification_unread_provider.dart';
 import 'package:novella/features/history/history_page.dart';
 import 'package:novella/features/home/home_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/features/shelf/shelf_page.dart';
+import 'package:novella/main.dart';
 
 class MainPage extends ConsumerStatefulWidget {
   const MainPage({super.key});
@@ -22,7 +26,7 @@ class MainPage extends ConsumerStatefulWidget {
   ConsumerState<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends ConsumerState<MainPage> {
+class _MainPageState extends ConsumerState<MainPage> with RouteAware {
   static const List<String> _tabLabels = <String>['发现', '书架', '历史', '社区', '设置'];
   static const double _railMinWidth = 76;
   static const double _railExtendedWidth = 176;
@@ -36,6 +40,7 @@ class _MainPageState extends ConsumerState<MainPage> {
   final _paneCoordinator = AppPaneCoordinator(tabCount: _tabLabels.length);
   final Set<int> _loadedPages = <int>{0};
   bool _startupApplied = false;
+  bool _isRouteVisible = true;
 
   String? _scopeForTab(int index) {
     switch (index) {
@@ -80,6 +85,45 @@ class _MainPageState extends ConsumerState<MainPage> {
         UpdateService.checkUpdate(context, ref, manual: false);
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context) as PageRoute);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    _isRouteVisible = true;
+    _checkRequiredAnnouncements();
+  }
+
+  @override
+  void didPush() {
+    _isRouteVisible = true;
+  }
+
+  @override
+  void didPushNext() {
+    _isRouteVisible = false;
+  }
+
+  void _checkRequiredAnnouncements() {
+    if (!mounted || !_isRouteVisible) {
+      return;
+    }
+    unawaited(
+      ref
+          .read(requiredAnnouncementCoordinatorProvider)
+          .check(context: context, ref: ref),
+    );
   }
 
   Widget _buildPage(int index) {
@@ -134,6 +178,8 @@ class _MainPageState extends ConsumerState<MainPage> {
     } else if (index == 3) {
       _communityKey.currentState?.refresh();
     }
+
+    _checkRequiredAnnouncements();
   }
 
   void _applyStartupSettingsIfNeeded(AppSettings settings) {
@@ -160,6 +206,8 @@ class _MainPageState extends ConsumerState<MainPage> {
       } else if (_currentIndex == 3) {
         _communityKey.currentState?.refresh();
       }
+
+      _checkRequiredAnnouncements();
     });
   }
 

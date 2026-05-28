@@ -14,14 +14,12 @@ import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/book_info_cache_service.dart';
 import 'package:novella/features/announcements/announcement_center_page.dart';
-import 'package:novella/features/announcements/announcement_models.dart';
 import 'package:novella/features/announcements/announcement_provider.dart';
-import 'package:novella/features/announcements/required_announcement_sheet.dart';
+import 'package:novella/features/announcements/required_announcement_coordinator.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/home/recently_updated_page.dart';
 import 'package:novella/features/ranking/ranking_page.dart';
 import 'package:novella/features/search/search_page.dart';
-import 'package:novella/features/settings/pages/about_settings_page.dart';
 import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -67,7 +65,6 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   final _cacheService = BookInfoCacheService();
   bool _isTabActive = true;
   bool _isRouteVisible = true;
-  bool _requiredAnnouncementSheetVisible = false;
   int _requestEpoch = 0;
   StreamSubscription<ReadPosition>? _progressChangedSubscription;
 
@@ -194,62 +191,12 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   }
 
   Future<void> _checkRequiredAnnouncements() async {
-    if (!mounted ||
-        !_isTabActive ||
-        !_isRouteVisible ||
-        _requiredAnnouncementSheetVisible) {
+    if (!mounted || !_isTabActive || !_isRouteVisible) {
       return;
     }
-    final pageContext = context;
-
-    try {
-      var state = await ref.read(announcementProvider.future);
-      if (!pageContext.mounted || !_isTabActive || !_isRouteVisible) {
-        return;
-      }
-
-      if (state.appErrorMessage != null) {
-        await ref.read(announcementProvider.notifier).refresh(silent: true);
-        if (!pageContext.mounted || !_isTabActive || !_isRouteVisible) {
-          return;
-        }
-        state = await ref.read(announcementProvider.future);
-        if (!pageContext.mounted || !_isTabActive || !_isRouteVisible) {
-          return;
-        }
-      }
-
-      if (state.requiredUnreadAppAnnouncements.isEmpty) {
-        return;
-      }
-
-      final announcement = state.requiredUnreadAppAnnouncements.first;
-      _requiredAnnouncementSheetVisible = true;
-      final action = await showRequiredAnnouncementSheet(
-        context: pageContext,
-        ref: ref,
-        announcement: announcement,
-      );
-      _requiredAnnouncementSheetVisible = false;
-
-      if (!pageContext.mounted) {
-        return;
-      }
-
-      if (action == AnnouncementCompletionActionType.openAbout) {
-        await AppRouteLauncher.pushDetail(
-          pageContext,
-          (_) => const AboutSettingsPage(),
-        );
-        unawaited(_checkRequiredAnnouncements());
-        return;
-      }
-
-      unawaited(_checkRequiredAnnouncements());
-    } catch (error) {
-      _requiredAnnouncementSheetVisible = false;
-      _logger.warning('Failed to check required announcements: $error');
-    }
+    await ref
+        .read(requiredAnnouncementCoordinatorProvider)
+        .check(context: context, ref: ref);
   }
 
   /// 检查过滤设置是否变更
