@@ -12,11 +12,51 @@ import 'package:novella/features/settings/log_viewer_page.dart';
 import 'package:novella/features/auth/login_page.dart';
 import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/core/services/update_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:novella/features/settings/widgets/settings_header_card.dart';
 
 class AboutSettingsPage extends ConsumerWidget {
   const AboutSettingsPage({super.key});
+
+  static const _feedbackLinks = <_FeedbackLink>[
+    _FeedbackLink(
+      title: '项目站点',
+      subtitle: 'novella.celia.sh',
+      url: 'https://novella.celia.sh',
+      icon: Icons.language,
+    ),
+    _FeedbackLink(
+      title: 'GitHub Repository',
+      subtitle: '点亮仓库的小星星',
+      url: 'https://github.com/Kanscape/Novella',
+      icon: Icons.star_border,
+    ),
+    _FeedbackLink(
+      title: 'GitHub Discussions',
+      subtitle: '功能建议与使用讨论',
+      url: 'https://github.com/Kanscape/Novella/discussions',
+      icon: Icons.forum_outlined,
+    ),
+    _FeedbackLink(
+      title: 'GitHub Issues',
+      subtitle: '问题反馈与进度追踪',
+      url: 'https://github.com/Kanscape/Novella/issues',
+      icon: Icons.bug_report_outlined,
+    ),
+    _FeedbackLink(
+      title: '轻书架留学生',
+      subtitle: '轻书架官方群组，严禁讨论软件相关',
+      url: 'https://t.me/+J5xdTWVGOJMyOWRl',
+      icon: Icons.telegram,
+    ),
+    _FeedbackLink(
+      title: '白毛是对的',
+      subtitle: '客户端开发群组，更新动态与软件反馈',
+      url: 'https://t.me/+rZYx8H_TvUpmZjJh',
+      icon: Icons.telegram,
+    ),
+  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -96,6 +136,14 @@ class AboutSettingsPage extends ConsumerWidget {
                 },
               ),
 
+              ListTile(
+                leading: const Icon(Icons.forum_outlined),
+                title: const Text('外部链接'),
+                subtitle: const Text('反馈与交流'),
+                trailing: const Icon(Icons.chevron_right, size: 20),
+                onTap: () => _showFeedbackSheet(context),
+              ),
+
               // 调试：RustLib FFI 状态
               ListTile(
                 leading: Icon(
@@ -140,6 +188,88 @@ class AboutSettingsPage extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _launchFeedbackUrl(BuildContext context, String url) async {
+    final uri = Uri.parse(url);
+
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (launched || !context.mounted) {
+        return;
+      }
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('无法打开链接'), duration: Duration(seconds: 2)),
+    );
+  }
+
+  void _showFeedbackSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        final textTheme = Theme.of(sheetContext).textTheme;
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Text(
+                  '交流与反馈',
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  '选择一个适合的渠道',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              ..._feedbackLinks.map(
+                (link) => ListTile(
+                  leading: Icon(link.icon, color: colorScheme.onSurfaceVariant),
+                  title: Text(link.title),
+                  subtitle: Text(link.subtitle),
+                  trailing: Icon(
+                    Icons.open_in_new,
+                    size: 16,
+                    color: colorScheme.outline,
+                  ),
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    await _launchFeedbackUrl(context, link.url);
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -243,4 +373,18 @@ class AboutSettingsPage extends ConsumerWidget {
       },
     );
   }
+}
+
+class _FeedbackLink {
+  const _FeedbackLink({
+    required this.title,
+    required this.subtitle,
+    required this.url,
+    required this.icon,
+  });
+
+  final String title;
+  final String subtitle;
+  final String url;
+  final IconData icon;
 }
