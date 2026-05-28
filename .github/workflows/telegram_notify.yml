@@ -46,6 +46,8 @@ jobs:
               char: f"\\{char}"
               for char in r"\_*[]()~`>#+-=|{}.!"
           })
+          MAX_MESSAGE_LENGTH = 3800
+          TRUNCATED_DETAILS_SUFFIX = "\n\n... truncated"
 
           event_name = os.environ["EVENT_NAME"]
           repo = os.environ["REPOSITORY"]
@@ -64,6 +66,35 @@ jobs:
           def md_link(label, url):
               safe_url = str(url).replace("\\", "\\\\").replace(")", "\\)")
               return f"[{md_escape(label)}]({safe_url})"
+
+          def message_length_with_details(lines, details):
+              return len("\n".join([
+                  *lines,
+                  "",
+                  "*Details:*",
+                  "```",
+                  md_code(details),
+                  "```",
+              ]))
+
+          def capped_details(lines, details):
+              if message_length_with_details(lines, details) <= MAX_MESSAGE_LENGTH:
+                  return details
+
+              low = 0
+              high = len(details)
+              capped = TRUNCATED_DETAILS_SUFFIX
+
+              while low <= high:
+                  mid = (low + high) // 2
+                  candidate = f"{details[:mid].rstrip()}{TRUNCATED_DETAILS_SUFFIX}"
+                  if message_length_with_details(lines, candidate) <= MAX_MESSAGE_LENGTH:
+                      capped = candidate
+                      low = mid + 1
+                  else:
+                      high = mid - 1
+
+              return capped
 
           def output_multiline(name, value):
               delimiter = f"TELEGRAM_MESSAGE_{uuid.uuid4().hex}"
@@ -113,6 +144,7 @@ jobs:
                   f"*Title:* {md_escape(title)}",
               ]
               if details:
+                  details = capped_details(lines, details)
                   lines.extend([
                       "",
                       "*Details:*",
