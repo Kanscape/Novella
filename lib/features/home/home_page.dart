@@ -200,32 +200,45 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
         _requiredAnnouncementSheetVisible) {
       return;
     }
+    final pageContext = context;
 
     try {
-      final state = await ref.read(announcementProvider.future);
-      if (!mounted ||
-          !_isTabActive ||
-          !_isRouteVisible ||
-          state.requiredUnreadAppAnnouncements.isEmpty) {
+      var state = await ref.read(announcementProvider.future);
+      if (!pageContext.mounted || !_isTabActive || !_isRouteVisible) {
+        return;
+      }
+
+      if (state.appErrorMessage != null) {
+        await ref.read(announcementProvider.notifier).refresh(silent: true);
+        if (!pageContext.mounted || !_isTabActive || !_isRouteVisible) {
+          return;
+        }
+        state = await ref.read(announcementProvider.future);
+        if (!pageContext.mounted || !_isTabActive || !_isRouteVisible) {
+          return;
+        }
+      }
+
+      if (state.requiredUnreadAppAnnouncements.isEmpty) {
         return;
       }
 
       final announcement = state.requiredUnreadAppAnnouncements.first;
       _requiredAnnouncementSheetVisible = true;
       final action = await showRequiredAnnouncementSheet(
-        context: context,
+        context: pageContext,
         ref: ref,
         announcement: announcement,
       );
       _requiredAnnouncementSheetVisible = false;
 
-      if (!mounted) {
+      if (!pageContext.mounted) {
         return;
       }
 
       if (action == AnnouncementCompletionActionType.openAbout) {
         await AppRouteLauncher.pushDetail(
-          context,
+          pageContext,
           (_) => const AboutSettingsPage(),
         );
         unawaited(_checkRequiredAnnouncements());
