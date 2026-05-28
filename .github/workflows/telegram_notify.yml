@@ -1,0 +1,164 @@
+name: Telegram
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-notify-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+    steps:
+      - name: Build message
+        id: message
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          python3 <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+          import uuid
+          from pathlib import Path
+
+          MD_ESCAPE = str.maketrans({
+              char: f"\\{char}"
+              for char in r"\_*[]()~`>#+-=|{}.!"
+          })
+
+          event_name = os.environ["EVENT_NAME"]
+          repo = os.environ["REPOSITORY"]
+          repo_display = "Kanscape/Novella" if repo.lower() == "kanscape/novella" else repo
+          server_url = os.environ["SERVER_URL"]
+          repo_url = f"{server_url}/{repo_display}"
+          run_url = f"{repo_url}/actions/runs/{os.environ['RUN_ID']}"
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+
+          def md_escape(value):
+              return str(value).translate(MD_ESCAPE)
+
+          def md_code(value):
+              return str(value).replace("\\", "\\\\").replace("`", "\\`")
+
+          def md_link(label, url):
+              safe_url = str(url).replace("\\", "\\\\").replace(")", "\\)")
+              return f"[{md_escape(label)}]({safe_url})"
+
+          def output_multiline(name, value):
+              delimiter = f"TELEGRAM_MESSAGE_{uuid.uuid4().hex}"
+              print(f"{name}<<{delimiter}")
+              print(value)
+              print(delimiter)
+
+          if event_name == "release":
+              release = event["release"]
+              title = release.get("name") or release.get("tag_name") or "Untitled release"
+              tag_name = release.get("tag_name", "unknown")
+              html_url = release.get("html_url") or f"{server_url}/{repo}/releases"
+              html_url = html_url.replace(f"{server_url}/{repo}", repo_url, 1)
+              author = release.get("author", {}).get("login") or os.environ["ACTOR"]
+              message = "\n".join([
+                  "🚀 *Novella release published*",
+                  f"*Repository:* `{md_code(repo_display)}`",
+                  f"*Release:* {md_link(title, html_url)}",
+                  f"*Tag:* `{md_code(tag_name)}`",
+                  f"*Published by:* `{md_code(author)}`",
+              ])
+              disable_web_page_preview = "false"
+          elif event_name == "workflow_dispatch":
+              message = "\n".join([
+                  "🧪 *Novella notification test*",
+                  f"*Repository:* `{md_code(repo_display)}`",
+                  f"*Branch:* `{md_code(os.environ['REF_NAME'])}`",
+                  f"*Triggered by:* `{md_code(os.environ['ACTOR'])}`",
+                  f"*Workflow:* {md_link('open run', run_url)}",
+              ])
+              disable_web_page_preview = "true"
+          else:
+              head = event.get("head_commit") or {}
+              sha = (head.get("id") or os.environ["SHA"])[:7]
+              commit_message = head.get("message") or "No commit message"
+              message_lines = commit_message.splitlines()
+              title = message_lines[0]
+              details = "\n".join(message_lines[1:]).strip()
+              author = head.get("author", {}).get("name") or os.environ["ACTOR"]
+              commit_url = head.get("url") or f"{server_url}/{repo}/commit/{os.environ['SHA']}"
+              commit_url = commit_url.replace(f"{server_url}/{repo}", repo_url, 1)
+              lines = [
+                  "📦 *Novella main updated*",
+                  f"*Repository:* `{md_code(repo_display)}`",
+                  f"*Commit:* {md_link(sha, commit_url)}",
+                  f"*Author:* `{md_code(author)}`",
+                  f"*Title:* {md_escape(title)}",
+              ]
+              if details:
+                  lines.extend([
+                      "",
+                      "*Details:*",
+                      "```",
+                      md_code(details),
+                      "```",
+                  ])
+              message = "\n".join(lines)
+              disable_web_page_preview = "true"
+
+          output_multiline("text", message)
+          print(f"disable_web_page_preview={disable_web_page_preview}")
+          PY
+
+      - name: Send Telegram message
+        shell: bash
+        env:
+          MESSAGE_TEXT: ${{ steps.message.outputs.text }}
+          DISABLE_WEB_PAGE_PREVIEW: ${{ steps.message.outputs.disable_web_page_preview }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "Missing TELEGRAM_BOT_TOKEN secret" >&2
+            exit 1
+          fi
+
+          if [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Missing TELEGRAM_CHAT_ID secret" >&2
+            exit 1
+          fi
+
+          payload="$(python3 - <<'PY'
+          import json
+          import os
+
+          print(json.dumps({
+              "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+              "text": os.environ["MESSAGE_TEXT"],
+              "parse_mode": "MarkdownV2",
+              "disable_web_page_preview": os.environ["DISABLE_WEB_PAGE_PREVIEW"] == "true",
+          }))
+          PY
+          )"
+
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data "$payload" \
+            --output /tmp/telegram-response.json \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
