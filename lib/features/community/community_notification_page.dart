@@ -7,6 +7,7 @@ import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/app_notification.dart';
 import 'package:novella/data/services/notification_service.dart';
+import 'package:novella/features/announcements/announcement_detail_page.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/community/community_thread_page.dart';
 import 'package:novella/features/community/notification_unread_provider.dart';
@@ -143,9 +144,13 @@ class _CommunityNotificationPageState
         );
         return;
       case AppNotificationObjectType.announcement:
-        ScaffoldMessenger.of(
+        await AppRouteLauncher.pushDetail(
           context,
-        ).showSnackBar(const SnackBar(content: Text('公告通知跳转将在下一步接入。')));
+          (_) => AnnouncementDetailPage.server(
+            serverId: objectId,
+            initialTitle: item.extra.objectTitle,
+          ),
+        );
         return;
     }
   }

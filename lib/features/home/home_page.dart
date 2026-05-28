@@ -13,10 +13,15 @@ import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/book_info_cache_service.dart';
+import 'package:novella/features/announcements/announcement_center_page.dart';
+import 'package:novella/features/announcements/announcement_models.dart';
+import 'package:novella/features/announcements/announcement_provider.dart';
+import 'package:novella/features/announcements/required_announcement_sheet.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/home/recently_updated_page.dart';
 import 'package:novella/features/ranking/ranking_page.dart';
 import 'package:novella/features/search/search_page.dart';
+import 'package:novella/features/settings/pages/about_settings_page.dart';
 import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -62,6 +67,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   final _cacheService = BookInfoCacheService();
   bool _isTabActive = true;
   bool _isRouteVisible = true;
+  bool _requiredAnnouncementSheetVisible = false;
   int _requestEpoch = 0;
   StreamSubscription<ReadPosition>? _progressChangedSubscription;
 
@@ -169,7 +175,65 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
       _lastIgnoreJapanese = settings.ignoreJapanese;
       _lastIgnoreAI = settings.ignoreAI;
       _lastIgnoreLevel6 = settings.ignoreLevel6;
+      unawaited(_checkRequiredAnnouncements());
     });
+  }
+
+  Future<void> _openAnnouncementCenter() async {
+    await AppRouteLauncher.pushDetail(
+      context,
+      (_) => const AnnouncementCenterPage(),
+    );
+    if (!mounted) {
+      return;
+    }
+    unawaited(ref.read(announcementProvider.notifier).refresh(silent: true));
+    unawaited(_checkRequiredAnnouncements());
+  }
+
+  Future<void> _checkRequiredAnnouncements() async {
+    if (!mounted ||
+        !_isTabActive ||
+        !_isRouteVisible ||
+        _requiredAnnouncementSheetVisible) {
+      return;
+    }
+
+    try {
+      final state = await ref.read(announcementProvider.future);
+      if (!mounted ||
+          !_isTabActive ||
+          !_isRouteVisible ||
+          state.requiredUnreadAppAnnouncements.isEmpty) {
+        return;
+      }
+
+      final announcement = state.requiredUnreadAppAnnouncements.first;
+      _requiredAnnouncementSheetVisible = true;
+      final action = await showRequiredAnnouncementSheet(
+        context: context,
+        ref: ref,
+        announcement: announcement,
+      );
+      _requiredAnnouncementSheetVisible = false;
+
+      if (!mounted) {
+        return;
+      }
+
+      if (action == AnnouncementCompletionActionType.openAbout) {
+        await AppRouteLauncher.pushDetail(
+          context,
+          (_) => const AboutSettingsPage(),
+        );
+        return;
+      }
+
+      unawaited(_checkRequiredAnnouncements());
+    } catch (error) {
+      _requiredAnnouncementSheetVisible = false;
+      _logger.warning('Failed to check required announcements: $error');
+    }
   }
 
   /// 检查过滤设置是否变更
@@ -565,6 +629,9 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final settings = ref.watch(settingsProvider);
+    final hasUnreadAnnouncement = ref
+        .watch(announcementProvider)
+        .maybeWhen(data: (state) => state.hasUnread, orElse: () => false);
 
     // 检测过滤设置变更并标记需要刷新
     _checkFilterSettingsChanged();
@@ -599,16 +666,21 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
               child: SafeArea(
                 bottom: false,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                  padding: const EdgeInsets.fromLTRB(24, 24, 16, 8),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '发现',
-                        style: textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
+                      Expanded(
+                        child: Text(
+                          '发现',
+                          style: textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
+                          ),
                         ),
+                      ),
+                      AnnouncementIconButton(
+                        hasUnread: hasUnreadAnnouncement,
+                        onPressed: _openAnnouncementCenter,
                       ),
                       IconButton(
                         icon: const Icon(Icons.search),
