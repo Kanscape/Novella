@@ -41,8 +41,9 @@ class AnnouncementService {
     return AppAnnouncementManifest.fromJson(decoded);
   }
 
-  Future<String> fetchAppMarkdown(AppAnnouncement announcement) {
-    return _httpGetString(resolveAppMarkdownUri(announcement));
+  Future<String> fetchAppMarkdown(AppAnnouncement announcement) async {
+    final source = await _httpGetString(resolveAppMarkdownUri(announcement));
+    return _stripFrontMatter(source);
   }
 
   Uri resolveAppMarkdownUri(AppAnnouncement announcement) {
@@ -99,4 +100,20 @@ class AnnouncementService {
     }
     return utf8.decode(response.bodyBytes);
   }
+}
+
+String _stripFrontMatter(String source) {
+  final normalized = source.replaceAll('\r\n', '\n');
+  final lines = normalized.split('\n');
+  if (lines.isEmpty || lines.first.trim() != '---') {
+    return source;
+  }
+
+  for (var i = 1; i < lines.length; i++) {
+    if (lines[i].trim() == '---') {
+      return lines.skip(i + 1).join('\n').trimLeft();
+    }
+  }
+
+  return source;
 }
