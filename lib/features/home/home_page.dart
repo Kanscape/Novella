@@ -91,6 +91,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     _isRouteVisible = true;
     _needsContinueReadingRefresh = true;
     _refreshSurfaceOnVisible();
+    unawaited(_checkRequiredAnnouncements());
   }
 
   @override
@@ -119,6 +120,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     }
 
     _refreshSurfaceOnVisible(fetchPrimaryContent: true);
+    unawaited(_checkRequiredAnnouncements());
   }
 
   bool _canApplyRequest(int requestEpoch) {
