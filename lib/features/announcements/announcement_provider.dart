@@ -127,7 +127,6 @@ class AnnouncementNotifier extends AsyncNotifier<AnnouncementState> {
 
   Future<AnnouncementState> _load() async {
     final service = ref.read(announcementServiceProvider);
-    final readKeys = await ref.read(announcementReadStoreProvider).readKeys();
 
     var appAnnouncements = const <AppAnnouncement>[];
     String? appErrorMessage;
@@ -146,6 +145,7 @@ class AnnouncementNotifier extends AsyncNotifier<AnnouncementState> {
       serverErrorMessage = _formatError(error);
     }
 
+    final readKeys = await ref.read(announcementReadStoreProvider).readKeys();
     final items = <AnnouncementListItem>[
       for (final announcement in appAnnouncements)
         AnnouncementListItem.app(

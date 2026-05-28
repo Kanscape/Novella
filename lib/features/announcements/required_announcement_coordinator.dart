@@ -16,6 +16,24 @@ class RequiredAnnouncementCoordinator {
   final _logger = Logger('RequiredAnnouncementCoordinator');
   bool _checkingOrShowing = false;
 
+  Future<List<AppAnnouncement>> _fetchRequiredUnreadAppAnnouncements(
+    WidgetRef ref,
+  ) async {
+    final service = ref.read(announcementServiceProvider);
+    final readKeys = await ref.read(announcementReadStoreProvider).readKeys();
+    final announcements = (await service.fetchAppManifest()).announcements;
+    final requiredUnread =
+        announcements
+            .where(
+              (announcement) =>
+                  announcement.required &&
+                  !readKeys.contains(announcement.readKey),
+            )
+            .toList();
+    requiredUnread.sort((a, b) => a.publishedAt.compareTo(b.publishedAt));
+    return requiredUnread;
+  }
+
   Future<void> check({
     required BuildContext context,
     required WidgetRef ref,
@@ -29,27 +47,16 @@ class RequiredAnnouncementCoordinator {
 
     try {
       while (pageContext.mounted) {
-        var state = await ref.read(announcementProvider.future);
+        final announcements = await _fetchRequiredUnreadAppAnnouncements(ref);
         if (!pageContext.mounted) {
           return;
         }
 
-        if (state.appErrorMessage != null) {
-          await ref.read(announcementProvider.notifier).refresh(silent: true);
-          if (!pageContext.mounted) {
-            return;
-          }
-          state = await ref.read(announcementProvider.future);
-          if (!pageContext.mounted) {
-            return;
-          }
-        }
-
-        if (state.requiredUnreadAppAnnouncements.isEmpty) {
+        if (announcements.isEmpty) {
           return;
         }
 
-        final announcement = state.requiredUnreadAppAnnouncements.first;
+        final announcement = announcements.first;
         final action = await showRequiredAnnouncementSheet(
           context: pageContext,
           ref: ref,
