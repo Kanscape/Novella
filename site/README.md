@@ -42,6 +42,44 @@ fvm dart pub global run jaspr_cli:jaspr serve
 fvm dart run tool/generate_repository.dart
 ```
 
+## 应用公告
+
+应用公告放在 `web/assets/announcements/*.md`。部署 workflow 会在构建前执行：
+
+```bash
+dart run tool/generate_announcements.dart
+```
+
+该命令会读取公告 Markdown 的 front matter，并生成 `web/assets/announcements/index.json`。新增或修改公告 `.md` 后不需要手动编辑 `index.json`。
+
+`index.json` 是部署时生成的文件，不提交到仓库。本地需要检查生成结果时执行上面的命令即可。
+
+公告示例：
+
+```markdown
+---
+id: 2026-05-28-required-migration
+title: 重要公告
+publishedAt: 2026-05-28T00:00:00Z
+summary: 这是一条需要阅读的应用公告。
+required: true
+requiredReadSeconds: 8
+completionAction: openAbout
+---
+
+# 重要公告
+
+正文内容。
+```
+
+字段说明：
+
+- `id` 可省略，省略时使用文件名。
+- `title` 可省略，省略时使用正文第一个一级标题。
+- `publishedAt` 可省略，但文件名必须包含 `YYYY-MM-DD`。
+- `required` 只有为 `true` 时才会触发应用内强制阅读。
+- `completionAction: openAbout` 会让“我已阅读”跳转到关于页面。
+
 ## 构建
 
 ```bash
