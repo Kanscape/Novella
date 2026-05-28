@@ -63,7 +63,22 @@ class _RequiredAnnouncementSheetState extends State<RequiredAnnouncementSheet> {
   void initState() {
     super.initState();
     _remainingSeconds = widget.announcement.requiredReadSeconds;
-    _markdownFuture = widget.loadMarkdown();
+    _markdownFuture = _loadMarkdownForReading();
+  }
+
+  Future<String> _loadMarkdownForReading() async {
+    final markdown = await widget.loadMarkdown();
+    if (mounted) {
+      _startReadTimer();
+    }
+    return markdown;
+  }
+
+  void _startReadTimer() {
+    _timer?.cancel();
+    if (_remainingSeconds <= 0) {
+      return;
+    }
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || _remainingSeconds <= 0) {
         _timer?.cancel();
@@ -82,8 +97,10 @@ class _RequiredAnnouncementSheetState extends State<RequiredAnnouncementSheet> {
   }
 
   void _retry() {
+    _timer?.cancel();
     setState(() {
-      _markdownFuture = widget.loadMarkdown();
+      _remainingSeconds = widget.announcement.requiredReadSeconds;
+      _markdownFuture = _loadMarkdownForReading();
     });
   }
 

@@ -226,6 +226,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
           context,
           (_) => const AboutSettingsPage(),
         );
+        unawaited(_checkRequiredAnnouncements());
         return;
       }
 
