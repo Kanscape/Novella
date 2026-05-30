@@ -13,6 +13,7 @@ import 'package:novella/data/services/book_mark_service.dart';
 import 'package:novella/data/services/book_cover_hint_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/features/shelf/shelf_book_detail_merge.dart';
 import 'package:novella/features/shelf/shelf_book_detail_queue.dart';
 import 'package:novella/features/settings/settings_provider.dart';
 import 'package:novella/features/shelf/shelf_folder_page.dart';
@@ -45,6 +46,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
   final Set<String> _selectedFolderIds = {};
   final Set<String> _visibleItemKeys = <String>{};
   final Set<int> _pendingInitialDetailIds = <int>{};
+  final Set<int> _invalidBookIds = <int>{};
   final Set<String> _revealedBookCoverKeys = <String>{};
   final Set<String> _revealedFolderPreviewKeys = <String>{};
   List<ShelfItem> _rootItems = [];
@@ -89,7 +91,8 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     super.initState();
     unawaited(_bookCoverHintService.ensureInitialized());
     _detailQueue = ShelfBookDetailQueue(
-      hasBook: (id) => _bookDetails.containsKey(id),
+      hasBook:
+          (id) => _bookDetails.containsKey(id) || _invalidBookIds.contains(id),
       onBooksLoaded: _handleBooksLoaded,
       onError: (error) {
         _logger.warning('Failed to fetch shelf book details: $error');
@@ -178,15 +181,24 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     var shouldReleaseGate = false;
     setState(() {
-      for (var index = 0; index < ids.length; index++) {
-        final bookId = ids[index];
-        final book = index < books.length ? books[index] : null;
+      final mergeResult = mergeShelfBookDetails(
+        currentBookDetails: _bookDetails,
+        currentInvalidBookIds: _invalidBookIds,
+        activeBookIds: _allShelfBookItems.map((item) => item.id as int).toSet(),
+        requestedIds: ids,
+        loadedBooks: books,
+      );
+
+      for (final bookId in ids) {
         _pendingInitialDetailIds.remove(bookId);
-        if (book == null) {
-          continue;
-        }
-        _bookDetails[book.id] = book;
       }
+      _bookDetails
+        ..clear()
+        ..addAll(mergeResult.bookDetails);
+      _invalidBookIds
+        ..clear()
+        ..addAll(mergeResult.invalidBookIds);
+
       if (_waitingForVisibleDetails && _pendingInitialDetailIds.isEmpty) {
         _waitingForVisibleDetails = false;
         shouldReleaseGate = true;
@@ -302,6 +314,16 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     final rootItems = _userService.getShelfItemsByParents(const []);
     final allShelfBookItems = _userService.getAllBookItemsInDisplayOrder();
+    final allShelfBookIds =
+        allShelfBookItems.map((item) => item.id as int).toSet();
+    if (force) {
+      _invalidBookIds.clear();
+    } else {
+      _invalidBookIds.removeWhere(
+        (bookId) => !allShelfBookIds.contains(bookId),
+      );
+    }
+    _bookDetails.removeWhere((bookId, _) => !allShelfBookIds.contains(bookId));
     final filteredItems =
         _selectedFilter == 0
             ? rootItems
@@ -378,7 +400,8 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
   Map<int, String> _folderPreviewBookHints(List<int> previewBookIds) {
     final previewBookHints = <int, String>{};
     for (final bookId in previewBookIds) {
-      if (_bookDetails.containsKey(bookId)) {
+      if (_bookDetails.containsKey(bookId) ||
+          _invalidBookIds.contains(bookId)) {
         continue;
       }
 
@@ -402,14 +425,16 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     for (final item in items.take(12)) {
       if (item.type == ShelfItemType.book) {
         final bookId = item.id as int;
-        if (!_bookDetails.containsKey(bookId)) {
+        if (!_bookDetails.containsKey(bookId) &&
+            !_invalidBookIds.contains(bookId)) {
           detailIds.add(bookId);
         }
         continue;
       }
 
       for (final previewId in _folderPreviewBookIds(item.id as String)) {
-        if (!_bookDetails.containsKey(previewId)) {
+        if (!_bookDetails.containsKey(previewId) &&
+            !_invalidBookIds.contains(previewId)) {
           detailIds.add(previewId);
         }
       }
@@ -508,21 +533,23 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     }
 
     final bookId = item.id as int;
+    final isInvalid = _invalidBookIds.contains(bookId);
     final child = HeroMode(
       enabled: !showSortHandle,
       child: ShelfBookGridItem(
         book: _bookDetails[bookId],
         coverUrlHint:
-            _bookDetails[bookId] == null
+            _bookDetails[bookId] == null && !isInvalid
                 ? _bookCoverHintService.getCoverUrl(bookId)
                 : null,
         shelfTitle: item.title,
         titleHint:
-            _bookDetails[bookId] == null
+            _bookDetails[bookId] == null && !isInvalid
                 ? _bookTitleHint(bookId, shelfTitle: item.title)
                 : null,
         bookId: bookId,
         heroTag: 'shelf_cover_$bookId',
+        isInvalid: isInvalid,
         coverRevealed: _revealedBookCoverKeys.contains('shelf_book_$bookId'),
         onCoverRevealed: () => _rememberBookCoverReveal(bookId),
         selected:

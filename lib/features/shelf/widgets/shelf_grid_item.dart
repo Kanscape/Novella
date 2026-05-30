@@ -22,6 +22,7 @@ class ShelfBookGridItem extends ConsumerWidget {
   final bool enablePreview;
   final bool resolveHintCoverImage;
   final bool coverRevealed;
+  final bool isInvalid;
   final VoidCallback? onCoverRevealed;
 
   const ShelfBookGridItem({
@@ -40,14 +41,19 @@ class ShelfBookGridItem extends ConsumerWidget {
     this.enablePreview = true,
     this.resolveHintCoverImage = false,
     this.coverRevealed = false,
+    this.isInvalid = false,
     this.onCoverRevealed,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final displayTitle =
-        book?.title ??
-        (shelfTitle?.isNotEmpty == true ? shelfTitle! : titleHint ?? '加载中');
+        isInvalid
+            ? '无效书籍'
+            : book?.title ??
+                (shelfTitle?.isNotEmpty == true
+                    ? shelfTitle!
+                    : titleHint ?? '加载中');
 
     return GestureDetector(
       onTap: onTap,
@@ -68,10 +74,11 @@ class ShelfBookGridItem extends ConsumerWidget {
 
   Widget _buildCardContent(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final resolvedCoverUrl = book?.cover ?? coverUrlHint ?? '';
+    final resolvedCoverUrl = isInvalid ? '' : book?.cover ?? coverUrlHint ?? '';
     final canResolveNetworkImage =
-        book != null ||
-        (resolveHintCoverImage && coverUrlHint?.isNotEmpty == true);
+        !isInvalid &&
+        (book != null ||
+            (resolveHintCoverImage && coverUrlHint?.isNotEmpty == true));
 
     return BookCoverCard(
       coverUrl: resolvedCoverUrl,
@@ -80,11 +87,12 @@ class ShelfBookGridItem extends ConsumerWidget {
           sortMode
               ? Colors.transparent
               : colorScheme.shadow.withValues(alpha: 0.3),
-      showLoading: !canResolveNetworkImage || enablePreview,
+      showLoading: !isInvalid && (!canResolveNetworkImage || enablePreview),
       resolveNetworkImage: canResolveNetworkImage,
       revealedBefore: coverRevealed,
       onRevealed: onCoverRevealed,
       animateSynchronouslyLoadedImage: book != null,
+      placeholder: isInvalid ? const _InvalidBookCoverPlaceholder() : null,
       cardForeground: _ShelfCardOverlay(selected: selected, sortMode: sortMode),
       overlays: [
         if (ref.watch(settingsProvider).isBookTypeBadgeEnabled(badgeContext))
@@ -202,6 +210,26 @@ class ShelfFolderGridItem extends ConsumerWidget {
             ),
             BookGridTitle(title: displayTitle),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InvalidBookCoverPlaceholder extends StatelessWidget {
+  const _InvalidBookCoverPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ColoredBox(
+      color: colorScheme.surfaceContainerHighest,
+      child: Center(
+        child: Icon(
+          Icons.menu_book_outlined,
+          size: 42,
+          color: colorScheme.onSurfaceVariant,
         ),
       ),
     );
