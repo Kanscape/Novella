@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/core/layout/app_window_class.dart';
@@ -12,6 +13,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/data/services/book_info_cache_service.dart';
 import 'package:novella/data/services/book_mark_service.dart';
+import 'package:novella/data/services/book_search_mode.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
@@ -198,6 +200,8 @@ class BookInfo {
   final String title;
   final String cover;
   final String author;
+  final String? seriesName;
+  final List<String> tags;
   final String introduction;
   final DateTime lastUpdatedAt;
   final String? lastUpdatedChapter;
@@ -214,6 +218,8 @@ class BookInfo {
     required this.title,
     required this.cover,
     required this.author,
+    this.seriesName,
+    this.tags = const [],
     required this.introduction,
     required this.lastUpdatedAt,
     this.lastUpdatedChapter,
@@ -245,6 +251,8 @@ class BookInfo {
       title: book['Title'] as String? ?? 'Unknown',
       cover: book['Cover'] as String? ?? '',
       author: book['Author'] as String? ?? 'Unknown',
+      seriesName: _readBookSeriesName(book),
+      tags: _readBookTags(book),
       introduction: book['Introduction'] as String? ?? '',
       lastUpdatedAt:
           DateTime.tryParse(book['LastUpdatedAt']?.toString() ?? '') ??
@@ -258,6 +266,55 @@ class BookInfo {
       serverReadPosition: readPos,
     );
   }
+}
+
+String? _readBookSeriesName(Map<dynamic, dynamic> book) {
+  for (final classification in _readBookClassifications(book)) {
+    final chineseName = _trimmedString(classification['series_name_cn']);
+    if (chineseName != null) return chineseName;
+
+    final originalName = _trimmedString(classification['series_name']);
+    if (originalName != null) return originalName;
+  }
+  return null;
+}
+
+List<String> _readBookTags(Map<dynamic, dynamic> book) {
+  for (final classification in _readBookClassifications(book)) {
+    final rawTags = classification['tags'];
+    if (rawTags is! Iterable) continue;
+
+    final tags = <String>[];
+    final seen = <String>{};
+    for (final rawTag in rawTags) {
+      final tag = _trimmedString(rawTag);
+      if (tag == null || !seen.add(tag)) continue;
+      tags.add(tag);
+    }
+    if (tags.isNotEmpty) {
+      return List.unmodifiable(tags);
+    }
+  }
+  return const [];
+}
+
+Iterable<Map<dynamic, dynamic>> _readBookClassifications(
+  Map<dynamic, dynamic> book,
+) sync* {
+  for (final extra in [book['Extra'], book['ExtraInfo']]) {
+    if (extra is! Map) continue;
+    final classification = extra['classification'];
+    if (classification is Map<dynamic, dynamic>) {
+      yield classification;
+    } else if (classification is Map) {
+      yield Map<dynamic, dynamic>.from(classification);
+    }
+  }
+}
+
+String? _trimmedString(Object? value) {
+  final text = value?.toString().trim();
+  return text == null || text.isEmpty ? null : text;
 }
 
 /// 服务端阅读进度结构
@@ -844,6 +901,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       final bool infoChanged =
           cached.title != info.title ||
           cached.author != info.author ||
+          cached.seriesName != info.seriesName ||
+          !listEquals(cached.tags, info.tags) ||
           cached.introduction != info.introduction ||
           cached.cover != info.cover ||
           cached.favorite != info.favorite ||
@@ -1113,25 +1172,33 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     );
   }
 
-  void _openQuickSearch(String keyword, {bool exact = false}) {
+  void _openQuickSearch(
+    String keyword, {
+    BookSearchMode mode = BookSearchMode.fuzzy,
+  }) {
     final trimmedKeyword = keyword.trim();
     if (trimmedKeyword.isEmpty) return;
 
     AppRouteLauncher.pushDetail(
       context,
-      (_) => SearchPage(initialKeyword: trimmedKeyword, initialExact: exact),
+      (_) => SearchPage(initialKeyword: trimmedKeyword, initialMode: mode),
     );
   }
 
   Widget _buildQuickSearchText({
     required String text,
+    String? searchKeyword,
     required TextStyle? style,
     required String semanticsLabel,
     int? maxLines,
-    bool exact = false,
+    BookSearchMode mode = BookSearchMode.fuzzy,
   }) {
     final trimmedText = text.trim();
     if (trimmedText.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final trimmedKeyword = (searchKeyword ?? trimmedText).trim();
+    if (trimmedKeyword.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -1139,7 +1206,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       button: true,
       label: semanticsLabel,
       child: GestureDetector(
-        onTap: () => _openQuickSearch(trimmedText, exact: exact),
+        onTap: () => _openQuickSearch(trimmedKeyword, mode: mode),
         child: Text(
           trimmedText,
           style: style,
@@ -1901,10 +1968,18 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                               children: [
                                 _buildQuickSearchText(
                                   text: book.title,
+                                  searchKeyword: book.seriesName,
                                   style: Theme.of(context).textTheme.titleLarge
                                       ?.copyWith(fontWeight: FontWeight.bold),
                                   maxLines: 4,
-                                  semanticsLabel: '搜索书名 ${book.title}',
+                                  semanticsLabel:
+                                      book.seriesName == null
+                                          ? '搜索书名 ${book.title}'
+                                          : '搜索系列 ${book.seriesName}',
+                                  mode:
+                                      book.seriesName == null
+                                          ? BookSearchMode.fuzzy
+                                          : BookSearchMode.name,
                                 ),
                                 if (book.author.isNotEmpty) ...[
                                   const SizedBox(height: 4),
@@ -1916,7 +1991,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                       color: colorScheme.onSurfaceVariant,
                                     ),
                                     semanticsLabel: '搜索作者 ${book.author}',
-                                    exact: true,
+                                    mode: BookSearchMode.author,
                                   ),
                                 ],
                               ],
@@ -1929,6 +2004,12 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                 ),
               ),
               actions: [
+                if (book.tags.isNotEmpty)
+                  IconButton(
+                    onPressed: _showBookTagsSheet,
+                    icon: const Icon(Icons.sell_outlined),
+                    tooltip: '标签',
+                  ),
                 IconButton(
                   onPressed: () {
                     Navigator.of(context).push(
@@ -2345,6 +2426,30 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     );
   }
 
+  void _showBookTagsSheet() {
+    final tags = _bookInfo?.tags ?? const <String>[];
+    if (tags.isEmpty) return;
+
+    final sheetTheme = _effectiveDynamicThemeData();
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: sheetTheme.colorScheme.surface,
+      builder:
+          (sheetContext) => Theme(
+            data: sheetTheme,
+            child: _BookTagsSheetContent(
+              tags: tags,
+              onTagSelected: (tag) {
+                Navigator.of(sheetContext).pop();
+                _openQuickSearch(tag, mode: BookSearchMode.tags);
+              },
+            ),
+          ),
+    );
+  }
+
   void _showFullIntro(BuildContext context, String intro) {
     final sheetTheme = _effectiveDynamicThemeData();
     showModalBottomSheet(
@@ -2712,6 +2817,63 @@ class _UploaderInfoSheetContent extends StatelessWidget {
               value: '${user!.id}',
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BookTagsSheetContent extends StatelessWidget {
+  final List<String> tags;
+  final ValueChanged<String> onTagSelected;
+
+  const _BookTagsSheetContent({
+    required this.tags,
+    required this.onTagSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.sell_outlined, color: colorScheme.primary, size: 22),
+              const SizedBox(width: 10),
+              Text(
+                '书籍标签',
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children:
+                tags
+                    .map(
+                      (tag) => ActionChip(
+                        label: Text(tag),
+                        onPressed: () => onTagSelected(tag),
+                        backgroundColor: colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.55),
+                        side: BorderSide(color: colorScheme.outlineVariant),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    )
+                    .toList(),
+          ),
         ],
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/data/models/book.dart';
+import 'package:novella/data/services/book_search_mode.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/features/book/book_detail_page.dart';
@@ -18,12 +19,60 @@ import 'package:novella/src/widgets/book_type_badge.dart';
 class SearchPage extends ConsumerStatefulWidget {
   final String? initialKeyword;
   final bool initialExact;
+  final BookSearchMode initialMode;
 
-  const SearchPage({super.key, this.initialKeyword, this.initialExact = false});
+  const SearchPage({
+    super.key,
+    this.initialKeyword,
+    this.initialExact = false,
+    BookSearchMode? initialMode,
+  }) : initialMode =
+           initialMode ??
+           (initialExact ? BookSearchMode.exact : BookSearchMode.fuzzy);
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
 }
+
+class _SearchModeOption {
+  const _SearchModeOption({
+    required this.mode,
+    required this.label,
+    required this.icon,
+  });
+
+  final BookSearchMode mode;
+  final String label;
+  final IconData icon;
+}
+
+const _searchModeOptions = <_SearchModeOption>[
+  _SearchModeOption(
+    mode: BookSearchMode.exact,
+    label: '精确搜索',
+    icon: Icons.format_quote_rounded,
+  ),
+  _SearchModeOption(
+    mode: BookSearchMode.title,
+    label: '按书名',
+    icon: Icons.title,
+  ),
+  _SearchModeOption(
+    mode: BookSearchMode.author,
+    label: '按作者',
+    icon: Icons.person_outline,
+  ),
+  _SearchModeOption(
+    mode: BookSearchMode.name,
+    label: '按系列名',
+    icon: Icons.collections_bookmark_outlined,
+  ),
+  _SearchModeOption(
+    mode: BookSearchMode.tags,
+    label: '按标签',
+    icon: Icons.sell_outlined,
+  ),
+];
 
 class _SearchPageState extends ConsumerState<SearchPage> {
   final _logger = Logger('SearchPage');
@@ -31,6 +80,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final _searchController = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
+  Animation<double>? _initialFocusRouteAnimation;
+  AnimationStatusListener? _initialFocusStatusListener;
 
   // 状态
   List<String> _history = [];
@@ -42,7 +93,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   bool _hasSearched = false;
   String? _pendingDeleteItem;
   String _lastKeyword = '';
-  bool _lastSearchExact = false;
+  BookSearchMode _lastSearchMode = BookSearchMode.fuzzy;
+  bool _searchOptionsExpanded = false;
   static const int _pageSize = 24;
 
   @override
@@ -66,35 +118,52 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       if (initialKeyword.isNotEmpty) {
         _submitSearch(
           overrideKeyword: initialKeyword,
-          exact: widget.initialExact,
+          mode: widget.initialMode,
         );
       } else {
-        _focusNode.requestFocus();
+        _requestInitialFocusAfterRouteTransition();
       }
     });
   }
 
   @override
   void dispose() {
+    final initialFocusStatusListener = _initialFocusStatusListener;
+    if (initialFocusStatusListener != null) {
+      _initialFocusRouteAnimation?.removeStatusListener(
+        initialFocusStatusListener,
+      );
+    }
     _searchController.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  bool _isQuotedSearchKeyword(String keyword) {
-    final trimmed = keyword.trim();
-    return trimmed.length >= 2 &&
-        trimmed.startsWith('"') &&
-        trimmed.endsWith('"');
-  }
-
-  String _buildRequestKeyword(String keyword, {required bool exact}) {
-    final trimmed = keyword.trim();
-    if (trimmed.isEmpty || _isQuotedSearchKeyword(trimmed) || !exact) {
-      return trimmed;
+  void _requestInitialFocusAfterRouteTransition() {
+    final routeAnimation = ModalRoute.of(context)?.animation;
+    if (routeAnimation == null ||
+        routeAnimation.status == AnimationStatus.completed) {
+      _focusNode.requestFocus();
+      return;
     }
-    return '"$trimmed"';
+
+    late final AnimationStatusListener statusListener;
+    statusListener = (status) {
+      if (status != AnimationStatus.completed) return;
+      routeAnimation.removeStatusListener(statusListener);
+      if (_initialFocusStatusListener == statusListener) {
+        _initialFocusRouteAnimation = null;
+        _initialFocusStatusListener = null;
+      }
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    };
+
+    _initialFocusRouteAnimation = routeAnimation;
+    _initialFocusStatusListener = statusListener;
+    routeAnimation.addStatusListener(statusListener);
   }
 
   Future<void> _loadHistory() async {
@@ -161,16 +230,23 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
   }
 
-  void _submitSearch({String? overrideKeyword, bool exact = false}) {
+  void _submitSearch({
+    String? overrideKeyword,
+    BookSearchMode mode = BookSearchMode.fuzzy,
+  }) {
     final keyword = overrideKeyword ?? _searchController.text.trim();
     if (keyword.isEmpty) return;
+    final effectiveMode =
+        mode == BookSearchMode.fuzzy && isQuotedBookSearchKeyword(keyword)
+            ? BookSearchMode.exact
+            : mode;
 
     // 收起键盘
     FocusScope.of(context).unfocus();
 
     _addToHistory(keyword);
     _lastKeyword = keyword;
-    _lastSearchExact = exact || _isQuotedSearchKeyword(keyword);
+    _lastSearchMode = effectiveMode;
     if (_searchController.text != keyword) {
       _searchController.text = keyword;
     }
@@ -192,15 +268,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     try {
       final settings = ref.read(settingsProvider);
-      final requestKeyword = _buildRequestKeyword(
-        _lastKeyword,
-        exact: _lastSearchExact,
-      );
       int targetValidCount = page * _pageSize;
 
       while (_allValidBooks.length < targetValidCount && !_hasReachedEnd) {
         final result = await _bookService.searchBooks(
-          requestKeyword,
+          _lastKeyword,
+          mode: _lastSearchMode,
           page: _nextBackendPage,
           size: _pageSize,
           ignoreJapanese: settings.ignoreJapanese,
@@ -315,6 +388,46 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     });
   }
 
+  void _selectSearchMode(BookSearchMode mode) {
+    final keyword = _searchController.text.trim();
+    final nextMode = _lastSearchMode == mode ? BookSearchMode.fuzzy : mode;
+    if (keyword.isEmpty) {
+      if (_lastSearchMode == mode) {
+        setState(() {
+          _lastSearchMode = BookSearchMode.fuzzy;
+          _searchOptionsExpanded = false;
+        });
+      }
+      _focusNode.requestFocus();
+      return;
+    }
+    setState(() {
+      _searchOptionsExpanded = false;
+    });
+    _submitSearch(overrideKeyword: keyword, mode: nextMode);
+  }
+
+  String get _emptySearchText {
+    return switch (_lastSearchMode) {
+      BookSearchMode.exact => '没有找到精确搜索结果',
+      BookSearchMode.title => '没有找到书名搜索结果',
+      BookSearchMode.author => '没有找到作者搜索结果',
+      BookSearchMode.name => '没有找到系列名搜索结果',
+      BookSearchMode.tags => '没有找到标签搜索结果',
+      BookSearchMode.fuzzy => '没有找到相关书籍',
+    };
+  }
+
+  Widget _buildSearchContent(ColorScheme colorScheme, TextTheme textTheme) {
+    if (_loading) {
+      return const Center(child: M3ELoadingIndicator());
+    }
+    if (_hasSearched) {
+      return _buildSearchResults(colorScheme, textTheme);
+    }
+    return _buildHistorySection(colorScheme, textTheme);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -322,21 +435,23 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         actionsPadding: const EdgeInsets.only(right: 8),
         actions: [
           IconButton(
-            tooltip: '精确搜索',
-            icon: const Icon(Icons.format_quote_rounded),
+            tooltip: _searchOptionsExpanded ? '收起搜索方式' : '搜索方式',
+            icon: Icon(_searchOptionsExpanded ? Icons.expand_less : Icons.tune),
             onPressed:
-                () => _submitSearch(
-                  overrideKeyword: _searchController.text.trim(),
-                  exact: true,
-                ),
+                () => setState(() {
+                  _searchOptionsExpanded = !_searchOptionsExpanded;
+                }),
           ),
           IconButton(
             tooltip: '搜索',
             icon: const Icon(Icons.search),
-            onPressed: () => _submitSearch(),
+            onPressed: () => _submitSearch(mode: _lastSearchMode),
           ),
         ],
         title: TextField(
@@ -347,16 +462,125 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             border: InputBorder.none,
             contentPadding: const EdgeInsets.symmetric(vertical: 15),
           ),
+          onChanged: (_) {
+            if (_searchOptionsExpanded) {
+              setState(() {});
+            }
+          },
           textInputAction: TextInputAction.search,
-          onSubmitted: (_) => _submitSearch(),
+          onSubmitted: (_) => _submitSearch(mode: _lastSearchMode),
         ),
       ),
-      body:
-          _loading
-              ? const Center(child: M3ELoadingIndicator())
-              : _hasSearched
-              ? _buildSearchResults(colorScheme, textTheme)
-              : _buildHistorySection(colorScheme, textTheme),
+      body: Column(
+        children: [
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return SizeTransition(
+                sizeFactor: animation,
+                alignment: Alignment.topCenter,
+                child: FadeTransition(opacity: animation, child: child),
+              );
+            },
+            child:
+                _searchOptionsExpanded
+                    ? _buildSearchModePanel(colorScheme, textTheme)
+                    : const SizedBox(
+                      key: ValueKey('search_mode_panel_empty'),
+                      width: double.infinity,
+                    ),
+          ),
+          Expanded(child: _buildSearchContent(colorScheme, textTheme)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchModePanel(ColorScheme colorScheme, TextTheme textTheme) {
+    return ColoredBox(
+      key: const ValueKey('search_mode_panel'),
+      color: colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Material(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.86),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: colorScheme.outlineVariant),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children:
+                  _searchModeOptions
+                      .map(
+                        (option) =>
+                            _buildSearchModeRow(option, colorScheme, textTheme),
+                      )
+                      .toList(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchModeRow(
+    _SearchModeOption option,
+    ColorScheme colorScheme,
+    TextTheme textTheme,
+  ) {
+    final selected = _lastSearchMode == option.mode;
+    final enabled = _searchController.text.trim().isNotEmpty;
+    final foreground =
+        !enabled
+            ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
+            : selected
+            ? colorScheme.primary
+            : colorScheme.onSurfaceVariant;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Material(
+        color:
+            enabled && selected
+                ? colorScheme.primary.withValues(alpha: 0.12)
+                : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: enabled ? () => _selectSearchMode(option.mode) : null,
+          child: SizedBox(
+            height: 48,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  Icon(option.icon, size: 22, color: foreground),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      option.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodyLarge?.copyWith(
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  if (selected)
+                    Icon(Icons.check_rounded, size: 22, color: foreground),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -466,7 +690,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             ),
             const SizedBox(height: 16),
             Text(
-              _lastSearchExact ? '没有找到精确搜索结果' : '没有找到相关书籍',
+              _emptySearchText,
               style: textTheme.bodyLarge?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
