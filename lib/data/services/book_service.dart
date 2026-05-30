@@ -2,6 +2,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/data/models/book.dart';
+import 'package:novella/data/services/book_search_mode.dart';
 import 'package:novella/data/services/book_cover_hint_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 
@@ -204,19 +205,21 @@ class BookService {
   /// 参考 services/book/index.ts
   Future<SearchResult> searchBooks(
     String keywords, {
+    BookSearchMode mode = BookSearchMode.fuzzy,
     int page = 1,
     int size = 10,
     bool ignoreJapanese = false,
     bool ignoreAI = false,
   }) async {
     try {
+      final requestKeyword = mode.buildRequestKeyword(keywords);
       final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
-        'GetBookList',
+        mode.methodName,
         args: [
           {
             'Page': page,
             'Size': size,
-            'KeyWords': keywords,
+            'KeyWords': requestKeyword,
             'IgnoreJapanese': ignoreJapanese,
             'IgnoreAI': ignoreAI,
           },
@@ -228,7 +231,7 @@ class BookService {
       final int totalPages = result['TotalPages'] ?? 0;
 
       _logger.info(
-        'Search "$keywords" page $page: ${data.length} results, $totalPages pages',
+        'Search ${mode.name} "$requestKeyword" page $page: ${data.length} results, $totalPages pages',
       );
 
       return SearchResult(
