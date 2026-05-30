@@ -61,10 +61,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
               _bookDetails.containsKey(id) &&
               !_detailRevalidationIds.contains(id),
       onBooksLoaded: _handleBooksLoaded,
-      onError: (error) {
-        _logger.warning('Failed to fetch history book details: $error');
-        _releaseVisibleDetailsGate();
-      },
+      onError: _handleBookDetailError,
       requestScope: RequestScopes.history,
       priority: RequestPriority.high,
     );
@@ -126,6 +123,20 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       _waitingForVisibleDetails = false;
     });
     _pendingInitialDetailIds.clear();
+  }
+
+  void _handleBookDetailError(Object error) {
+    _logger.warning('Failed to fetch history book details: $error');
+    _visibleDetailsFallbackTimer?.cancel();
+    if (!mounted || !_isTabActive) {
+      return;
+    }
+
+    setState(() {
+      _waitingForVisibleDetails = false;
+      _pendingInitialDetailIds.clear();
+      _detailRevalidationIds.clear();
+    });
   }
 
   void _handleBooksLoaded(List<Book?> books, List<int> ids) {
@@ -476,6 +487,11 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
 
   Widget _buildContent(BuildContext context, ColorScheme colorScheme) {
     final settings = ref.watch(settingsProvider);
+    final visibleBookIds = collectVisibleHistoryBookIds(
+      bookIds: _bookIds,
+      cachedBookIds: _bookDetails.keys.toSet(),
+      pendingDetailIds: _pendingInitialDetailIds,
+    );
 
     if (_loading) {
       return const Center(child: M3ELoadingIndicator());
@@ -503,7 +519,13 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       );
     }
 
-    if (_bookIds.isEmpty) {
+    if (_bookIds.isNotEmpty &&
+        visibleBookIds.isEmpty &&
+        _pendingInitialDetailIds.isNotEmpty) {
+      return const Center(child: M3ELoadingIndicator());
+    }
+
+    if (visibleBookIds.isEmpty) {
       return LayoutBuilder(
         builder:
             (context, constraints) => SingleChildScrollView(
@@ -535,7 +557,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       );
     }
 
-    final bookIds = _bookIds;
+    final bookIds = visibleBookIds;
     return LayoutBuilder(
       builder: (context, constraints) {
         return GridView.builder(

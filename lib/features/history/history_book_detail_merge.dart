@@ -27,6 +27,20 @@ Set<int> collectHistoryInitialDetailIds({
   return detailIds;
 }
 
+List<int> collectVisibleHistoryBookIds({
+  required List<int> bookIds,
+  required Set<int> cachedBookIds,
+  required Set<int> pendingDetailIds,
+}) {
+  return bookIds
+      .where(
+        (bookId) =>
+            cachedBookIds.contains(bookId) ||
+            !pendingDetailIds.contains(bookId),
+      )
+      .toList(growable: false);
+}
+
 HistoryBookDetailMergeResult mergeHistoryBookDetails({
   required List<int> currentBookIds,
   required Map<int, Book> currentBookDetails,
