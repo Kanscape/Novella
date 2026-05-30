@@ -18,15 +18,18 @@ import 'package:novella/features/community/notification_unread_provider.dart';
 import 'package:novella/features/settings/settings_page.dart';
 
 class CommunityPage extends ConsumerStatefulWidget {
-  const CommunityPage({super.key});
+  const CommunityPage({super.key, CommunityService? communityService})
+    : _communityService = communityService;
+
+  final CommunityService? _communityService;
 
   @override
   ConsumerState<CommunityPage> createState() => CommunityPageState();
 }
 
 class CommunityPageState extends ConsumerState<CommunityPage> {
-  final CommunityService _communityService = CommunityService();
   static const int _feedPreloadRemainingItems = 2;
+  late final CommunityService _communityService;
 
   bool _isTabActive = true;
   bool _loading = true;
@@ -46,6 +49,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   @override
   void initState() {
     super.initState();
+    _communityService = widget._communityService ?? CommunityService();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -279,6 +283,13 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
       return;
     }
     await _loadCommunityFeed(append: true);
+  }
+
+  Future<void> _retryLoadMore() async {
+    setState(() {
+      _failedLoadMorePage = null;
+    });
+    await _loadMore();
   }
 
   void _preloadMoreIfNeeded(int index) {
@@ -790,9 +801,21 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
     if (_errorMessage != null && _feedItems.isNotEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-        child: Text(
-          _errorMessage!,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _errorMessage!,
+                key: const ValueKey('community-feed-load-more-error'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+            TextButton(
+              key: const ValueKey('community-feed-load-more-retry-button'),
+              onPressed: _retryLoadMore,
+              child: const Text('重试'),
+            ),
+          ],
         ),
       );
     }
@@ -960,6 +983,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                               bottom: index == _feedItems.length - 1 ? 0 : 8,
                             ),
                             child: _CommunityFeedCard(
+                              key: ValueKey('community-feed-card-${item.id}'),
                               item: item,
                               onTap: () => _openThread(item.id, item.title),
                             ),
@@ -1267,7 +1291,11 @@ class _ToolbarPill extends StatelessWidget {
 }
 
 class _CommunityFeedCard extends StatelessWidget {
-  const _CommunityFeedCard({required this.item, required this.onTap});
+  const _CommunityFeedCard({
+    super.key,
+    required this.item,
+    required this.onTap,
+  });
 
   final CommunityFeedItem item;
   final VoidCallback onTap;

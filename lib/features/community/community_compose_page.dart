@@ -315,6 +315,9 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                   children: [
                     for (final item in items)
                       _PickerSheetItem(
+                        key: ValueKey(
+                          'community-compose-picker-item-${item.value}',
+                        ),
                         title: item.title,
                         subtitle: item.subtitle,
                         iconName: item.iconName,
@@ -460,6 +463,11 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                   children: [
                     Text(
                       board?.title ?? '选择一个板块开始写作',
+                      key: ValueKey(
+                        board == null
+                            ? 'community-compose-context-board-empty'
+                            : 'community-compose-context-board-selected',
+                      ),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -561,6 +569,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                 runSpacing: 10,
                 children: [
                   _ComposePickerChip(
+                    key: const ValueKey('community-compose-board-chip'),
                     label: board?.title ?? '选择板块',
                     icon: Icons.dashboard_outlined,
                     accent: accent,
@@ -570,6 +579,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                   ),
                   if (_selectedSubCategories.isNotEmpty)
                     _ComposePickerChip(
+                      key: const ValueKey('community-compose-subcategory-chip'),
                       label: subCategory?.label ?? '子分类',
                       icon: Icons.tune_rounded,
                       onTap: _openSubCategoryPicker,
@@ -761,6 +771,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: TextButton(
+              key: const ValueKey('community-compose-publish-button'),
               onPressed: canSubmit ? _submit : null,
               child:
                   _submitting
@@ -855,6 +866,7 @@ class _HintChip extends StatelessWidget {
 
 class _ComposePickerChip extends StatelessWidget {
   const _ComposePickerChip({
+    super.key,
     required this.label,
     required this.icon,
     required this.onTap,
@@ -952,6 +964,7 @@ class _PickerItemData {
 
 class _PickerSheetItem extends StatelessWidget {
   const _PickerSheetItem({
+    super.key,
     required this.title,
     required this.selected,
     required this.onTap,

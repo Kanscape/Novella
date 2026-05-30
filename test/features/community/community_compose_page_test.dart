@@ -7,17 +7,24 @@ import 'package:novella/data/models/community.dart';
 import 'package:novella/data/services/community_service.dart';
 import 'package:novella/features/community/community_compose_page.dart';
 
+const _boardChipKey = ValueKey('community-compose-board-chip');
+const _emptyBoardContextKey = ValueKey('community-compose-context-board-empty');
+const _selectedBoardContextKey = ValueKey(
+  'community-compose-context-board-selected',
+);
+const _subcategoryChipKey = ValueKey('community-compose-subcategory-chip');
+const _publishButtonKey = ValueKey('community-compose-publish-button');
+
 void main() {
   testWidgets('keeps board and subcategory empty after catalog loads', (
     tester,
   ) async {
     await _pumpComposePage(tester);
 
-    expect(find.text('选择板块'), findsOneWidget);
-    expect(find.text('根据内容选择板块'), findsOneWidget);
-    expect(find.text('综合讨论'), findsNothing);
-    expect(find.text('闲聊'), findsNothing);
-    expect(find.text('这里更像一个连续的编辑器，而不是拆成很多格子的表单页。'), findsNothing);
+    expect(find.byKey(_boardChipKey), findsOneWidget);
+    expect(find.byKey(_emptyBoardContextKey), findsOneWidget);
+    expect(find.byKey(_selectedBoardContextKey), findsNothing);
+    expect(find.byKey(_subcategoryChipKey), findsNothing);
 
     await _disposeWidgetTree(tester);
   });
@@ -27,18 +34,26 @@ void main() {
   ) async {
     await _pumpComposePage(tester);
 
-    await tester.tap(find.text('选择板块'));
+    await tester.tap(find.byKey(_boardChipKey));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.tap(find.text('综合讨论'));
+    await tester.tap(_pickerItemFinder('general'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 1));
 
-    expect(find.text('综合讨论'), findsWidgets);
-    expect(find.text('子分类'), findsOneWidget);
-    expect(find.text('闲聊'), findsNothing);
+    expect(find.byKey(_selectedBoardContextKey), findsOneWidget);
+    expect(find.byKey(_subcategoryChipKey), findsOneWidget);
+
+    await tester.tap(find.byKey(_subcategoryChipKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final dynamic emptyOption = tester.widget(_pickerItemFinder(''));
+    final dynamic chatOption = tester.widget(_pickerItemFinder('chat'));
+    expect(emptyOption.selected, isTrue);
+    expect(chatOption.selected, isFalse);
 
     await _disposeWidgetTree(tester);
   });
@@ -48,16 +63,16 @@ void main() {
     (tester) async {
       await _pumpComposePage(tester);
 
-      await tester.tap(find.text('选择板块'));
+      await tester.tap(find.byKey(_boardChipKey));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      await tester.tap(find.text('综合讨论'));
+      await tester.tap(_pickerItemFinder('general'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
       final publishButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, '发布'),
+        find.byKey(_publishButtonKey),
       );
       expect(publishButton.onPressed, isNull);
 
@@ -85,6 +100,10 @@ void main() {
 
     await _disposeWidgetTree(tester);
   });
+}
+
+Finder _pickerItemFinder(String value) {
+  return find.byKey(ValueKey('community-compose-picker-item-$value'));
 }
 
 Future<void> _pumpComposePage(WidgetTester tester) async {
@@ -119,7 +138,7 @@ class _FakeCommunityService extends CommunityService {
     RequestPriority priority = RequestPriority.normal,
   }) async {
     return CommunityHomePayload(
-      title: '社区',
+      title: 'community',
       subtitle: '',
       announcement: '',
       announcementLink: '',
@@ -129,11 +148,11 @@ class _FakeCommunityService extends CommunityService {
         CommunityCatalogBoard(
           id: 1,
           key: 'general',
-          title: '综合讨论',
-          description: '聊点日常',
+          title: 'general board',
+          description: 'daily talk',
           icon: 'forum',
           subCategories: [
-            CommunityCatalogSubCategory(id: 11, key: 'chat', label: '闲聊'),
+            CommunityCatalogSubCategory(id: 11, key: 'chat', label: 'chat'),
           ],
         ),
       ],
