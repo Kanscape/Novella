@@ -12,6 +12,7 @@ import 'package:novella/data/services/book_cover_hint_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/features/history/history_book_detail_merge.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/features/shelf/shelf_book_detail_queue.dart';
 import 'package:novella/features/shelf/widgets/shelf_grid_item.dart';
@@ -128,18 +129,27 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       return;
     }
 
-    final activeBookIds = _bookIds.toSet();
     var shouldReleaseGate = false;
     setState(() {
-      for (var index = 0; index < ids.length; index++) {
-        final bookId = ids[index];
-        final book = index < books.length ? books[index] : null;
+      final mergeResult = mergeHistoryBookDetails(
+        currentBookIds: _bookIds,
+        currentBookDetails: _bookDetails,
+        requestedIds: ids,
+        loadedBooks: books,
+      );
+
+      for (final bookId in ids) {
         _pendingInitialDetailIds.remove(bookId);
-        if (book == null || !activeBookIds.contains(book.id)) {
-          continue;
-        }
-        _bookDetails[book.id] = book;
       }
+
+      _bookIds = mergeResult.bookIds;
+      _bookDetails
+        ..clear()
+        ..addAll(mergeResult.bookDetails);
+      _localReadPositions.removeWhere(
+        (bookId, _) => mergeResult.missingBookIds.contains(bookId),
+      );
+
       if (_waitingForVisibleDetails && _pendingInitialDetailIds.isEmpty) {
         _waitingForVisibleDetails = false;
         shouldReleaseGate = true;
