@@ -132,11 +132,10 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
       final mergeResult = mergeShelfBookDetails(
         currentBookDetails: _bookDetails,
         currentInvalidBookIds: _invalidBookIds,
-        activeBookIds:
-            _items
-                .where((item) => item.type == ShelfItemType.book)
-                .map((item) => item.id as int)
-                .toSet(),
+        activeBookIds: collectShelfActiveDetailIds(
+          items: _items,
+          folderPreviewBookIds: _folderPreviewBookIds,
+        ),
         requestedIds: ids,
         loadedBooks: books,
       );
@@ -187,12 +186,16 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
               .where((item) => item.type == ShelfItemType.book)
               .map((item) => item.id as int)
               .toSet();
+      final activeDetailIds = collectShelfActiveDetailIds(
+        items: items,
+        folderPreviewBookIds: _folderPreviewBookIds,
+      );
       if (forceRefresh) {
         _invalidBookIds.clear();
       } else {
-        _invalidBookIds.removeWhere((id) => !folderBookIds.contains(id));
+        _invalidBookIds.removeWhere((id) => !activeDetailIds.contains(id));
       }
-      _bookDetails.removeWhere((id, _) => !folderBookIds.contains(id));
+      _bookDetails.removeWhere((id, _) => !activeDetailIds.contains(id));
       final initialDetailIds = _collectInitialDetailIds(items);
       final needsVisibleDetails = initialDetailIds.isNotEmpty;
 

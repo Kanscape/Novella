@@ -10,6 +10,22 @@ class ShelfBookDetailMergeResult {
   final Set<int> invalidBookIds;
 }
 
+Set<int> collectShelfActiveDetailIds({
+  required Iterable<ShelfItem> items,
+  required Iterable<int> Function(String folderId) folderPreviewBookIds,
+}) {
+  final activeBookIds = <int>{};
+  for (final item in items) {
+    switch (item.type) {
+      case ShelfItemType.book:
+        activeBookIds.add(item.id as int);
+      case ShelfItemType.folder:
+        activeBookIds.addAll(folderPreviewBookIds(item.id as String));
+    }
+  }
+  return activeBookIds;
+}
+
 ShelfBookDetailMergeResult mergeShelfBookDetails({
   required Map<int, Book> currentBookDetails,
   required Set<int> currentInvalidBookIds,
