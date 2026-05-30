@@ -43,6 +43,7 @@ HistoryBookDetailMergeResult mergeHistoryBookDetails({
     final book = index < loadedBooks.length ? loadedBooks[index] : null;
 
     if (book == null) {
+      nextBookDetails.remove(requestedId);
       missingBookIds.add(requestedId);
       continue;
     }
