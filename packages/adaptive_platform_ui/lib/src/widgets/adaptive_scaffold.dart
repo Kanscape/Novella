@@ -60,10 +60,18 @@ enum TabBarMinimizeBehavior {
 }
 
 const double _legacyIOS26BottomNavigationLift = 8;
+const double _compactMaterialNavigationBarAndroidHeight = 64;
+const double _compactMaterialNavigationBarIOSHeight = 74;
 
 bool _shouldLiftLegacyBottomNavigationBar() {
   return PlatformInfo.isNativeIOS26OrHigher() &&
       !PlatformInfo.isIOS26OrHigher();
+}
+
+double _compactMaterialNavigationBarHeight() {
+  return PlatformInfo.isNativeIOS
+      ? _compactMaterialNavigationBarIOSHeight
+      : _compactMaterialNavigationBarAndroidHeight;
 }
 
 Widget _liftLegacyBottomNavigationBar(
@@ -615,6 +623,8 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
           onDestinationSelected: widget.bottomNavigationBar!.onTap!,
           backgroundColor: bottomNavBarBackgroundColor,
           indicatorColor: widget.bottomNavigationBar!.selectedItemColor,
+          height: _compactMaterialNavigationBarHeight(),
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
           destinations: widget.bottomNavigationBar!.items!.map((dest) {
             // Convert icon to IconData if it's a String (SF Symbol - fallback to Icons)
             final IconData iconData = dest.icon is String

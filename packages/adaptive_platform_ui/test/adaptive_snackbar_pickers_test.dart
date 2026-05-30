@@ -583,6 +583,39 @@ void main() {
       expect(selectedIndex, 1);
     });
 
+    testWidgets('uses compact generated Material navigation bar', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AdaptiveScaffold(
+            body: const Text('Content'),
+            bottomNavigationBar: AdaptiveBottomNavigationBar(
+              items: const [
+                AdaptiveNavigationDestination(icon: Icons.home, label: 'Home'),
+                AdaptiveNavigationDestination(
+                  icon: Icons.search,
+                  label: 'Search',
+                ),
+              ],
+              selectedIndex: 0,
+              onTap: (index) {},
+            ),
+          ),
+        ),
+      );
+
+      final navigationBar = tester.widget<NavigationBar>(
+        find.byType(NavigationBar),
+      );
+
+      expect(
+        navigationBar.labelBehavior,
+        NavigationDestinationLabelBehavior.alwaysHide,
+      );
+      expect(navigationBar.height, 64);
+    });
+
     testWidgets('renders badge counts on items', (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(

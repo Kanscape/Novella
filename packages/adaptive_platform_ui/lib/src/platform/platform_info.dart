@@ -17,6 +17,9 @@ class PlatformInfo {
     return !kIsWeb && Platform.isIOS;
   }
 
+  /// 如果物理运行平台是 iOS，则返回 true，忽略样式覆盖
+  static bool get isNativeIOS => !kIsWeb && Platform.isIOS;
+
   /// 如果当前平台是 Android，则返回 true
   static bool get isAndroid {
     if (styleOverride == 'md3') return true;
