@@ -40,6 +40,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
   final Map<int, ReadPosition> _localReadPositions = <int, ReadPosition>{};
   final Set<String> _visibleItemKeys = <String>{};
   final Set<int> _pendingInitialDetailIds = <int>{};
+  final Set<int> _detailRevalidationIds = <int>{};
   final Set<String> _revealedBookCoverKeys = <String>{};
   List<int> _bookIds = <int>[];
   bool _loading = true;
@@ -55,7 +56,10 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     super.initState();
     unawaited(_bookCoverHintService.ensureInitialized());
     _detailQueue = ShelfBookDetailQueue(
-      hasBook: (id) => _bookDetails.containsKey(id),
+      hasBook:
+          (id) =>
+              _bookDetails.containsKey(id) &&
+              !_detailRevalidationIds.contains(id),
       onBooksLoaded: _handleBooksLoaded,
       onError: (error) {
         _logger.warning('Failed to fetch history book details: $error');
@@ -140,6 +144,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
 
       for (final bookId in ids) {
         _pendingInitialDetailIds.remove(bookId);
+        _detailRevalidationIds.remove(bookId);
       }
 
       _bookIds = mergeResult.bookIds;
@@ -158,16 +163,6 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     if (shouldReleaseGate) {
       _visibleDetailsFallbackTimer?.cancel();
     }
-  }
-
-  Set<int> _collectInitialDetailIds(List<int> bookIds) {
-    final detailIds = <int>{};
-    for (final bookId in bookIds.take(12)) {
-      if (!_bookDetails.containsKey(bookId)) {
-        detailIds.add(bookId);
-      }
-    }
-    return detailIds;
   }
 
   void _trackVisibleItem(List<int> bookIds, int index) {
@@ -254,7 +249,19 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       }
 
       final activeBookIds = bookIds.toSet();
-      final initialDetailIds = _collectInitialDetailIds(bookIds);
+      _detailRevalidationIds.removeWhere(
+        (bookId) => !activeBookIds.contains(bookId),
+      );
+      if (force) {
+        _detailRevalidationIds.addAll(
+          _bookDetails.keys.where(activeBookIds.contains),
+        );
+      }
+      final initialDetailIds = collectHistoryInitialDetailIds(
+        bookIds: bookIds,
+        cachedBookIds: _bookDetails.keys.toSet(),
+        revalidateCached: force,
+      );
       final needsVisibleDetails = initialDetailIds.isNotEmpty;
       final shouldBlockForDetails = !canSilentRefresh && needsVisibleDetails;
 
@@ -281,6 +288,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       });
 
       if (bookIds.isEmpty) {
+        _detailRevalidationIds.clear();
         _releaseVisibleDetailsGate();
         return;
       }
@@ -389,6 +397,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     _detailQueue.resetRetriableState();
     _visibleItemKeys.clear();
     _pendingInitialDetailIds.clear();
+    _detailRevalidationIds.clear();
     _localReadPositions.clear();
     _bookDetails.clear();
     _releaseVisibleDetailsGate();

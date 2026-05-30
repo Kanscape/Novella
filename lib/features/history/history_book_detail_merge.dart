@@ -12,6 +12,21 @@ class HistoryBookDetailMergeResult {
   final Set<int> missingBookIds;
 }
 
+Set<int> collectHistoryInitialDetailIds({
+  required List<int> bookIds,
+  required Set<int> cachedBookIds,
+  bool revalidateCached = false,
+  int limit = 12,
+}) {
+  final detailIds = <int>{};
+  for (final bookId in bookIds.take(limit)) {
+    if (revalidateCached || !cachedBookIds.contains(bookId)) {
+      detailIds.add(bookId);
+    }
+  }
+  return detailIds;
+}
+
 HistoryBookDetailMergeResult mergeHistoryBookDetails({
   required List<int> currentBookIds,
   required Map<int, Book> currentBookDetails,
