@@ -12,6 +12,7 @@ import 'package:novella/data/services/book_cover_hint_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/features/history/history_book_detail_merge.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/features/shelf/shelf_book_detail_queue.dart';
 import 'package:novella/features/shelf/widgets/shelf_grid_item.dart';
@@ -39,6 +40,8 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
   final Map<int, ReadPosition> _localReadPositions = <int, ReadPosition>{};
   final Set<String> _visibleItemKeys = <String>{};
   final Set<int> _pendingInitialDetailIds = <int>{};
+  final Set<int> _unconfirmedBookIds = <int>{};
+  final Set<int> _detailRevalidationIds = <int>{};
   final Set<String> _revealedBookCoverKeys = <String>{};
   List<int> _bookIds = <int>[];
   bool _loading = true;
@@ -54,12 +57,12 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     super.initState();
     unawaited(_bookCoverHintService.ensureInitialized());
     _detailQueue = ShelfBookDetailQueue(
-      hasBook: (id) => _bookDetails.containsKey(id),
+      hasBook:
+          (id) =>
+              _bookDetails.containsKey(id) &&
+              !_detailRevalidationIds.contains(id),
       onBooksLoaded: _handleBooksLoaded,
-      onError: (error) {
-        _logger.warning('Failed to fetch history book details: $error');
-        _releaseVisibleDetailsGate();
-      },
+      onError: _handleBookDetailError,
       requestScope: RequestScopes.history,
       priority: RequestPriority.high,
     );
@@ -90,6 +93,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       _detailQueue.cancelPending();
       _visibleItemKeys.clear();
       _pendingInitialDetailIds.clear();
+      _unconfirmedBookIds.clear();
       _releaseVisibleDetailsGate();
       return;
     }
@@ -123,23 +127,60 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     _pendingInitialDetailIds.clear();
   }
 
+  void _handleBookDetailError(Object error) {
+    _logger.warning('Failed to fetch history book details: $error');
+    _visibleDetailsFallbackTimer?.cancel();
+    if (!mounted || !_isTabActive) {
+      return;
+    }
+
+    setState(() {
+      _waitingForVisibleDetails = false;
+      _pendingInitialDetailIds.clear();
+      _unconfirmedBookIds.clear();
+      _detailRevalidationIds.clear();
+    });
+  }
+
   void _handleBooksLoaded(List<Book?> books, List<int> ids) {
     if (!mounted || !_isTabActive) {
       return;
     }
 
-    final activeBookIds = _bookIds.toSet();
+    var shouldRequestMoreUnconfirmed = false;
     var shouldReleaseGate = false;
     setState(() {
-      for (var index = 0; index < ids.length; index++) {
-        final bookId = ids[index];
-        final book = index < books.length ? books[index] : null;
+      final mergeResult = mergeHistoryBookDetails(
+        currentBookIds: _bookIds,
+        currentBookDetails: _bookDetails,
+        requestedIds: ids,
+        loadedBooks: books,
+      );
+
+      for (final bookId in ids) {
         _pendingInitialDetailIds.remove(bookId);
-        if (book == null || !activeBookIds.contains(book.id)) {
-          continue;
-        }
-        _bookDetails[book.id] = book;
+        _unconfirmedBookIds.remove(bookId);
+        _detailRevalidationIds.remove(bookId);
       }
+
+      _bookIds = mergeResult.bookIds;
+      _bookDetails
+        ..clear()
+        ..addAll(mergeResult.bookDetails);
+      _localReadPositions.removeWhere(
+        (bookId, _) => mergeResult.missingBookIds.contains(bookId),
+      );
+      final visibleBookIds = collectVisibleHistoryBookIds(
+        bookIds: _bookIds,
+        cachedBookIds: _bookDetails.keys.toSet(),
+        unconfirmedBookIds: _unconfirmedBookIds,
+      );
+      shouldRequestMoreUnconfirmed =
+          visibleBookIds.isEmpty &&
+          _unconfirmedBookIds.any(
+            (bookId) => !_bookDetails.containsKey(bookId),
+          );
+
       if (_waitingForVisibleDetails && _pendingInitialDetailIds.isEmpty) {
         _waitingForVisibleDetails = false;
         shouldReleaseGate = true;
@@ -148,16 +189,9 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     if (shouldReleaseGate) {
       _visibleDetailsFallbackTimer?.cancel();
     }
-  }
-
-  Set<int> _collectInitialDetailIds(List<int> bookIds) {
-    final detailIds = <int>{};
-    for (final bookId in bookIds.take(12)) {
-      if (!_bookDetails.containsKey(bookId)) {
-        detailIds.add(bookId);
-      }
+    if (shouldRequestMoreUnconfirmed) {
+      _enqueueNextUnconfirmedBookDetails();
     }
-    return detailIds;
   }
 
   void _trackVisibleItem(List<int> bookIds, int index) {
@@ -169,7 +203,21 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
 
     final startIndex = (index - _prefetchBehindCount).clamp(0, bookIds.length);
     final endIndex = (index + _prefetchAheadCount + 1).clamp(0, bookIds.length);
-    _detailQueue.enqueue(bookIds.sublist(startIndex, endIndex));
+    final detailIds = bookIds.sublist(startIndex, endIndex);
+    final unconfirmedIds =
+        detailIds
+            .where(
+              (bookId) =>
+                  !_bookDetails.containsKey(bookId) ||
+                  _detailRevalidationIds.contains(bookId),
+            )
+            .toSet();
+    if (unconfirmedIds.isNotEmpty) {
+      setState(() {
+        _unconfirmedBookIds.addAll(unconfirmedIds);
+      });
+    }
+    _detailQueue.enqueue(detailIds);
   }
 
   void _rememberBookCoverReveal(int bookId) {
@@ -244,7 +292,19 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       }
 
       final activeBookIds = bookIds.toSet();
-      final initialDetailIds = _collectInitialDetailIds(bookIds);
+      _detailRevalidationIds.removeWhere(
+        (bookId) => !activeBookIds.contains(bookId),
+      );
+      if (force) {
+        _detailRevalidationIds.addAll(
+          _bookDetails.keys.where(activeBookIds.contains),
+        );
+      }
+      final initialDetailIds = collectHistoryInitialDetailIds(
+        bookIds: bookIds,
+        cachedBookIds: _bookDetails.keys.toSet(),
+        revalidateCached: force,
+      );
       final needsVisibleDetails = initialDetailIds.isNotEmpty;
       final shouldBlockForDetails = !canSilentRefresh && needsVisibleDetails;
 
@@ -252,6 +312,10 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       _visibleItemKeys.clear();
       _pendingInitialDetailIds
         ..clear()
+        ..addAll(initialDetailIds);
+      _unconfirmedBookIds
+        ..removeWhere((bookId) => !activeBookIds.contains(bookId))
+        ..addAll(bookIds.where((bookId) => !_bookDetails.containsKey(bookId)))
         ..addAll(initialDetailIds);
       _localReadPositions
         ..clear()
@@ -271,6 +335,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       });
 
       if (bookIds.isEmpty) {
+        _detailRevalidationIds.clear();
         _releaseVisibleDetailsGate();
         return;
       }
@@ -306,6 +371,29 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
         });
       }
     }
+  }
+
+  void _enqueueNextUnconfirmedBookDetails() {
+    final detailIds = _bookIds
+        .where(
+          (bookId) =>
+              _unconfirmedBookIds.contains(bookId) &&
+              !_bookDetails.containsKey(bookId),
+        )
+        .take(12)
+        .toList(growable: false);
+    if (detailIds.isEmpty) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _pendingInitialDetailIds.addAll(detailIds);
+      });
+    } else {
+      _pendingInitialDetailIds.addAll(detailIds);
+    }
+    _detailQueue.enqueue(detailIds);
   }
 
   Future<void> _clearHistory() async {
@@ -379,6 +467,8 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     _detailQueue.resetRetriableState();
     _visibleItemKeys.clear();
     _pendingInitialDetailIds.clear();
+    _unconfirmedBookIds.clear();
+    _detailRevalidationIds.clear();
     _localReadPositions.clear();
     _bookDetails.clear();
     _releaseVisibleDetailsGate();
@@ -457,6 +547,11 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
 
   Widget _buildContent(BuildContext context, ColorScheme colorScheme) {
     final settings = ref.watch(settingsProvider);
+    final visibleBookIds = collectVisibleHistoryBookIds(
+      bookIds: _bookIds,
+      cachedBookIds: _bookDetails.keys.toSet(),
+      unconfirmedBookIds: _unconfirmedBookIds,
+    );
 
     if (_loading) {
       return const Center(child: M3ELoadingIndicator());
@@ -484,7 +579,14 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       );
     }
 
-    if (_bookIds.isEmpty) {
+    if (_bookIds.isNotEmpty &&
+        visibleBookIds.isEmpty &&
+        (_pendingInitialDetailIds.isNotEmpty ||
+            _unconfirmedBookIds.isNotEmpty)) {
+      return const Center(child: M3ELoadingIndicator());
+    }
+
+    if (visibleBookIds.isEmpty) {
       return LayoutBuilder(
         builder:
             (context, constraints) => SingleChildScrollView(
@@ -516,7 +618,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       );
     }
 
-    final bookIds = _bookIds;
+    final bookIds = visibleBookIds;
     return LayoutBuilder(
       builder: (context, constraints) {
         return GridView.builder(
@@ -539,7 +641,10 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
               key: ValueKey('history_visibility_$bookId'),
               onVisibilityChanged: (info) {
                 if (info.visibleFraction > 0) {
-                  _trackVisibleItem(bookIds, index);
+                  final originalIndex = _bookIds.indexOf(bookId);
+                  if (originalIndex >= 0) {
+                    _trackVisibleItem(_bookIds, originalIndex);
+                  }
                 }
               },
               child: _buildBookItem(bookId),

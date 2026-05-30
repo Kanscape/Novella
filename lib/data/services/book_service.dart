@@ -136,7 +136,7 @@ class BookService {
       } catch (e) {
         if (isRequestCancelledError(e)) rethrow;
         _logger.severe('Failed to get books chunk $i-$end: $e');
-        allBooks.addAll(List<Book?>.filled(chunk.length, null));
+        rethrow;
       }
     }
 
