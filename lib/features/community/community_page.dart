@@ -26,6 +26,7 @@ class CommunityPage extends ConsumerStatefulWidget {
 
 class CommunityPageState extends ConsumerState<CommunityPage> {
   final CommunityService _communityService = CommunityService();
+  static const int _feedPreloadRemainingItems = 2;
 
   bool _isTabActive = true;
   bool _loading = true;
@@ -35,6 +36,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   List<CommunityFeedItem> _feedItems = const <CommunityFeedItem>[];
   int _latestRequestId = 0;
   int _currentPage = 1;
+  int? _failedLoadMorePage;
 
   String _boardKey = 'all';
   String _subCategoryKey = '';
@@ -127,6 +129,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
       _loadingMore = false;
       _errorMessage = null;
       _currentPage = 1;
+      _failedLoadMorePage = null;
     });
 
     try {
@@ -174,6 +177,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
         _loadingMore = true;
       } else {
         _loading = true;
+        _failedLoadMorePage = null;
       }
     });
 
@@ -204,6 +208,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
         _feedItems = append ? [..._feedItems, ...feed.feed] : feed.feed;
         _subCategoryKey = feed.selectedSubCategoryKey;
         _currentPage = feed.feedPage.page;
+        _failedLoadMorePage = null;
       });
     } catch (error) {
       if (!_canApply(requestId) || isRequestCancelledError(error)) {
@@ -211,6 +216,9 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
       }
       setState(() {
         _errorMessage = _formatError(error);
+        if (append) {
+          _failedLoadMorePage = nextPage;
+        }
         if (!append) {
           _feedItems = const <CommunityFeedItem>[];
         }
@@ -262,10 +270,28 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
 
   Future<void> _loadMore() async {
     final page = _payload?.feedPage;
-    if (page == null || !page.hasMore || _loadingMore) {
+    final nextPage = _currentPage + 1;
+    if (page == null ||
+        !page.hasMore ||
+        _loading ||
+        _loadingMore ||
+        _failedLoadMorePage == nextPage) {
       return;
     }
     await _loadCommunityFeed(append: true);
+  }
+
+  void _preloadMoreIfNeeded(int index) {
+    if (_feedItems.length - index - 1 > _feedPreloadRemainingItems) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_loadMore());
+    });
   }
 
   String _formatError(Object error) {
@@ -779,14 +805,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
     }
 
     if (_payload?.feedPage.hasMore ?? false) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 14, 12, 0),
-        child: FilledButton.tonalIcon(
-          onPressed: _loadMore,
-          icon: const Icon(Icons.expand_more_rounded),
-          label: const Text('加载更多'),
-        ),
-      );
+      return const SizedBox(height: 18);
     }
 
     if (_feedItems.isNotEmpty) {
@@ -794,7 +813,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
         padding: const EdgeInsets.fromLTRB(12, 18, 12, 0),
         child: Center(
           child: Text(
-            '已经看到这里了',
+            '已经到底了',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -934,6 +953,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                       sliver: SliverList.builder(
                         itemCount: _feedItems.length,
                         itemBuilder: (context, index) {
+                          _preloadMoreIfNeeded(index);
                           final item = _feedItems[index];
                           return Padding(
                             padding: EdgeInsets.only(
