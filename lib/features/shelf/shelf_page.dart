@@ -47,6 +47,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
   final Set<String> _visibleItemKeys = <String>{};
   final Set<int> _pendingInitialDetailIds = <int>{};
   final Set<int> _invalidBookIds = <int>{};
+  final Set<int> _detailRevalidationIds = <int>{};
   final Set<String> _revealedBookCoverKeys = <String>{};
   final Set<String> _revealedFolderPreviewKeys = <String>{};
   List<ShelfItem> _rootItems = [];
@@ -92,12 +93,12 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     unawaited(_bookCoverHintService.ensureInitialized());
     _detailQueue = ShelfBookDetailQueue(
       hasBook:
-          (id) => _bookDetails.containsKey(id) || _invalidBookIds.contains(id),
+          (id) =>
+              (_bookDetails.containsKey(id) &&
+                  !_detailRevalidationIds.contains(id)) ||
+              _invalidBookIds.contains(id),
       onBooksLoaded: _handleBooksLoaded,
-      onError: (error) {
-        _logger.warning('Failed to fetch shelf book details: $error');
-        _releaseVisibleDetailsGate();
-      },
+      onError: _handleBookDetailError,
     );
     _userService.addListener(_onShelfChanged);
     _fetchShelf();
@@ -174,6 +175,20 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     _pendingInitialDetailIds.clear();
   }
 
+  void _handleBookDetailError(Object error) {
+    _logger.warning('Failed to fetch shelf book details: $error');
+    _visibleDetailsFallbackTimer?.cancel();
+    if (!mounted || !_isTabActive) {
+      return;
+    }
+
+    setState(() {
+      _waitingForVisibleDetails = false;
+      _pendingInitialDetailIds.clear();
+      _detailRevalidationIds.clear();
+    });
+  }
+
   void _handleBooksLoaded(List<Book?> books, List<int> ids) {
     if (!mounted || !_isTabActive) {
       return;
@@ -191,6 +206,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
       for (final bookId in ids) {
         _pendingInitialDetailIds.remove(bookId);
+        _detailRevalidationIds.remove(bookId);
       }
       _bookDetails
         ..clear()
@@ -316,8 +332,14 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     final allShelfBookItems = _userService.getAllBookItemsInDisplayOrder();
     final allShelfBookIds =
         allShelfBookItems.map((item) => item.id as int).toSet();
+    _detailRevalidationIds.removeWhere(
+      (bookId) => !allShelfBookIds.contains(bookId),
+    );
     if (force) {
       _invalidBookIds.clear();
+      _detailRevalidationIds.addAll(
+        _bookDetails.keys.where(allShelfBookIds.contains),
+      );
     } else {
       _invalidBookIds.removeWhere(
         (bookId) => !allShelfBookIds.contains(bookId),
@@ -421,25 +443,13 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
   }
 
   Set<int> _collectInitialDetailIds(List<ShelfItem> items) {
-    final detailIds = <int>{};
-    for (final item in items.take(12)) {
-      if (item.type == ShelfItemType.book) {
-        final bookId = item.id as int;
-        if (!_bookDetails.containsKey(bookId) &&
-            !_invalidBookIds.contains(bookId)) {
-          detailIds.add(bookId);
-        }
-        continue;
-      }
-
-      for (final previewId in _folderPreviewBookIds(item.id as String)) {
-        if (!_bookDetails.containsKey(previewId) &&
-            !_invalidBookIds.contains(previewId)) {
-          detailIds.add(previewId);
-        }
-      }
-    }
-    return detailIds;
+    return collectShelfInitialDetailIds(
+      items: items,
+      cachedBookIds: _bookDetails.keys.toSet(),
+      invalidBookIds: _invalidBookIds,
+      revalidateBookIds: _detailRevalidationIds,
+      folderPreviewBookIds: _folderPreviewBookIds,
+    );
   }
 
   String _itemKey(ShelfItem item) {

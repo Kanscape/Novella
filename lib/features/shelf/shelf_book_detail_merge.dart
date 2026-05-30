@@ -26,6 +26,37 @@ Set<int> collectShelfActiveDetailIds({
   return activeBookIds;
 }
 
+Set<int> collectShelfInitialDetailIds({
+  required Iterable<ShelfItem> items,
+  required Set<int> cachedBookIds,
+  required Set<int> invalidBookIds,
+  required Set<int> revalidateBookIds,
+  required Iterable<int> Function(String folderId) folderPreviewBookIds,
+  int limit = 12,
+}) {
+  final detailIds = <int>{};
+
+  void collectBookId(int bookId) {
+    if (revalidateBookIds.contains(bookId) ||
+        (!cachedBookIds.contains(bookId) && !invalidBookIds.contains(bookId))) {
+      detailIds.add(bookId);
+    }
+  }
+
+  for (final item in items.take(limit)) {
+    switch (item.type) {
+      case ShelfItemType.book:
+        collectBookId(item.id as int);
+      case ShelfItemType.folder:
+        for (final previewId in folderPreviewBookIds(item.id as String)) {
+          collectBookId(previewId);
+        }
+    }
+  }
+
+  return detailIds;
+}
+
 ShelfBookDetailMergeResult mergeShelfBookDetails({
   required Map<int, Book> currentBookDetails,
   required Set<int> currentInvalidBookIds,
