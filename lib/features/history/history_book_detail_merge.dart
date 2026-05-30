@@ -30,13 +30,13 @@ Set<int> collectHistoryInitialDetailIds({
 List<int> collectVisibleHistoryBookIds({
   required List<int> bookIds,
   required Set<int> cachedBookIds,
-  required Set<int> pendingDetailIds,
+  required Set<int> unconfirmedBookIds,
 }) {
   return bookIds
       .where(
         (bookId) =>
             cachedBookIds.contains(bookId) ||
-            !pendingDetailIds.contains(bookId),
+            !unconfirmedBookIds.contains(bookId),
       )
       .toList(growable: false);
 }

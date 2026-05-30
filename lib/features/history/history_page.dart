@@ -40,6 +40,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
   final Map<int, ReadPosition> _localReadPositions = <int, ReadPosition>{};
   final Set<String> _visibleItemKeys = <String>{};
   final Set<int> _pendingInitialDetailIds = <int>{};
+  final Set<int> _unconfirmedBookIds = <int>{};
   final Set<int> _detailRevalidationIds = <int>{};
   final Set<String> _revealedBookCoverKeys = <String>{};
   List<int> _bookIds = <int>[];
@@ -92,6 +93,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       _detailQueue.cancelPending();
       _visibleItemKeys.clear();
       _pendingInitialDetailIds.clear();
+      _unconfirmedBookIds.clear();
       _releaseVisibleDetailsGate();
       return;
     }
@@ -135,6 +137,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     setState(() {
       _waitingForVisibleDetails = false;
       _pendingInitialDetailIds.clear();
+      _unconfirmedBookIds.clear();
       _detailRevalidationIds.clear();
     });
   }
@@ -144,6 +147,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       return;
     }
 
+    var shouldRequestMoreUnconfirmed = false;
     var shouldReleaseGate = false;
     setState(() {
       final mergeResult = mergeHistoryBookDetails(
@@ -155,6 +159,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
 
       for (final bookId in ids) {
         _pendingInitialDetailIds.remove(bookId);
+        _unconfirmedBookIds.remove(bookId);
         _detailRevalidationIds.remove(bookId);
       }
 
@@ -165,6 +170,16 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       _localReadPositions.removeWhere(
         (bookId, _) => mergeResult.missingBookIds.contains(bookId),
       );
+      final visibleBookIds = collectVisibleHistoryBookIds(
+        bookIds: _bookIds,
+        cachedBookIds: _bookDetails.keys.toSet(),
+        unconfirmedBookIds: _unconfirmedBookIds,
+      );
+      shouldRequestMoreUnconfirmed =
+          visibleBookIds.isEmpty &&
+          _unconfirmedBookIds.any(
+            (bookId) => !_bookDetails.containsKey(bookId),
+          );
 
       if (_waitingForVisibleDetails && _pendingInitialDetailIds.isEmpty) {
         _waitingForVisibleDetails = false;
@@ -173,6 +188,9 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     });
     if (shouldReleaseGate) {
       _visibleDetailsFallbackTimer?.cancel();
+    }
+    if (shouldRequestMoreUnconfirmed) {
+      _enqueueNextUnconfirmedBookDetails();
     }
   }
 
@@ -185,7 +203,21 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
 
     final startIndex = (index - _prefetchBehindCount).clamp(0, bookIds.length);
     final endIndex = (index + _prefetchAheadCount + 1).clamp(0, bookIds.length);
-    _detailQueue.enqueue(bookIds.sublist(startIndex, endIndex));
+    final detailIds = bookIds.sublist(startIndex, endIndex);
+    final unconfirmedIds =
+        detailIds
+            .where(
+              (bookId) =>
+                  !_bookDetails.containsKey(bookId) ||
+                  _detailRevalidationIds.contains(bookId),
+            )
+            .toSet();
+    if (unconfirmedIds.isNotEmpty) {
+      setState(() {
+        _unconfirmedBookIds.addAll(unconfirmedIds);
+      });
+    }
+    _detailQueue.enqueue(detailIds);
   }
 
   void _rememberBookCoverReveal(int bookId) {
@@ -281,6 +313,10 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
       _pendingInitialDetailIds
         ..clear()
         ..addAll(initialDetailIds);
+      _unconfirmedBookIds
+        ..removeWhere((bookId) => !activeBookIds.contains(bookId))
+        ..addAll(bookIds.where((bookId) => !_bookDetails.containsKey(bookId)))
+        ..addAll(initialDetailIds);
       _localReadPositions
         ..clear()
         ..addAll(localReadPositions);
@@ -335,6 +371,29 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
         });
       }
     }
+  }
+
+  void _enqueueNextUnconfirmedBookDetails() {
+    final detailIds = _bookIds
+        .where(
+          (bookId) =>
+              _unconfirmedBookIds.contains(bookId) &&
+              !_bookDetails.containsKey(bookId),
+        )
+        .take(12)
+        .toList(growable: false);
+    if (detailIds.isEmpty) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _pendingInitialDetailIds.addAll(detailIds);
+      });
+    } else {
+      _pendingInitialDetailIds.addAll(detailIds);
+    }
+    _detailQueue.enqueue(detailIds);
   }
 
   Future<void> _clearHistory() async {
@@ -408,6 +467,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     _detailQueue.resetRetriableState();
     _visibleItemKeys.clear();
     _pendingInitialDetailIds.clear();
+    _unconfirmedBookIds.clear();
     _detailRevalidationIds.clear();
     _localReadPositions.clear();
     _bookDetails.clear();
@@ -490,7 +550,7 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     final visibleBookIds = collectVisibleHistoryBookIds(
       bookIds: _bookIds,
       cachedBookIds: _bookDetails.keys.toSet(),
-      pendingDetailIds: _pendingInitialDetailIds,
+      unconfirmedBookIds: _unconfirmedBookIds,
     );
 
     if (_loading) {
@@ -521,7 +581,8 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
 
     if (_bookIds.isNotEmpty &&
         visibleBookIds.isEmpty &&
-        _pendingInitialDetailIds.isNotEmpty) {
+        (_pendingInitialDetailIds.isNotEmpty ||
+            _unconfirmedBookIds.isNotEmpty)) {
       return const Center(child: M3ELoadingIndicator());
     }
 
@@ -580,7 +641,10 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
               key: ValueKey('history_visibility_$bookId'),
               onVisibilityChanged: (info) {
                 if (info.visibleFraction > 0) {
-                  _trackVisibleItem(bookIds, index);
+                  final originalIndex = _bookIds.indexOf(bookId);
+                  if (originalIndex >= 0) {
+                    _trackVisibleItem(_bookIds, originalIndex);
+                  }
                 }
               },
               child: _buildBookItem(bookId),
