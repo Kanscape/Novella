@@ -12,6 +12,15 @@ void main() {
     expect(page.initialMode, BookSearchMode.author);
   });
 
+  test('accepts tags initial search mode', () {
+    const page = SearchPage(
+      initialKeyword: '转生',
+      initialMode: BookSearchMode.tags,
+    );
+
+    expect(page.initialMode, BookSearchMode.tags);
+  });
+
   test('keeps initialExact compatibility', () {
     const page = SearchPage(initialKeyword: '书名', initialExact: true);
 
