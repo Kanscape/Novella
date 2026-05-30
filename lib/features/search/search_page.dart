@@ -72,6 +72,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final _searchController = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
+  Animation<double>? _initialFocusRouteAnimation;
+  AnimationStatusListener? _initialFocusStatusListener;
 
   // 状态
   List<String> _history = [];
@@ -112,17 +114,49 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               widget.initialExact ? BookSearchMode.exact : BookSearchMode.fuzzy,
         );
       } else {
-        _focusNode.requestFocus();
+        _requestInitialFocusAfterRouteTransition();
       }
     });
   }
 
   @override
   void dispose() {
+    final initialFocusStatusListener = _initialFocusStatusListener;
+    if (initialFocusStatusListener != null) {
+      _initialFocusRouteAnimation?.removeStatusListener(
+        initialFocusStatusListener,
+      );
+    }
     _searchController.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _requestInitialFocusAfterRouteTransition() {
+    final routeAnimation = ModalRoute.of(context)?.animation;
+    if (routeAnimation == null ||
+        routeAnimation.status == AnimationStatus.completed) {
+      _focusNode.requestFocus();
+      return;
+    }
+
+    late final AnimationStatusListener statusListener;
+    statusListener = (status) {
+      if (status != AnimationStatus.completed) return;
+      routeAnimation.removeStatusListener(statusListener);
+      if (_initialFocusStatusListener == statusListener) {
+        _initialFocusRouteAnimation = null;
+        _initialFocusStatusListener = null;
+      }
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    };
+
+    _initialFocusRouteAnimation = routeAnimation;
+    _initialFocusStatusListener = statusListener;
+    routeAnimation.addStatusListener(statusListener);
   }
 
   Future<void> _loadHistory() async {
@@ -394,6 +428,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         actionsPadding: const EdgeInsets.only(right: 8),
         actions: [
           IconButton(
@@ -455,27 +492,30 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   Widget _buildSearchModePanel(ColorScheme colorScheme, TextTheme textTheme) {
-    return Padding(
+    return ColoredBox(
       key: const ValueKey('search_mode_panel'),
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: Material(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.86),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: colorScheme.outlineVariant),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children:
-                _searchModeOptions
-                    .map(
-                      (option) =>
-                          _buildSearchModeRow(option, colorScheme, textTheme),
-                    )
-                    .toList(),
+      color: colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Material(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.86),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: colorScheme.outlineVariant),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children:
+                  _searchModeOptions
+                      .map(
+                        (option) =>
+                            _buildSearchModeRow(option, colorScheme, textTheme),
+                      )
+                      .toList(),
+            ),
           ),
         ),
       ),
