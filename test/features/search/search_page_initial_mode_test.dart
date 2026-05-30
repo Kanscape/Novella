@@ -5,7 +5,7 @@ import 'package:novella/features/search/search_page.dart';
 void main() {
   test('accepts explicit initial search mode', () {
     const page = SearchPage(
-      initialKeyword: '作者名',
+      initialKeyword: 'author-name',
       initialMode: BookSearchMode.author,
     );
 
@@ -14,7 +14,7 @@ void main() {
 
   test('accepts tags initial search mode', () {
     const page = SearchPage(
-      initialKeyword: '转生',
+      initialKeyword: 'isekai',
       initialMode: BookSearchMode.tags,
     );
 
@@ -22,7 +22,7 @@ void main() {
   });
 
   test('keeps initialExact compatibility', () {
-    const page = SearchPage(initialKeyword: '书名', initialExact: true);
+    const page = SearchPage(initialKeyword: 'book-title', initialExact: true);
 
     expect(page.initialMode, BookSearchMode.exact);
   });

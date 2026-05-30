@@ -9,17 +9,21 @@ import 'package:novella/features/community/community_board_icon.dart';
 import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
 class CommunityComposePage extends StatefulWidget {
-  const CommunityComposePage({super.key});
+  const CommunityComposePage({super.key, CommunityService? communityService})
+    : _communityService = communityService;
+
+  final CommunityService? _communityService;
 
   @override
   State<CommunityComposePage> createState() => _CommunityComposePageState();
 }
 
 class _CommunityComposePageState extends State<CommunityComposePage> {
-  final CommunityService _communityService = CommunityService();
+  late final CommunityService _communityService;
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
   final QuillController _quillController = QuillController.basic();
+  final FocusNode _editorFocusNode = FocusNode();
 
   bool _loadingCatalog = true;
   bool _submitting = false;
@@ -31,6 +35,8 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
   @override
   void initState() {
     super.initState();
+    _communityService = widget._communityService ?? CommunityService();
+    _quillController.addListener(_refreshComposerState);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_loadCatalogBoards());
@@ -40,9 +46,17 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
 
   @override
   void dispose() {
+    _quillController.removeListener(_refreshComposerState);
     _titleController.dispose();
+    _editorFocusNode.dispose();
     _quillController.dispose();
     super.dispose();
+  }
+
+  void _refreshComposerState() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadCatalogBoards() async {
@@ -58,17 +72,17 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
       }
 
       final boards = payload.catalogBoards;
+      final selectedBoardKey = _selectedBoardKey;
       final initialBoardKey =
-          boards.isNotEmpty ? boards.first.key : _selectedBoardKey;
-      final initialSubCategoryKey = _pickDefaultSubCategory(
-        boards,
-        initialBoardKey,
-      );
+          selectedBoardKey != null &&
+                  _findBoardByKey(boards, selectedBoardKey) != null
+              ? selectedBoardKey
+              : null;
 
       setState(() {
         _catalogBoards = boards;
         _selectedBoardKey = initialBoardKey;
-        _selectedSubCategoryKey = initialSubCategoryKey;
+        _selectedSubCategoryKey = '';
       });
     } catch (error) {
       if (!mounted) {
@@ -84,22 +98,6 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
         });
       }
     }
-  }
-
-  String _pickDefaultSubCategory(
-    List<CommunityCatalogBoard> boards,
-    String? boardKey,
-  ) {
-    if (boardKey == null || boardKey.isEmpty) {
-      return '';
-    }
-
-    final board = _findBoardByKey(boards, boardKey);
-    if (board == null || board.subCategories.isEmpty) {
-      return '';
-    }
-
-    return board.subCategories.first.key;
   }
 
   CommunityCatalogBoard? _findBoardByKey(
@@ -217,10 +215,9 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
       return;
     }
 
-    final nextSubCategoryKey = _pickDefaultSubCategory(_catalogBoards, value);
     setState(() {
       _selectedBoardKey = value;
-      _selectedSubCategoryKey = nextSubCategoryKey;
+      _selectedSubCategoryKey = '';
     });
   }
 
@@ -298,12 +295,12 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
       builder: (sheetContext) {
         return SafeArea(
           top: false,
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: Text(
                   title,
                   style: Theme.of(
@@ -311,16 +308,27 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                   ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
-              for (final item in items)
-                _PickerSheetItem(
-                  title: item.title,
-                  subtitle: item.subtitle,
-                  iconName: item.iconName,
-                  fallbackText: item.fallbackText,
-                  accent: item.accent,
-                  selected: item.value == selectedValue,
-                  onTap: () => Navigator.of(sheetContext).pop(item.value),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                  children: [
+                    for (final item in items)
+                      _PickerSheetItem(
+                        key: ValueKey(
+                          'community-compose-picker-item-${item.value}',
+                        ),
+                        title: item.title,
+                        subtitle: item.subtitle,
+                        iconName: item.iconName,
+                        fallbackText: item.fallbackText,
+                        accent: item.accent,
+                        selected: item.value == selectedValue,
+                        onTap: () => Navigator.of(sheetContext).pop(item.value),
+                      ),
+                  ],
                 ),
+              ),
             ],
           ),
         );
@@ -455,6 +463,11 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                   children: [
                     Text(
                       board?.title ?? '选择一个板块开始写作',
+                      key: ValueKey(
+                        board == null
+                            ? 'community-compose-context-board-empty'
+                            : 'community-compose-context-board-selected',
+                      ),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -463,7 +476,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                     Text(
                       board?.description.isNotEmpty == true
                           ? board!.description
-                          : '这里更像一个连续的编辑器，而不是拆成很多格子的表单页。',
+                          : '根据内容选择板块',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                         height: 1.45,
@@ -556,6 +569,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                 runSpacing: 10,
                 children: [
                   _ComposePickerChip(
+                    key: const ValueKey('community-compose-board-chip'),
                     label: board?.title ?? '选择板块',
                     icon: Icons.dashboard_outlined,
                     accent: accent,
@@ -565,6 +579,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
                   ),
                   if (_selectedSubCategories.isNotEmpty)
                     _ComposePickerChip(
+                      key: const ValueKey('community-compose-subcategory-chip'),
                       label: subCategory?.label ?? '子分类',
                       icon: Icons.tune_rounded,
                       onTap: _openSubCategoryPicker,
@@ -622,11 +637,16 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
             ),
             SizedBox(
               height: 420,
-              child: QuillEditor.basic(
-                controller: _quillController,
-                config: const QuillEditorConfig(
-                  placeholder: '写下你的内容，正文至少 20 个字...',
-                  padding: EdgeInsets.fromLTRB(18, 16, 18, 18),
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (_) => _editorFocusNode.requestFocus(),
+                child: QuillEditor.basic(
+                  controller: _quillController,
+                  focusNode: _editorFocusNode,
+                  config: const QuillEditorConfig(
+                    placeholder: '写下你的内容，正文至少 20 个字...',
+                    padding: EdgeInsets.fromLTRB(18, 16, 18, 18),
+                  ),
                 ),
               ),
             ),
@@ -738,7 +758,9 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
         !_submitting &&
         !_loadingCatalog &&
         _selectedBoardKey != null &&
-        _selectedBoardKey!.isNotEmpty;
+        _selectedBoardKey!.isNotEmpty &&
+        _titleController.text.trim().length >= 6 &&
+        _bodyLength >= 20;
 
     return Scaffold(
       appBar: AppBar(
@@ -749,6 +771,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: TextButton(
+              key: const ValueKey('community-compose-publish-button'),
               onPressed: canSubmit ? _submit : null,
               child:
                   _submitting
@@ -843,6 +866,7 @@ class _HintChip extends StatelessWidget {
 
 class _ComposePickerChip extends StatelessWidget {
   const _ComposePickerChip({
+    super.key,
     required this.label,
     required this.icon,
     required this.onTap,
@@ -940,6 +964,7 @@ class _PickerItemData {
 
 class _PickerSheetItem extends StatelessWidget {
   const _PickerSheetItem({
+    super.key,
     required this.title,
     required this.selected,
     required this.onTap,
