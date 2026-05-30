@@ -19,8 +19,16 @@ import 'package:novella/src/widgets/book_type_badge.dart';
 class SearchPage extends ConsumerStatefulWidget {
   final String? initialKeyword;
   final bool initialExact;
+  final BookSearchMode initialMode;
 
-  const SearchPage({super.key, this.initialKeyword, this.initialExact = false});
+  const SearchPage({
+    super.key,
+    this.initialKeyword,
+    this.initialExact = false,
+    BookSearchMode? initialMode,
+  }) : initialMode =
+           initialMode ??
+           (initialExact ? BookSearchMode.exact : BookSearchMode.fuzzy);
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
@@ -110,8 +118,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       if (initialKeyword.isNotEmpty) {
         _submitSearch(
           overrideKeyword: initialKeyword,
-          mode:
-              widget.initialExact ? BookSearchMode.exact : BookSearchMode.fuzzy,
+          mode: widget.initialMode,
         );
       } else {
         _requestInitialFocusAfterRouteTransition();

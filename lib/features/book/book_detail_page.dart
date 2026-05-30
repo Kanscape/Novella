@@ -12,6 +12,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/data/services/book_info_cache_service.dart';
 import 'package:novella/data/services/book_mark_service.dart';
+import 'package:novella/data/services/book_search_mode.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
@@ -1113,13 +1114,16 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     );
   }
 
-  void _openQuickSearch(String keyword, {bool exact = false}) {
+  void _openQuickSearch(
+    String keyword, {
+    BookSearchMode mode = BookSearchMode.fuzzy,
+  }) {
     final trimmedKeyword = keyword.trim();
     if (trimmedKeyword.isEmpty) return;
 
     AppRouteLauncher.pushDetail(
       context,
-      (_) => SearchPage(initialKeyword: trimmedKeyword, initialExact: exact),
+      (_) => SearchPage(initialKeyword: trimmedKeyword, initialMode: mode),
     );
   }
 
@@ -1128,7 +1132,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     required TextStyle? style,
     required String semanticsLabel,
     int? maxLines,
-    bool exact = false,
+    BookSearchMode mode = BookSearchMode.fuzzy,
   }) {
     final trimmedText = text.trim();
     if (trimmedText.isEmpty) {
@@ -1139,7 +1143,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       button: true,
       label: semanticsLabel,
       child: GestureDetector(
-        onTap: () => _openQuickSearch(trimmedText, exact: exact),
+        onTap: () => _openQuickSearch(trimmedText, mode: mode),
         child: Text(
           trimmedText,
           style: style,
@@ -1916,7 +1920,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                       color: colorScheme.onSurfaceVariant,
                                     ),
                                     semanticsLabel: '搜索作者 ${book.author}',
-                                    exact: true,
+                                    mode: BookSearchMode.author,
                                   ),
                                 ],
                               ],
