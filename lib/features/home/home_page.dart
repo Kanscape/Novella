@@ -9,6 +9,7 @@ import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/src/widgets/book_cover_card.dart';
+import 'package:novella/data/services/book_content_filter.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
@@ -474,14 +475,16 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
         priority: RequestPriority.low,
       );
       _logger.info('[Ranking] API returned ${books.length} books');
-      // Client-side Level6 filter
-      if (settings.ignoreLevel6) {
-        final beforeFilter = books.length;
-        books = books.where((b) => b.level != 6).toList();
-        _logger.info(
-          '[Ranking] Level6 filter: $beforeFilter -> ${books.length} (filtered ${beforeFilter - books.length})',
-        );
-      }
+      final beforeFilter = books.length;
+      books = filterBooksByContentSettings(
+        books,
+        ignoreJapanese: settings.ignoreJapanese,
+        ignoreAI: settings.ignoreAI,
+        ignoreLevel6: settings.ignoreLevel6,
+      );
+      _logger.info(
+        '[Ranking] Content filter: $beforeFilter -> ${books.length} (filtered ${beforeFilter - books.length})',
+      );
 
       if (_canApplyRequest(requestEpoch)) {
         setState(() {
@@ -512,7 +515,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
       // 使用 getBookList 替代 getLatestBooks，因为后者服务端固定只返回6本
       final result = await _bookService.getBookList(
         page: 1,
-        size: 9, // 请求足够多以补偿 Level6 过滤
+        size: 12, // 请求更多条目以覆盖少量本地过滤
         order: 'latest',
         ignoreJapanese: settings.ignoreJapanese,
         ignoreAI: settings.ignoreAI,
@@ -521,14 +524,16 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
       );
       var books = result.books;
       _logger.info('[Recently Updated] API returned ${books.length} books');
-      // Client-side Level6 filter
-      if (settings.ignoreLevel6) {
-        final beforeFilter = books.length;
-        books = books.where((b) => b.level != 6).toList();
-        _logger.info(
-          '[Recently Updated] Level6 filter: $beforeFilter -> ${books.length} (filtered ${beforeFilter - books.length})',
-        );
-      }
+      final beforeFilter = books.length;
+      books = filterBooksByContentSettings(
+        books,
+        ignoreJapanese: settings.ignoreJapanese,
+        ignoreAI: settings.ignoreAI,
+        ignoreLevel6: settings.ignoreLevel6,
+      );
+      _logger.info(
+        '[Recently Updated] Content filter: $beforeFilter -> ${books.length} (filtered ${beforeFilter - books.length})',
+      );
 
       if (_canApplyRequest(requestEpoch)) {
         setState(() {
@@ -562,14 +567,16 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
       final days = _rankTypeToDay(rankType);
       var books = await _bookService.getRank(days);
       _logger.info('[Ranking] API returned ${books.length} books');
-      // Client-side Level6 filter
-      if (settings.ignoreLevel6) {
-        final beforeFilter = books.length;
-        books = books.where((b) => b.level != 6).toList();
-        _logger.info(
-          '[Ranking] Level6 filter: $beforeFilter -> ${books.length} (filtered ${beforeFilter - books.length})',
-        );
-      }
+      final beforeFilter = books.length;
+      books = filterBooksByContentSettings(
+        books,
+        ignoreJapanese: settings.ignoreJapanese,
+        ignoreAI: settings.ignoreAI,
+        ignoreLevel6: settings.ignoreLevel6,
+      );
+      _logger.info(
+        '[Ranking] Content filter: $beforeFilter -> ${books.length} (filtered ${beforeFilter - books.length})',
+      );
       setState(() {
         _rankBooks = books;
         _loading = false;

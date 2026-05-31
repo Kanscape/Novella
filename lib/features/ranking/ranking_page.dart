@@ -4,6 +4,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/data/models/book.dart';
+import 'package:novella/data/services/book_content_filter.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -30,6 +31,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
   late TabController _tabController;
   final Map<String, List<Book>> _cache = {};
   final Map<String, int> _displayedCount = {};
+  final Set<String> _requestedCacheKeys = {};
   bool _loading = true;
   bool _loadingMore = false;
 
@@ -78,8 +80,16 @@ class _RankingPageState extends ConsumerState<RankingPage>
   String get _currentType => _tabs[_tabController.index].$1;
   int get _currentDays => _tabs[_tabController.index].$3;
 
+  String _cacheKey(String type, AppSettings settings) {
+    return '$type:${settings.ignoreJapanese}:${settings.ignoreAI}:${settings.ignoreLevel6}';
+  }
+
   Future<void> _fetchRanking({bool refresh = false}) async {
-    if (!refresh && _cache.containsKey(_currentType)) {
+    final settings = ref.read(settingsProvider);
+    final currentCacheKey = _cacheKey(_currentType, settings);
+    _requestedCacheKeys.add(currentCacheKey);
+
+    if (!refresh && _cache.containsKey(currentCacheKey)) {
       setState(() => _loading = false);
       return;
     }
@@ -88,13 +98,14 @@ class _RankingPageState extends ConsumerState<RankingPage>
 
     try {
       var books = await _bookService.getRank(_currentDays);
-      // 客户端 Level6 过滤
-      final settings = ref.read(settingsProvider);
-      if (settings.ignoreLevel6) {
-        books = books.where((b) => b.level != 6).toList();
-      }
-      _cache[_currentType] = books;
-      _displayedCount[_currentType] = _pageSize.clamp(0, books.length);
+      books = filterBooksByContentSettings(
+        books,
+        ignoreJapanese: settings.ignoreJapanese,
+        ignoreAI: settings.ignoreAI,
+        ignoreLevel6: settings.ignoreLevel6,
+      );
+      _cache[currentCacheKey] = books;
+      _displayedCount[currentCacheKey] = _pageSize.clamp(0, books.length);
       if (mounted) {
         setState(() => _loading = false);
       }
@@ -110,8 +121,10 @@ class _RankingPageState extends ConsumerState<RankingPage>
   }
 
   void _loadMore() {
-    final allBooks = _cache[_currentType] ?? [];
-    final currentCount = _displayedCount[_currentType] ?? 0;
+    final settings = ref.read(settingsProvider);
+    final currentCacheKey = _cacheKey(_currentType, settings);
+    final allBooks = _cache[currentCacheKey] ?? [];
+    final currentCount = _displayedCount[currentCacheKey] ?? 0;
 
     if (_loadingMore || currentCount >= allBooks.length) return;
 
@@ -122,7 +135,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
       if (mounted) {
         setState(() {
           final newCount = (currentCount + _pageSize).clamp(0, allBooks.length);
-          _displayedCount[_currentType] = newCount;
+          _displayedCount[currentCacheKey] = newCount;
           _loadingMore = false;
         });
       }
@@ -133,10 +146,23 @@ class _RankingPageState extends ConsumerState<RankingPage>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final allBooks = _cache[_currentType] ?? [];
-    final displayCount = _displayedCount[_currentType] ?? 0;
+    final settings = ref.watch(settingsProvider);
+    final currentCacheKey = _cacheKey(_currentType, settings);
+    final hasCachedCurrentRanking = _cache.containsKey(currentCacheKey);
+    final allBooks = _cache[currentCacheKey] ?? [];
+    final displayCount = _displayedCount[currentCacheKey] ?? 0;
     final displayBooks = allBooks.take(displayCount).toList();
     final hasMore = displayCount < allBooks.length;
+
+    if (!_loading &&
+        !hasCachedCurrentRanking &&
+        !_requestedCacheKeys.contains(currentCacheKey)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_loading) {
+          _fetchRanking();
+        }
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(

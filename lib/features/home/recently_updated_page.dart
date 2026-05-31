@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/data/models/book.dart';
+import 'package:novella/data/services/book_content_filter.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -70,10 +71,12 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
           ignoreAI: settings.ignoreAI,
         );
 
-        final validBooks =
-            settings.ignoreLevel6
-                ? result.books.where((b) => b.level != 6).toList()
-                : result.books;
+        final validBooks = filterBooksByContentSettings(
+          result.books,
+          ignoreJapanese: settings.ignoreJapanese,
+          ignoreAI: settings.ignoreAI,
+          ignoreLevel6: settings.ignoreLevel6,
+        );
 
         _allValidBooks.addAll(validBooks);
 
