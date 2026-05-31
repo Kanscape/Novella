@@ -1,8 +1,8 @@
-import 'dart:developer' as developer;
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
+import 'package:logging/logging.dart';
 import 'package:novella/core/network/backend_user_agent.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -36,6 +36,7 @@ class FontCacheInfo {
 /// 转为 Flutter 可加载的 TTF 格式。
 class FontManager {
   static final FontManager _instance = FontManager._internal();
+  static final Logger _logger = Logger('FONT');
   late final Dio _dio;
   final Set<String> _loadedFonts = {};
   final Map<String, Set<int>> _invisibleCodepointsByFont = {};
@@ -67,7 +68,7 @@ class FontManager {
     int cacheLimit = 30,
   }) async {
     if (fontUrl == null || fontUrl.isEmpty) {
-      developer.log('Font URL is null or empty', name: 'FONT');
+      _logger.info('Font URL is null or empty');
       return null;
     }
 
@@ -77,7 +78,7 @@ class FontManager {
       url = 'https://api.lightnovel.life$fontUrl';
     }
 
-    developer.log('Loading font from: $url', name: 'FONT');
+    _logger.info('Loading font from: $url');
 
     try {
       // 1. 根据 URL 哈希生成唯一字体名
@@ -86,7 +87,7 @@ class FontManager {
 
       // 2. 检查是否已加载
       if (_loadedFonts.contains(fontFamily)) {
-        developer.log('Font already loaded: $fontFamily', name: 'FONT');
+        _logger.info('Font already loaded: $fontFamily');
         return fontFamily;
       }
 
@@ -101,10 +102,10 @@ class FontManager {
       if (await ttfFile.exists()) {
         ttfBytes = await ttfFile.readAsBytes();
         if (ttfBytes.length < 100) {
-          developer.log('Cached TTF invalid, re-downloading', name: 'FONT');
+          _logger.info('Cached TTF invalid, re-downloading');
           await ttfFile.delete();
         } else {
-          developer.log('Using cached TTF: $ttfPath', name: 'FONT');
+          _logger.info('Using cached TTF: $ttfPath');
           // 更新修改时间以标记为最近使用
           await ttfFile.setLastModified(DateTime.now());
         }
@@ -113,35 +114,34 @@ class FontManager {
       // 5. 下载并转换（如需）
       if (!await ttfFile.exists()) {
         // 下载 WOFF2 到内存（不缓存文件）
-        developer.log('Downloading WOFF2...', name: 'FONT');
+        _logger.info('Downloading WOFF2...');
         final response = await _dio.get<List<int>>(
           url,
           options: Options(responseType: ResponseType.bytes),
         );
         final woff2Bytes = Uint8List.fromList(response.data!);
-        developer.log('WOFF2 size: ${woff2Bytes.length} bytes', name: 'FONT');
+        _logger.info('WOFF2 size: ${woff2Bytes.length} bytes');
 
         // 使用 Rust FFI 转为 TTF
-        developer.log('Converting WOFF2 to TTF via Rust FFI...', name: 'FONT');
-        developer.log('RustLib initialized: $rustLibInitialized', name: 'FONT');
+        _logger.info('Converting WOFF2 to TTF via Rust FFI...');
+        _logger.info('RustLib initialized: $rustLibInitialized');
 
         // 检查 RustLib 初始化状态
         if (!rustLibInitialized) {
-          developer.log(
+          _logger.severe(
             '*** ERROR: RustLib not initialized! Error: $rustLibInitError',
-            name: 'FONT',
           );
           return null;
         }
 
         ttfBytes = await rust_ffi.convertWoff2ToTtf(woff2Data: woff2Bytes);
-        developer.log('TTF size: ${ttfBytes.length} bytes', name: 'FONT');
+        _logger.info('TTF size: ${ttfBytes.length} bytes');
 
         if (ttfBytes.isNotEmpty) {
           await ttfFile.writeAsBytes(ttfBytes);
-          developer.log('Saved TTF: $ttfPath', name: 'FONT');
+          _logger.info('Saved TTF: $ttfPath');
         } else {
-          developer.log('Conversion returned empty!', name: 'FONT');
+          _logger.warning('Conversion returned empty!');
           return null;
         }
       }
@@ -155,14 +155,8 @@ class FontManager {
 
       _loadedFonts.add(fontFamily);
       _invisibleCodepointsByFont[fontFamily] = invisibleCodepoints;
-      developer.log(
-        'Loaded: $fontFamily (${ttfBytes.length} bytes)',
-        name: 'FONT',
-      );
-      developer.log(
-        'Invisible placeholders: ${invisibleCodepoints.length}',
-        name: 'FONT',
-      );
+      _logger.info('Loaded: $fontFamily (${ttfBytes.length} bytes)');
+      _logger.info('Invisible placeholders: ${invisibleCodepoints.length}');
 
       // 7. 执行缓存限制
       if (cacheEnabled) {
@@ -171,8 +165,7 @@ class FontManager {
 
       return fontFamily;
     } catch (e, stack) {
-      developer.log('Error: $e', name: 'FONT');
-      developer.log('Stack: $stack', name: 'FONT');
+      _logger.severe('Error: $e', e, stack);
       return null;
     }
   }
@@ -196,9 +189,9 @@ class FontManager {
       _loadedFonts.clear();
       _invisibleCodepointsByFont.clear();
 
-      developer.log('Cleared $deletedCount cached files', name: 'FONT');
+      _logger.info('Cleared $deletedCount cached files');
     } catch (e) {
-      developer.log('Error clearing cache: $e', name: 'FONT');
+      _logger.warning('Error clearing cache: $e');
     }
     return deletedCount;
   }
@@ -237,15 +230,12 @@ class FontManager {
         _loadedFonts.remove(baseName);
         _invisibleCodepointsByFont.remove(baseName);
 
-        developer.log('Removed old cache: $baseName', name: 'FONT');
+        _logger.info('Removed old cache: $baseName');
       }
 
-      developer.log(
-        'Enforced cache limit: $limit (removed $toDelete)',
-        name: 'FONT',
-      );
+      _logger.info('Enforced cache limit: $limit (removed $toDelete)');
     } catch (e) {
-      developer.log('Error enforcing cache limit: $e', name: 'FONT');
+      _logger.warning('Error enforcing cache limit: $e');
     }
   }
 
@@ -263,7 +253,7 @@ class FontManager {
         totalSize += await file.length();
       }
     } catch (e) {
-      developer.log('Error getting cache info: $e', name: 'FONT');
+      _logger.warning('Error getting cache info: $e');
     }
 
     return FontCacheInfo(fileCount: fileCount, totalSizeBytes: totalSize);
@@ -288,8 +278,7 @@ class FontManager {
       );
       return codepoints.toSet();
     } catch (e, stack) {
-      developer.log('Failed to inspect invisible codepoints: $e', name: 'FONT');
-      developer.log('Stack: $stack', name: 'FONT');
+      _logger.warning('Failed to inspect invisible codepoints: $e', e, stack);
       return const <int>{};
     }
   }

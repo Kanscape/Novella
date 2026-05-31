@@ -1,4 +1,3 @@
-import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'package:logging/logging.dart';
 import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
@@ -6,6 +5,8 @@ import 'package:signalr_netcore/signalr_client.dart';
 import 'package:signalr_netcore/ihub_protocol.dart';
 
 class NovelHubProtocol implements IHubProtocol {
+  static final Logger _protocolLogger = Logger('PROTOCOL');
+
   @override
   String get name => 'messagepack';
 
@@ -30,7 +31,7 @@ class NovelHubProtocol implements IHubProtocol {
     // SignalR 二进制协议使用 VarInt 长度前缀分帧：
     // [VarInt 长度][MessagePack 负载]...
 
-    developer.log('Received ${bytes.length} bytes total', name: 'PROTOCOL');
+    _protocolLogger.info('Received ${bytes.length} bytes total');
 
     int offset = 0;
     while (offset < bytes.length) {
@@ -58,35 +59,31 @@ class NovelHubProtocol implements IHubProtocol {
       final payloadEnd = payloadStart + length;
 
       if (payloadEnd > bytes.length) {
-        developer.log(
+        _protocolLogger.warning(
           'Incomplete: need $length but have ${bytes.length - payloadStart}',
-          name: 'PROTOCOL',
         );
         break;
       }
 
       final payload = bytes.sublist(payloadStart, payloadEnd);
-      developer.log('Parsing message: length=$length bytes', name: 'PROTOCOL');
+      _protocolLogger.info('Parsing message: length=$length bytes');
 
       try {
         final deserialized = msgpack.deserialize(payload);
-        developer.log(
-          'Deserialized: ${deserialized.runtimeType}',
-          name: 'PROTOCOL',
-        );
+        _protocolLogger.info('Deserialized: ${deserialized.runtimeType}');
 
         if (deserialized is List && deserialized.isNotEmpty) {
           _parseSingleMessage(deserialized, messages);
-          developer.log('Message type: ${deserialized[0]}', name: 'PROTOCOL');
+          _protocolLogger.info('Message type: ${deserialized[0]}');
         }
       } catch (e) {
-        developer.log('Error: $e', name: 'PROTOCOL');
+        _protocolLogger.warning('Error: $e');
       }
 
       offset = payloadEnd;
     }
 
-    developer.log('Parsed ${messages.length} messages', name: 'PROTOCOL');
+    _protocolLogger.info('Parsed ${messages.length} messages');
     return messages;
   }
 
@@ -137,7 +134,7 @@ class NovelHubProtocol implements IHubProtocol {
       case 3: // MessageType.Completion
         // [3, Headers, InvocationId, ResultKind, Result/Error]
         // ResultKind: 1=Error, 2=Void (no result), 3=NonVoid (has result)
-        developer.log('Completion raw: $input', name: 'PROTOCOL');
+        _protocolLogger.info('Completion raw: $input');
 
         // Safely extract fields with null checks
         final invocationId = input.length > 2 ? input[2]?.toString() : null;
@@ -150,22 +147,20 @@ class NovelHubProtocol implements IHubProtocol {
         if (resultKind == 1 && input.length > 4) {
           // Error - index 4 is error message
           error = input[4]?.toString();
-          developer.log('Completion is ERROR: $error', name: 'PROTOCOL');
+          _protocolLogger.info('Completion is ERROR: $error');
         } else if (resultKind == 3 && input.length > 4) {
           // NonVoid - index 4 is result
           result = input[4];
-          developer.log(
+          _protocolLogger.info(
             'Completion has RESULT type: ${result.runtimeType}',
-            name: 'PROTOCOL',
           );
         } else if (resultKind == 2) {
           // Void - no result
-          developer.log('Completion is VOID (no result)', name: 'PROTOCOL');
+          _protocolLogger.info('Completion is VOID (no result)');
         }
 
-        developer.log(
+        _protocolLogger.info(
           'Completion: invocationId=$invocationId, resultKind=$resultKind, hasResult=${result != null}',
-          name: 'PROTOCOL',
         );
 
         messages.add(
@@ -229,7 +224,7 @@ class NovelHubProtocol implements IHubProtocol {
 
       // Debug: show what we're sending
       if (message.target == 'SaveReadPosition') {
-        developer.log('SaveReadPosition args: $args', name: 'PROTOCOL');
+        _protocolLogger.info('SaveReadPosition args: $args');
       }
     } else if (message is CompletionMessage) {
       // [3, Headers, InvocationId, ResultKind, Result]
@@ -260,9 +255,8 @@ class NovelHubProtocol implements IHubProtocol {
     result.setAll(0, lengthBytes);
     result.setAll(lengthBytes.length, serialized);
 
-    developer.log(
+    _protocolLogger.info(
       'writeMessage: type=${payload.isNotEmpty ? payload[0] : "?"}, payload=${serialized.length} bytes, total=${result.length} bytes',
-      name: 'PROTOCOL',
     );
 
     return result;

@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
@@ -290,6 +290,8 @@ class AppSettings {
 
 /// 基于 Riverpod 3.x Notifier API 的设置通知器
 class SettingsNotifier extends Notifier<AppSettings> {
+  final _logger = Logger('Settings');
+
   int _normalizeStartupTabIndex(int? index) {
     final safeIndex = index ?? 0;
     if (safeIndex < 0 || safeIndex > 3) {
@@ -318,9 +320,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       storedIOSDisplayStyle,
     );
 
-    developer.log(
+    _logger.info(
       'Loaded settings: ignoreJapanese=${prefs.getBool('setting_ignoreJapanese')}, ignoreAI=${prefs.getBool('setting_ignoreAI')}',
-      name: 'Settings',
     );
     state = AppSettings(
       isLoaded: true,

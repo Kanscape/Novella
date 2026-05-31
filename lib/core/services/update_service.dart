@@ -3,14 +3,15 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:logging/logging.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:novella/features/settings/settings_provider.dart';
-import 'dart:developer' as developer;
 
 class UpdateService {
   static const String _releasesUrl =
       'https://api.github.com/repos/Kanscape/Novella/releases/latest';
+  static final Logger _logger = Logger('UpdateService');
 
   /// 检查更新
   ///
@@ -27,7 +28,7 @@ class UpdateService {
     // 1. 检查自动更新开关
     if (!manual) {
       if (!settings.autoCheckUpdate) {
-        developer.log('自动更新已关闭，跳过检查', name: 'UpdateService');
+        _logger.info('Auto update is disabled, skipping check');
         return;
       }
     }
@@ -47,13 +48,12 @@ class UpdateService {
       final localVersion = packageInfo.version;
 
       // 3. 获取远程版本
-      developer.log('正在请求 GitHub Release...', name: 'UpdateService');
+      _logger.info('Requesting GitHub release...');
       final response = await http.get(Uri.parse(_releasesUrl));
 
       if (response.statusCode != 200) {
-        developer.log(
-          '获取更新失败: ${response.statusCode} - ${response.body}',
-          name: 'UpdateService',
+        _logger.warning(
+          'Failed to fetch update: ${response.statusCode} - ${response.body}',
         );
         if (manual && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -77,21 +77,18 @@ class UpdateService {
       if (_isVersionLower(localVersion, tagName)) {
         // 检查是否已忽略此版本 (仅自动检查时生效)
         if (!manual && settings.ignoredUpdateVersion == tagName) {
-          developer.log('版本 $tagName 已被忽略', name: 'UpdateService');
+          _logger.info('Version $tagName is ignored');
           return;
         }
 
-        developer.log(
-          '发现新版本: $tagName (本地: $localVersion)',
-          name: 'UpdateService',
-        );
+        _logger.info('New version found: $tagName (local: $localVersion)');
         if (context.mounted) {
           _showUpdateDialog(context, ref, tagName, localVersion, body, htmlUrl);
         }
       } else {
-        developer.log(
-          '当前已是最新或更高版本 (本地: $localVersion, 远程: $tagName)',
-          name: 'UpdateService',
+        _logger.info(
+          'Current version is up to date or newer '
+          '(local: $localVersion, remote: $tagName)',
         );
         if (manual && context.mounted) {
           ScaffoldMessenger.of(
@@ -100,7 +97,7 @@ class UpdateService {
         }
       }
     } catch (e, s) {
-      developer.log('检查更新出错', name: 'UpdateService', error: e, stackTrace: s);
+      _logger.severe('Update check failed', e, s);
       if (manual && context.mounted) {
         ScaffoldMessenger.of(
           context,
@@ -124,7 +121,7 @@ class UpdateService {
       }
       return false; // 相等
     } catch (e) {
-      developer.log('版本号解析失败: $local vs $remote', name: 'UpdateService');
+      _logger.warning('Failed to parse version: $local vs $remote');
       return false; // 解析失败则假设不需要更新
     }
   }

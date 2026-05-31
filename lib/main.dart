@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 import 'dart:io' show File, Platform;
 
 import 'package:flutter/material.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+import 'package:logging/logging.dart';
 import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/core/logging/log_buffer_service.dart';
 import 'package:novella/core/auth/auth_service.dart';
@@ -25,9 +25,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 // 全局导航观察者，用于页面返回时触发刷新
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+final Logger _flutterLogger = Logger('Flutter');
+final Logger _lifecycleLogger = Logger('LIFECYCLE');
 
 /// System UI 调试与签名去重（仅在 debug 下输出）
 class _SystemUiDebug {
+  static final Logger _logger = Logger('SYSTEM_UI');
   static String? _lastSig;
 
   static void logOverlayStyle(
@@ -47,7 +50,7 @@ class _SystemUiDebug {
 
     if (sig == _lastSig) return;
     _lastSig = sig;
-    developer.log(sig, name: 'SYSTEM_UI');
+    _logger.info(sig);
   }
 }
 
@@ -180,11 +183,11 @@ class _DesktopWindowTopInsetState extends State<_DesktopWindowTopInset>
         _topInset = resolvedInset;
       });
     } catch (e, stack) {
-      developer.log(
+      _flutterLogger.warning(
         'Failed to refresh macOS title bar inset: $e',
-        name: 'Flutter',
+        e,
+        stack,
       );
-      developer.log('$stack', name: 'Flutter');
       if (!mounted || _topInset == _macOSTitleBarFallbackInset) return;
       setState(() {
         _topInset = _macOSTitleBarFallbackInset;
@@ -259,6 +262,9 @@ class _DesktopWindowTopInsetState extends State<_DesktopWindowTopInset>
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 初始化日志缓冲服务，尽早捕获启动日志。
+  LogBufferService.init();
+
   // 配置边到边显示（Android 小白条沉浸）
   await AppSystemUi.restoreDefault(Brightness.light);
 
@@ -270,36 +276,31 @@ void main() async {
     return true;
   }());
 
-  // 初始化日志缓冲服务（尽早启动以捕获所有日志）
-  LogBufferService.init();
-
-  developer.log('WidgetsInitialized', name: 'Flutter');
-  developer.log(
+  _flutterLogger.info('WidgetsInitialized');
+  _flutterLogger.info(
     'Platform.isIOS=${Platform.isIOS}, Platform.isMacOS=${Platform.isMacOS}',
-    name: 'Flutter',
   );
 
   try {
     // 初始化 Rust FFI (字体转换)
-    developer.log('Initializing RustLib...', name: 'Flutter');
+    _flutterLogger.info('Initializing RustLib...');
 
     // 手动加载库
     await RustLib.init(externalLibrary: _loadLibrary());
 
     rustLibInitialized = true;
-    developer.log('RustLib Initialized Successfully!', name: 'Flutter');
+    _flutterLogger.info('RustLib Initialized Successfully!');
   } catch (e, stack) {
     rustLibInitialized = false;
     rustLibInitError = e.toString();
-    developer.log('*** FAILED to initialize RustLib: $e', name: 'Flutter');
-    developer.log('Stack trace: $stack', name: 'Flutter');
+    _flutterLogger.severe('*** FAILED to initialize RustLib: $e', e, stack);
   }
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     try {
-      developer.log('Initializing WindowManager...', name: 'Flutter');
+      _flutterLogger.info('Initializing WindowManager...');
       await windowManager.ensureInitialized();
-      developer.log('WindowManager Initialized', name: 'Flutter');
+      _flutterLogger.info('WindowManager Initialized');
 
       final WindowOptions windowOptions = WindowOptions(
         size: const Size(1180, 860),
@@ -313,7 +314,7 @@ void main() async {
       );
 
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
-        developer.log('Window Ready to Show', name: 'Flutter');
+        _flutterLogger.info('Window Ready to Show');
         if (Platform.isMacOS) {
           final titleBarHeight =
               (await windowManager.getTitleBarHeight()).toDouble();
@@ -322,11 +323,14 @@ void main() async {
         }
         await windowManager.show();
         await windowManager.focus();
-        developer.log('Window Should be Visible', name: 'Flutter');
+        _flutterLogger.info('Window Should be Visible');
       });
     } catch (e, stack) {
-      developer.log('Failed to initialize WindowManager: $e', name: 'Flutter');
-      developer.log('$stack', name: 'Flutter');
+      _flutterLogger.warning(
+        'Failed to initialize WindowManager: $e',
+        e,
+        stack,
+      );
     }
   }
 
@@ -385,7 +389,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    developer.log('AppLifecycleState=$state', name: 'LIFECYCLE');
+    _lifecycleLogger.info('AppLifecycleState=$state');
 
     // iOS 上锁屏/后台后，SignalR/WebSocket 常被系统挂起或断开，但连接状态可能不可靠。
     // 策略：退后台主动 stop，回前台预热 refresh_token -> session token，并重建 SignalR。
@@ -393,7 +397,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.detached) {
       unawaited(
         _signalRService.stop().catchError((e) {
-          developer.log('SignalR stop error: $e', name: 'LIFECYCLE');
+          _lifecycleLogger.warning('SignalR stop error: $e');
         }),
       );
       return;
@@ -412,7 +416,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         SecretStorageKeys.refreshToken,
       );
       if (refreshToken == null || refreshToken.isEmpty) {
-        developer.log('No refresh_token, skip prewarm', name: 'LIFECYCLE');
+        _lifecycleLogger.info('No refresh_token, skip prewarm');
         return;
       }
 
@@ -422,18 +426,17 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       // 按需求：检查 expireTime，若已过期或即将过期则阻塞并立刻刷新。
       // 这里使用 JWT exp（若可解析）或本地 TTL 作为近似。
       final expireAt = _authService.sessionTokenExpireTime;
-      developer.log('Token expireAt=$expireAt', name: 'LIFECYCLE');
+      _lifecycleLogger.info('Token expireAt=$expireAt');
 
       final newToken = await _authService.ensureFreshSessionToken();
-      developer.log(
+      _lifecycleLogger.info(
         'Prewarm ensureFreshSessionToken ok=${newToken.isNotEmpty}',
-        name: 'LIFECYCLE',
       );
 
       await _signalRService.init();
-      developer.log('Prewarm SignalR init done', name: 'LIFECYCLE');
+      _lifecycleLogger.info('Prewarm SignalR init done');
     } catch (e) {
-      developer.log('Prewarm failed: $e', name: 'LIFECYCLE');
+      _lifecycleLogger.warning('Prewarm failed: $e');
     } finally {
       _signalRService.endForegroundRecovery();
     }

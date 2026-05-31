@@ -1,9 +1,9 @@
-import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:convert/convert.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -23,6 +23,7 @@ class AppUiFontManager {
   AppUiFontManager._internal();
 
   static final AppUiFontManager _instance = AppUiFontManager._internal();
+  static final Logger _logger = Logger('APP_FONT');
   static const Set<String> _supportedExtensions = <String>{'.ttf', '.otf'};
 
   final Set<String> _loadedFontFamilies = <String>{};
@@ -80,13 +81,13 @@ class AppUiFontManager {
       final fontsDir = await _getFontsDir();
       final fontFile = File(p.join(fontsDir.path, fileName));
       if (!await fontFile.exists()) {
-        developer.log('Saved app font not found: $fileName', name: 'APP_FONT');
+        _logger.info('Saved app font not found: $fileName');
         return null;
       }
 
       final fontBytes = await fontFile.readAsBytes();
       if (fontBytes.isEmpty) {
-        developer.log('Saved app font is empty: $fileName', name: 'APP_FONT');
+        _logger.info('Saved app font is empty: $fileName');
         return null;
       }
 
@@ -97,13 +98,13 @@ class AppUiFontManager {
       await fontLoader.load();
 
       _loadedFontFamilies.add(fontFamily);
-      developer.log('Loaded app font: $fontFamily', name: 'APP_FONT');
+      _logger.info('Loaded app font: $fontFamily');
       return fontFamily;
     } catch (error, stackTrace) {
-      developer.log(
+      _logger.warning(
         'Failed to load app font $fontFamily: $error',
-        name: 'APP_FONT',
-        stackTrace: stackTrace,
+        error,
+        stackTrace,
       );
       return null;
     }
@@ -135,11 +136,7 @@ class AppUiFontManager {
         }
       }
     } catch (error, stackTrace) {
-      developer.log(
-        'Failed to prune app fonts: $error',
-        name: 'APP_FONT',
-        stackTrace: stackTrace,
-      );
+      _logger.warning('Failed to prune app fonts: $error', error, stackTrace);
     }
   }
 
