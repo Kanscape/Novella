@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/system_ui/app_system_ui.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
@@ -128,6 +127,7 @@ class ReaderScrollPage extends ConsumerStatefulWidget {
 class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final _logger = Logger('ReaderPage');
+  final _positionLogger = Logger('POSITION');
   final _chapterService = ChapterService();
   final _bookService = BookService();
   final _fontManager = FontManager();
@@ -1599,10 +1599,7 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     // 销毁前同步保存位置
     if (_chapter != null) {
       final finalXPath = _getTopVisibleXPath();
-      developer.log(
-        'DISPOSE: Saving cached position $finalXPath',
-        name: 'POSITION',
-      );
+      _positionLogger.info('DISPOSE: Saving cached position $finalXPath');
       _progressService.saveLocalPosition(
         bookId: widget.bid,
         chapterId: _chapter!.id,

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 import 'package:logging/logging.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/core/sync/sync_manager.dart';
@@ -56,6 +55,7 @@ class ReadPosition {
 /// 同步服务端并本地缓存
 class ReadingProgressService {
   static final Logger _logger = Logger('ReadingProgressService');
+  static final Logger _positionLogger = Logger('POSITION');
   static final ReadingProgressService _instance =
       ReadingProgressService._internal();
   static final StreamController<ReadPosition> _localPositionChangedController =
@@ -145,7 +145,7 @@ class ReadingProgressService {
       await prefs.setInt('last_read_book_id', bookId);
     }
 
-    developer.log('SAVED: key=$key, data=$data', name: 'POSITION');
+    _positionLogger.info('SAVED: key=$key, data=$data');
 
     // 如果是外部传入的时间戳 (说明是同步写入)，则不触发回传同步
     // 本地写入则触发同步
@@ -208,7 +208,7 @@ class ReadingProgressService {
         '${parts[0]}|${parts[1]}|${parts[2]}|${parts[3]}|$newTitle|$newCover|$newChapterTitle';
 
     await prefs.setString(key, rebuilt);
-    developer.log('BACKFILL: key=$key, data=$rebuilt', name: 'POSITION');
+    _positionLogger.info('BACKFILL: key=$key, data=$rebuilt');
   }
 
   /// 获取本地滚动位置
@@ -217,10 +217,10 @@ class ReadingProgressService {
     final key = 'read_pos_$bookId';
     final data = prefs.getString(key);
 
-    developer.log('LOAD: key=$key, data=$data', name: 'POSITION');
+    _positionLogger.info('LOAD: key=$key, data=$data');
 
     if (data == null) {
-      developer.log('LOAD: no saved position found', name: 'POSITION');
+      _positionLogger.info('LOAD: no saved position found');
       return null;
     }
 
@@ -240,14 +240,13 @@ class ReadingProgressService {
           chapterTitle:
               parts.length >= 7 ? (parts[6].isEmpty ? null : parts[6]) : null,
         );
-        developer.log(
+        _positionLogger.info(
           'LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, xPath=${pos.xPath}, title=${pos.title}, chTitle=${pos.chapterTitle}',
-          name: 'POSITION',
         );
         return pos;
       }
     } catch (e) {
-      developer.log('LOAD ERROR: $e', name: 'POSITION');
+      _positionLogger.warning('LOAD ERROR: $e');
       _logger.warning('Failed to parse local position: $e');
     }
     return null;
@@ -313,9 +312,8 @@ class ReadingProgressService {
     }
 
     if (lastPos != null) {
-      developer.log(
+      _positionLogger.info(
         'Found last read book (via traverse): ${lastPos.bookId} at ${lastTime?.toIso8601String()}',
-        name: 'POSITION',
       );
     }
 
@@ -353,9 +351,8 @@ class ReadingProgressService {
 
     if (latestBookId != null) {
       await prefs.setInt('last_read_book_id', latestBookId);
-      developer.log(
+      _positionLogger.info(
         'REFRESHED: last_read_book_id=$latestBookId (time=${latestTime?.toIso8601String()})',
-        name: 'POSITION',
       );
     }
   }

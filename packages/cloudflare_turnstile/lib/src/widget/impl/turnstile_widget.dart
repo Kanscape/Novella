@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as dev;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -10,6 +9,9 @@ import 'package:cloudflare_turnstile/src/widget/interface.dart' as i;
 import 'package:cloudflare_turnstile/src/widget/turnstile_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:logging/logging.dart';
+
+final Logger _logger = Logger('cloudflare_turnstile');
 
 // NOTE:
 // 旧版 Android System WebView / Chrome 99 等内核上，`flutter_inappwebview` JS Bridge
@@ -821,11 +823,9 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
           if (!_isWidgetReady && !mounted) {
             final contentWidth = await controller.getContentWidth();
             if (contentWidth != null && contentWidth <= 0) {
-              dev.log(
+              _logger.warning(
                 'Widget mode mismatch: Please verify the widget mode in the '
                 'Cloudflare dashboard settings.',
-                name: 'cloudflare_turnstile',
-                level: 800,
               );
             }
           }
@@ -922,13 +922,11 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
         if (!_isWidgetReady && !mounted) {
           final contentWidth = await controller.getContentWidth();
           if (contentWidth != null && contentWidth <= 0) {
-            dev.log(
+            _logger.warning(
               'Widget mode mismatch: The current widget is Invisible, which '
               'may not match the mode set in the Cloudflare Turnstile '
               'dashboard. Please verify the widget mode in the Cloudflare '
               'dashboard settings.',
-              name: 'cloudflare_turnstile',
-              level: 800,
             );
           }
         }

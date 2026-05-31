@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as developer;
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:novella/core/network/api_client.dart';
@@ -38,6 +37,7 @@ class AuthService {
   // 令牌刷新互斥锁
   Future<String?>? _refreshFuture;
   String? _lastSessionRefreshError;
+  String? _lastSessionRefreshLogError;
 
   String? get lastSessionRefreshError => _lastSessionRefreshError;
 
@@ -58,8 +58,12 @@ class AuthService {
     return value;
   }
 
-  String _formatResponseData(Object? data, {int maxLength = 300}) {
-    if (data == null) return '无响应内容';
+  String _formatResponseData(
+    Object? data, {
+    int maxLength = 300,
+    String emptyMessage = '无响应内容',
+  }) {
+    if (data == null) return emptyMessage;
     final redacted = _redactSensitiveResponseData(data);
     String text;
     try {
@@ -80,12 +84,14 @@ class AuthService {
     return null;
   }
 
-  void _setSessionRefreshError(String message) {
+  void _setSessionRefreshError(String message, {String? logMessage}) {
     _lastSessionRefreshError = message;
+    _lastSessionRefreshLogError = logMessage;
   }
 
   void _clearSessionRefreshError() {
     _lastSessionRefreshError = null;
+    _lastSessionRefreshLogError = null;
   }
 
   String _describeRefreshDioException(DioException e) {
@@ -116,6 +122,38 @@ class AuthService {
     }
 
     return parts.join('；');
+  }
+
+  String _describeRefreshDioExceptionForLog(DioException e) {
+    final response = e.response;
+    final statusCode = response?.statusCode;
+    final serverMessage = _extractServerMessageFromData(response?.data);
+    final parts = <String>['Failed to refresh session token'];
+
+    if (statusCode != null) {
+      parts.add('HTTP $statusCode');
+    } else {
+      parts.add('no response from server');
+    }
+
+    if (serverMessage != null && serverMessage.isNotEmpty) {
+      parts.add('server message: $serverMessage');
+    } else if (response?.data != null) {
+      parts.add(
+        'response body: ${_formatResponseData(response?.data, emptyMessage: 'no response body')}',
+      );
+    }
+
+    if (e.type != DioExceptionType.badResponse) {
+      parts.add('error type: ${e.type.name}');
+    }
+
+    final message = e.message;
+    if (message != null && message.isNotEmpty) {
+      parts.add('message: $message');
+    }
+
+    return parts.join('; ');
   }
 
   /// 从 DioException 提取服务端返回的错误文案（对齐 Web getErrMsg）。
@@ -393,7 +431,10 @@ class AuthService {
       SecretStorageKeys.refreshToken,
     );
     if (refreshToken == null || refreshToken.isEmpty) {
-      _setSessionRefreshError('本地没有 RefreshToken');
+      _setSessionRefreshError(
+        '本地没有 RefreshToken',
+        logMessage: 'No refresh token found in local storage',
+      );
       return '';
     }
 
@@ -435,12 +476,9 @@ class AuthService {
     try {
       await _signalRService.stop();
       await _signalRService.init();
-      developer.log(
-        'SignalR re-initialized successfully with new token',
-        name: 'AUTH',
-      );
+      _logger.info('SignalR re-initialized successfully with new token');
     } catch (e) {
-      developer.log('SignalR init error: $e', name: 'AUTH');
+      _logger.warning('SignalR init error: $e');
       // 依然不阻断，如果网络真的差，主页请求时会自动重试
     }
   }
@@ -509,20 +547,26 @@ class AuthService {
           serverMessage != null && serverMessage.isNotEmpty
               ? '刷新会话令牌失败；HTTP ${response.statusCode}；服务端返回：$serverMessage'
               : '刷新会话令牌失败；HTTP ${response.statusCode}；响应内容：${_formatResponseData(response.data)}';
-      _setSessionRefreshError(detail);
-      _logger.warning(detail);
+      final logDetail =
+          serverMessage != null && serverMessage.isNotEmpty
+              ? 'Failed to refresh session token; HTTP ${response.statusCode}; server message: $serverMessage'
+              : 'Failed to refresh session token; HTTP ${response.statusCode}; response body: ${_formatResponseData(response.data, emptyMessage: 'no response body')}';
+      _setSessionRefreshError(detail, logMessage: logDetail);
+      _logger.warning(logDetail);
       completer.complete(null);
       return null;
     } on DioException catch (e) {
       final detail = _describeRefreshDioException(e);
-      _setSessionRefreshError(detail);
-      _logger.severe(detail);
+      final logDetail = _describeRefreshDioExceptionForLog(e);
+      _setSessionRefreshError(detail, logMessage: logDetail);
+      _logger.severe(logDetail);
       completer.complete(null);
       return null;
     } catch (e) {
       final detail = '刷新会话令牌失败；$e';
-      _setSessionRefreshError(detail);
-      _logger.severe(detail);
+      final logDetail = 'Failed to refresh session token; $e';
+      _setSessionRefreshError(detail, logMessage: logDetail);
+      _logger.severe(logDetail);
       completer.complete(null);
       return null;
     } finally {
@@ -538,7 +582,10 @@ class AuthService {
       SecretStorageKeys.refreshToken,
     );
     if (refreshToken == null || refreshToken.isEmpty) {
-      _setSessionRefreshError('本地没有 RefreshToken');
+      _setSessionRefreshError(
+        '本地没有 RefreshToken',
+        logMessage: 'No refresh token found in local storage',
+      );
       return '';
     }
     return await _refreshSessionToken(refreshToken, force: true) ?? '';
@@ -566,7 +613,10 @@ class AuthService {
       SecretStorageKeys.refreshToken,
     );
     if (refreshToken == null || refreshToken.isEmpty) {
-      _setSessionRefreshError('本地没有 RefreshToken');
+      _setSessionRefreshError(
+        '本地没有 RefreshToken',
+        logMessage: 'No refresh token found in local storage',
+      );
       return '';
     }
 
@@ -581,7 +631,10 @@ class AuthService {
     );
 
     if (refreshToken == null || refreshToken.isEmpty) {
-      _setSessionRefreshError('本地没有 RefreshToken');
+      _setSessionRefreshError(
+        '本地没有 RefreshToken',
+        logMessage: 'No refresh token found in local storage',
+      );
       _logger.info('No refresh token found');
       return false;
     }
@@ -592,7 +645,7 @@ class AuthService {
     final newToken = await _refreshSessionToken(refreshToken);
     if (newToken == null) {
       _logger.warning(
-        lastSessionRefreshError ??
+        _lastSessionRefreshLogError ??
             'Failed to refresh session token, token may be invalid',
       );
       return false;
@@ -603,7 +656,7 @@ class AuthService {
     try {
       await _signalRService.stop();
       await _signalRService.init();
-      developer.log('Auto-login token validated & SignalR ready', name: 'AUTH');
+      _logger.info('Auto-login token validated & SignalR ready');
     } catch (e) {
       _logger.warning('SignalR init failed but auto-login proceeds: $e');
     }

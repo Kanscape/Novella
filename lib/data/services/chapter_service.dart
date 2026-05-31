@@ -1,4 +1,3 @@
-import 'dart:developer' as developer;
 import 'package:logging/logging.dart';
 import 'package:novella/core/network/signalr_service.dart';
 
@@ -37,6 +36,7 @@ class ChapterContent {
 
 class ChapterService {
   static final Logger _logger = Logger('ChapterService');
+  static final Logger _chapterLogger = Logger('CHAPTER');
 
   /// 是否启用“零宽空格注入”。
   ///
@@ -68,26 +68,19 @@ class ChapterService {
       );
 
       // 调试：打印原始章节数据
-      developer.log(
-        'Raw result keys: ${result.keys.toList()}',
-        name: 'CHAPTER',
-      );
+      _chapterLogger.info('Raw result keys: ${result.keys.toList()}');
       if (result['Chapter'] != null) {
         final chapterJson = result['Chapter'];
-        developer.log(
-          'Chapter keys: ${chapterJson.keys.toList()}',
-          name: 'CHAPTER',
-        );
-        developer.log('Font value: ${chapterJson['Font']}', name: 'CHAPTER');
+        _chapterLogger.info('Chapter keys: ${chapterJson.keys.toList()}');
+        _chapterLogger.info('Font value: ${chapterJson['Font']}');
 
         // 提取阅读位置
         String? position;
         final readPos = result['ReadPosition'];
         if (readPos != null && readPos is Map) {
           position = readPos['Position'] as String?;
-          developer.log(
+          _chapterLogger.info(
             'ReadPosition: ChapterId=${readPos['ChapterId']}, Position=$position',
-            name: 'CHAPTER',
           );
         }
 

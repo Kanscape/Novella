@@ -1,10 +1,12 @@
-import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
+import 'package:logging/logging.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/network/backend_user_agent.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
+  static final Logger _authLogger = Logger('AUTH');
+  static final Logger _dioLogger = Logger('DIO');
   factory ApiClient() => _instance;
 
   late final Dio _dio;
@@ -36,9 +38,8 @@ class ApiClient {
             '/api/user/refresh_token',
           );
           if (e.response?.statusCode == 401 && !isRefreshTokenRequest) {
-            developer.log(
+            _authLogger.info(
               'API returned 401, attempting to refresh token...',
-              name: 'AUTH',
             );
             final success = await AuthService().tryAutoLogin();
             if (success) {
@@ -69,7 +70,7 @@ class ApiClient {
         requestBody: true,
         responseBody: true,
         error: true,
-        logPrint: (log) => developer.log(log.toString(), name: 'DIO'),
+        logPrint: (log) => _dioLogger.info(log.toString()),
       ),
     );
 

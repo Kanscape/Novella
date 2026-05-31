@@ -9,11 +9,11 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as developer;
 import 'dart:io' as io;
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
+import 'package:logging/logging.dart';
 import 'package:novella/core/network/backend_user_agent.dart';
 import 'package:novella/core/storage/secret_storage_service.dart';
 // gzip 数据为 JSON 格式，无需 msgpack
@@ -80,6 +80,7 @@ class _SignalREventRegistration {
 class SignalRService {
   // 单例
   static final SignalRService _instance = SignalRService._internal();
+  static final Logger _logger = Logger('SIGNALR');
   factory SignalRService() => _instance;
   SignalRService._internal() {
     io.WebSocket.userAgent = null;
@@ -131,7 +132,7 @@ class SignalRService {
     if (_foregroundRecoveryGate == null ||
         _foregroundRecoveryGate!.isCompleted) {
       _foregroundRecoveryGate = Completer<void>();
-      developer.log('Foreground recovery gate BEGIN', name: 'SIGNALR');
+      _logger.info('Foreground recovery gate BEGIN');
     }
   }
 
@@ -140,14 +141,14 @@ class SignalRService {
     final gate = _foregroundRecoveryGate;
     if (gate != null && !gate.isCompleted) {
       gate.complete();
-      developer.log('Foreground recovery gate END', name: 'SIGNALR');
+      _logger.info('Foreground recovery gate END');
     }
   }
 
   Future<void> _waitForForegroundRecovery() async {
     final gate = _foregroundRecoveryGate;
     if (gate != null && !gate.isCompleted) {
-      developer.log('Waiting for foreground recovery gate...', name: 'SIGNALR');
+      _logger.info('Waiting for foreground recovery gate...');
       await gate.future;
     }
   }
@@ -164,7 +165,7 @@ class SignalRService {
     _hubConnection = null;
     _isStarting = false;
     _connectionCompleter = null;
-    developer.log('Connection stopped', name: 'SIGNALR');
+    _logger.info('Connection stopped');
   }
 
   /// 获取有效会话令牌
@@ -181,9 +182,8 @@ class SignalRService {
       // provider 返回空：尝试从本地读取旧 session token 兜底
       final persisted = await _secretStorage.read(SecretStorageKeys.authToken);
       if (persisted != null && persisted.isNotEmpty) {
-        developer.log(
+        _logger.info(
           'tokenProvider returned empty, falling back to persisted auth_token',
-          name: 'SIGNALR',
         );
         return persisted;
       }
@@ -202,13 +202,12 @@ class SignalRService {
     );
 
     if (refreshToken == null || refreshToken.isEmpty) {
-      developer.log('No refresh token available', name: 'SIGNALR');
+      _logger.info('No refresh token available');
       return '';
     }
 
-    developer.log(
+    _logger.info(
       'Refreshing session token (legacy path)... forceRefresh=$forceRefresh',
-      name: 'SIGNALR',
     );
 
     // iOS resumed 后网络可能尚未完全恢复：做一次短重试，避免返回空 token 导致服务端直接 NoToken
@@ -227,9 +226,8 @@ class SignalRService {
           }
         }
       } catch (e) {
-        developer.log(
+        _logger.warning(
           'Failed to refresh token (attempt ${attempt + 1}/2): $e',
-          name: 'SIGNALR',
         );
         if (attempt == 0) {
           await Future.delayed(const Duration(milliseconds: 800));
@@ -240,9 +238,8 @@ class SignalRService {
     // 最后兜底：尝试使用已持久化的 auth_token（可能已过期，但比空 token 更容易触发服务端走 unauthorized 分支）
     final persisted = await _secretStorage.read(SecretStorageKeys.authToken);
     if (persisted != null && persisted.isNotEmpty) {
-      developer.log(
+      _logger.info(
         'Refresh failed, falling back to persisted auth_token (may be expired)',
-        name: 'SIGNALR',
       );
       return persisted;
     }
@@ -263,16 +260,13 @@ class SignalRService {
   }
 
   Future<void> _recoverFromAuthError() async {
-    developer.log('Attempting auth recovery...', name: 'SIGNALR');
+    _logger.info('Attempting auth recovery...');
     // 1) 强制刷新 token（如果注入了强刷提供者）
     try {
       final forced = await _getValidToken(forceRefresh: true);
-      developer.log(
-        'Forced token ready: ${forced.isNotEmpty}',
-        name: 'SIGNALR',
-      );
+      _logger.info('Forced token ready: ${forced.isNotEmpty}');
     } catch (e) {
-      developer.log('Force refresh token failed: $e', name: 'SIGNALR');
+      _logger.warning('Force refresh token failed: $e');
     }
 
     // 2) 重建连接
@@ -283,20 +277,17 @@ class SignalRService {
   }
 
   Future<void> init() async {
-    developer.log(
-      'init() - current state: ${_hubConnection?.state}',
-      name: 'SIGNALR',
-    );
+    _logger.info('init() - current state: ${_hubConnection?.state}');
 
     // 若已连接直接返回
     if (_hubConnection?.state == HubConnectionState.Connected) {
-      developer.log('Already connected', name: 'SIGNALR');
+      _logger.info('Already connected');
       return;
     }
 
     // 若正在启动，等待现有尝试
     if (_isStarting && _connectionCompleter != null) {
-      developer.log('Already connecting, waiting...', name: 'SIGNALR');
+      _logger.info('Already connecting, waiting...');
       return _connectionCompleter!.future;
     }
 
@@ -312,11 +303,11 @@ class SignalRService {
     }
 
     final hubUrl = '$_baseUrl/hub/api';
-    developer.log('Connecting to: $hubUrl', name: 'SIGNALR');
+    _logger.info('Connecting to: $hubUrl');
 
     final token = await _getValidToken();
     final headers = await BackendUserAgent.signalRHeaders();
-    developer.log('Token ready: ${token.isNotEmpty}', name: 'SIGNALR');
+    _logger.info('Token ready: ${token.isNotEmpty}');
 
     _hubConnection =
         HubConnectionBuilder()
@@ -339,24 +330,24 @@ class SignalRService {
     _hubConnection?.serverTimeoutInMilliseconds = 30000;
 
     _hubConnection?.onclose(({Exception? error}) {
-      developer.log('Closed: $error', name: 'SIGNALR');
+      _logger.info('Closed: $error');
       _isStarting = false;
     });
 
     _hubConnection?.onreconnecting(({Exception? error}) {
-      developer.log('Reconnecting: $error', name: 'SIGNALR');
+      _logger.info('Reconnecting: $error');
     });
 
     _hubConnection?.onreconnected(({String? connectionId}) {
-      developer.log('Reconnected: $connectionId', name: 'SIGNALR');
+      _logger.info('Reconnected: $connectionId');
     });
 
     try {
       await _hubConnection?.start();
-      developer.log('Connected successfully', name: 'SIGNALR');
+      _logger.info('Connected successfully');
       _connectionCompleter?.complete();
     } catch (e) {
-      developer.log('Failed to connect: $e', name: 'SIGNALR');
+      _logger.warning('Failed to connect: $e');
       _connectionCompleter?.completeError(e);
       _isStarting = false;
       rethrow;
@@ -445,10 +436,7 @@ class SignalRService {
     // 若 app 刚从后台回来且正在强制刷新 token，则阻塞用户触发的网络操作
     await _waitForForegroundRecovery();
 
-    developer.log(
-      'invoke($methodName) - state: ${_hubConnection?.state}',
-      name: 'SIGNALR',
-    );
+    _logger.info('invoke($methodName) - state: ${_hubConnection?.state}');
 
     // 确保连接就绪（包含 _hubConnection==null 的场景）
     await ensureConnected();
@@ -456,7 +444,7 @@ class SignalRService {
     // 若正在连接/重连，等待最多 15 秒
     if (_hubConnection?.state == HubConnectionState.Connecting ||
         _hubConnection?.state == HubConnectionState.Reconnecting) {
-      developer.log('Waiting for connection...', name: 'SIGNALR');
+      _logger.info('Waiting for connection...');
       for (int i = 0; i < 30; i++) {
         await Future.delayed(const Duration(milliseconds: 500));
         if (_hubConnection?.state == HubConnectionState.Connected) {
@@ -467,12 +455,12 @@ class SignalRService {
 
     // 若断开连接，尝试重启一次
     if (_hubConnection?.state == HubConnectionState.Disconnected) {
-      developer.log('Disconnected, attempting restart...', name: 'SIGNALR');
+      _logger.info('Disconnected, attempting restart...');
       try {
         await _hubConnection?.start();
-        developer.log('Restart successful', name: 'SIGNALR');
+        _logger.info('Restart successful');
       } catch (e) {
-        developer.log('Restart failed: $e', name: 'SIGNALR');
+        _logger.warning('Restart failed: $e');
         throw Exception('SignalR connection failed: $e');
       }
     }
@@ -485,16 +473,15 @@ class SignalRService {
     }
 
     try {
-      developer.log('Invoking: $methodName', name: 'SIGNALR');
+      _logger.info('Invoking: $methodName');
       final result = await _hubConnection!.invoke(methodName, args: args);
       return _processResponse<T>(result);
     } catch (e) {
-      developer.log('Invoke error: $e', name: 'SIGNALR');
+      _logger.warning('Invoke error: $e');
 
       if (!retrying && _isAuthError(e)) {
-        developer.log(
+        _logger.info(
           'Auth-related error detected, recovering & retrying once...',
-          name: 'SIGNALR',
         );
         await _recoverFromAuthError();
         return await _invokeWithAutoRecover<T>(
@@ -511,17 +498,11 @@ class SignalRService {
   T _processResponse<T>(dynamic result) {
     dynamic processedResult = result;
 
-    developer.log(
-      '_processResponse input type: ${result.runtimeType}',
-      name: 'SIGNALR',
-    );
+    _logger.info('_processResponse input type: ${result.runtimeType}');
 
     // 处理空结果（服务器错误或调用失败）
     if (result == null) {
-      developer.log(
-        'Result is null, returning empty container for type $T',
-        name: 'SIGNALR',
-      );
+      _logger.info('Result is null, returning empty container for type $T');
       if (T == Map || T.toString().contains('Map')) {
         return <dynamic, dynamic>{} as T;
       } else if (T == List || T.toString().contains('List')) {
@@ -536,9 +517,8 @@ class SignalRService {
       final status = result['Status'];
       var responseData = result['Response'];
 
-      developer.log(
+      _logger.info(
         'Success=$success, ResponseType=${responseData.runtimeType}',
-        name: 'SIGNALR',
       );
 
       if (!success) {
@@ -547,10 +527,7 @@ class SignalRService {
 
       if (responseData == null) {
         // 响应为空，根据类型返回空容器
-        developer.log(
-          'Response is null, returning empty container',
-          name: 'SIGNALR',
-        );
+        _logger.info('Response is null, returning empty container');
         if (T == Map || T.toString().contains('Map')) {
           return <dynamic, dynamic>{} as T;
         } else if (T == List || T.toString().contains('List')) {
@@ -568,25 +545,19 @@ class SignalRService {
                 ? result['Response']
                 : List<int>.from(result['Response']);
 
-        developer.log('Decompressing: ${bytes.length} bytes', name: 'SIGNALR');
+        _logger.info('Decompressing: ${bytes.length} bytes');
         final decodedBytes = GZipDecoder().decodeBytes(bytes);
         // 参考 Web 实现：解压 gzip
         // gzip 解压后为 JSON 数据
         final decodedData = jsonDecode(utf8.decode(decodedBytes));
-        developer.log(
-          'Decompressed type: ${decodedData.runtimeType}',
-          name: 'SIGNALR',
-        );
+        _logger.info('Decompressed type: ${decodedData.runtimeType}');
         processedResult = decodedData;
       } else {
         processedResult = responseData;
       }
     }
 
-    developer.log(
-      'Returning type: ${processedResult.runtimeType} as $T',
-      name: 'SIGNALR',
-    );
+    _logger.info('Returning type: ${processedResult.runtimeType} as $T');
     return processedResult as T;
   }
 }
