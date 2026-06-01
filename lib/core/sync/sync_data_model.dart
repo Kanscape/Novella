@@ -130,7 +130,10 @@ class SyncModule {
   /// - 其他：整体取最新
   SyncModule mergeWith(SyncModule remote, {String? moduleName}) {
     // 需要按条目合并的模块
-    final entryMergeModules = {SyncModuleNames.bookmarks};
+    final entryMergeModules = {
+      SyncModuleNames.bookmarks,
+      SyncModuleNames.readingProgress,
+    };
 
     // 阅读时长特殊处理：取每日最大值
     if (moduleName == SyncModuleNames.readingTime) {
@@ -213,6 +216,7 @@ class SyncModule {
 /// 模块名称常量
 class SyncModuleNames {
   static const String bookmarks = 'bookmarks';
+  static const String readingProgress = 'readingProgress';
   static const String readingTime = 'readingTime';
   static const String settings = 'settings';
   static const String auth = 'auth';
