@@ -28,4 +28,22 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getInt('last_read_book_id'), 2);
   });
+
+  test('serializes synced updatedAt as UTC', () {
+    final localUpdatedAt = DateTime(2026, 1, 1, 8, 30);
+    final position = ReadPosition(
+      bookId: 1,
+      chapterId: 10,
+      sortNum: 1,
+      xPath: 'book-1',
+      updatedAt: localUpdatedAt,
+    );
+
+    final json = position.toSyncJson();
+    final syncedUpdatedAt = json['updatedAt'] as String?;
+
+    expect(syncedUpdatedAt, isNotNull);
+    expect(syncedUpdatedAt!.endsWith('Z'), isTrue);
+    expect(DateTime.parse(syncedUpdatedAt), localUpdatedAt.toUtc());
+  });
 }

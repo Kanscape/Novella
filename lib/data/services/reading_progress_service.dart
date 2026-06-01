@@ -37,6 +37,20 @@ class ReadPosition {
     'updatedAt': updatedAt?.toIso8601String(),
   };
 
+  Map<String, dynamic> toSyncJson({DateTime? fallbackUpdatedAt}) {
+    final syncUpdatedAt = updatedAt ?? fallbackUpdatedAt;
+    return {
+      'bookId': bookId,
+      'chapterId': chapterId,
+      'sortNum': sortNum,
+      'xPath': xPath,
+      'title': title,
+      'cover': cover,
+      'chapterTitle': chapterTitle,
+      'updatedAt': syncUpdatedAt?.toUtc().toIso8601String(),
+    };
+  }
+
   factory ReadPosition.fromJson(Map<String, dynamic> json) {
     return ReadPosition(
       bookId: json['bookId'] as int? ?? 0,

@@ -639,9 +639,10 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
       for (final entry in readingPositions.entries) {
         final position = entry.value;
-        final updatedAt = position.updatedAt ?? _positionSyncEpoch;
-        final positionData = Map<String, dynamic>.from(position.toJson());
-        positionData['updatedAt'] = updatedAt.toIso8601String();
+        final updatedAt = (position.updatedAt ?? _positionSyncEpoch).toUtc();
+        final positionData = position.toSyncJson(
+          fallbackUpdatedAt: _positionSyncEpoch,
+        );
         readingProgressData[entry.key.toString()] = positionData;
 
         if (updatedAt.isAfter(latestUpdatedAt)) {
