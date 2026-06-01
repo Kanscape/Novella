@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsSyncCodec {
@@ -8,8 +10,6 @@ class SettingsSyncCodec {
 
   static const Set<String> excludedKeys = {
     'setting_iosDisplayStyle',
-    'setting_useSystemColor',
-    'setting_dynamicSchemeVariant',
     'setting_appFontFamily',
     'setting_appFontFileName',
     'setting_appFontLabel',
@@ -68,6 +68,8 @@ class SettingsSyncCodec {
     ],
     'setting_coverColorExtraction': false,
     'setting_seedColorValue': 0xFFB71C1C,
+    'setting_useSystemColor': false,
+    'setting_dynamicSchemeVariant': 0,
     'setting_useCustomTheme': false,
     'setting_readerUseThemeBackground': true,
     'setting_readerBackgroundColor': 0xFFFFFFFF,
@@ -166,10 +168,21 @@ class SettingsSyncCodec {
       if (excludedKeys.contains(entry.key)) {
         continue;
       }
-      data[entry.key] = _readValue(prefs, entry.key, entry.value);
+      data[entry.key] = _readValue(
+        prefs,
+        entry.key,
+        _defaultValueForKey(entry.key, entry.value),
+      );
     }
 
     return data;
+  }
+
+  static Object _defaultValueForKey(String key, Object defaultValue) {
+    if (key == 'setting_useSystemColor') {
+      return Platform.isAndroid || Platform.isWindows;
+    }
+    return defaultValue;
   }
 
   static Future<bool> applyRemoteSettingsIfEnabled(

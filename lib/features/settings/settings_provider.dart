@@ -323,7 +323,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _logger.info(
       'Loaded settings: ignoreJapanese=${prefs.getBool('setting_ignoreJapanese')}, ignoreAI=${prefs.getBool('setting_ignoreAI')}',
     );
-    state = AppSettings(
+    final previousState = state;
+    final loadedSettings = AppSettings(
       isLoaded: true,
       fontSize: prefs.getDouble('setting_fontSize') ?? 18.0,
       readerFirstLineIndent:
@@ -398,6 +399,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       ignoredUpdateVersion:
           prefs.getString('setting_ignoredUpdateVersion') ?? '',
     );
+    state = loadedSettings;
 
     if (storedIOSDisplayStyle != normalizedIOSDisplayStyle) {
       await prefs.setString(
@@ -410,10 +412,30 @@ class SettingsNotifier extends Notifier<AppSettings> {
     if (Platform.isIOS) {
       PlatformInfo.styleOverride = state.iosDisplayStyle;
     }
+
+    if (previousState.isLoaded &&
+        _themeCacheInputsChanged(previousState, loadedSettings)) {
+      _clearThemeSensitiveCaches();
+    }
   }
 
   Future<void> reload() async {
     await _loadSettings();
+  }
+
+  bool _themeCacheInputsChanged(AppSettings previous, AppSettings next) {
+    return previous.theme != next.theme ||
+        previous.oledBlack != next.oledBlack ||
+        previous.coverColorExtraction != next.coverColorExtraction ||
+        previous.seedColorValue != next.seedColorValue ||
+        previous.useSystemColor != next.useSystemColor ||
+        previous.dynamicSchemeVariant != next.dynamicSchemeVariant ||
+        previous.useCustomTheme != next.useCustomTheme;
+  }
+
+  void _clearThemeSensitiveCaches() {
+    BookDetailPageState.clearColorCache();
+    BookInfoCacheService().clear();
   }
 
   Future<void> _save() async {

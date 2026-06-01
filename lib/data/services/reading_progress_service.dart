@@ -60,6 +60,10 @@ class ReadingProgressService {
       ReadingProgressService._internal();
   static final StreamController<ReadPosition> _localPositionChangedController =
       StreamController<ReadPosition>.broadcast();
+  static final DateTime _syncEpoch = DateTime.fromMillisecondsSinceEpoch(
+    0,
+    isUtc: true,
+  );
   final SignalRService _signalRService = SignalRService();
 
   factory ReadingProgressService() => _instance;
@@ -224,137 +228,210 @@ class ReadingProgressService {
       return null;
     }
 
-    try {
-      final parts = data.split('|');
-      if (parts.length >= 3) {
-        final pos = ReadPosition(
-          bookId: bookId,
-          chapterId: int.parse(parts[0]),
-          sortNum: int.parse(parts[1]),
-          xPath: parts[2],
-          updatedAt: parts.length >= 4 ? DateTime.tryParse(parts[3]) : null,
-          title:
-              parts.length >= 5 ? (parts[4].isEmpty ? null : parts[4]) : null,
-          cover:
-              parts.length >= 6 ? (parts[5].isEmpty ? null : parts[5]) : null,
-          chapterTitle:
-              parts.length >= 7 ? (parts[6].isEmpty ? null : parts[6]) : null,
-        );
-        _positionLogger.info(
-          'LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, xPath=${pos.xPath}, title=${pos.title}, chTitle=${pos.chapterTitle}',
-        );
-        return pos;
-      }
-    } catch (e) {
-      _positionLogger.warning('LOAD ERROR: $e');
-      _logger.warning('Failed to parse local position: $e');
+    final pos = _parseStoredPosition(bookId, data);
+    if (pos != null) {
+      _positionLogger.info(
+        'LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, xPath=${pos.xPath}, title=${pos.title}, chTitle=${pos.chapterTitle}',
+      );
+      return pos;
     }
     return null;
+  }
+
+  Future<Map<int, ReadPosition>> getAllLocalPositions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final positions = <int, ReadPosition>{};
+
+    for (final key in prefs.getKeys().where((k) => k.startsWith('read_pos_'))) {
+      final bookId = int.tryParse(key.replaceFirst('read_pos_', ''));
+      if (bookId == null) continue;
+
+      final data = prefs.getString(key);
+      if (data == null) continue;
+
+      final position = _parseStoredPosition(bookId, data);
+      if (position != null) {
+        positions[bookId] = position;
+      }
+    }
+
+    return positions;
+  }
+
+  Future<bool> applySyncedPositions(Map<String, dynamic> data) async {
+    var changed = false;
+
+    for (final entry in data.entries) {
+      final remotePosition = _positionFromSyncEntry(entry.key, entry.value);
+      if (remotePosition == null) continue;
+
+      final localPosition = await getLocalPosition(remotePosition.bookId);
+      if (!_shouldApplySyncedPosition(remotePosition, localPosition)) {
+        continue;
+      }
+
+      await saveLocalPosition(
+        bookId: remotePosition.bookId,
+        chapterId: remotePosition.chapterId,
+        sortNum: remotePosition.sortNum,
+        xPath: remotePosition.xPath,
+        title: remotePosition.title,
+        cover: remotePosition.cover,
+        chapterTitle: remotePosition.chapterTitle,
+        updatedAt: _effectiveUpdatedAt(remotePosition),
+        skipIndexUpdate: true,
+      );
+      changed = true;
+    }
+
+    if (changed) {
+      await refreshLastReadIndex();
+      final latest = await getLastReadBook();
+      if (latest != null) {
+        _localPositionChangedController.add(latest);
+      }
+    }
+
+    return changed;
   }
 
   /// 获取最后一次阅读的书籍信息（基于本地更新时间）
   Future<ReadPosition?> getLastReadBook() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // 1. 优先尝试极速索引 (O(1))
+    ReadPosition? indexedPosition;
     final lastReadId = prefs.getInt('last_read_book_id');
     if (lastReadId != null) {
-      final pos = await getLocalPosition(lastReadId);
-      if (pos != null) return pos;
+      indexedPosition = await getLocalPosition(lastReadId);
     }
 
-    // 2. 回退到遍历模式 (仅针对老旧数据或异常情况)
-    final keys = prefs.getKeys().where((k) => k.startsWith('read_pos_'));
+    final latestPosition = _latestReadPositionFromPrefs(prefs);
+    if (latestPosition == null) {
+      return indexedPosition;
+    }
 
-    ReadPosition? lastPos;
-    DateTime? lastTime;
-
-    for (final key in keys) {
-      final data = prefs.getString(key);
-      if (data == null) continue;
-
-      try {
-        final parts = data.split('|');
-        if (parts.length >= 4) {
-          // chapterId|sortNum|xPath|updatedAt
-          final updatedAt = DateTime.parse(parts[3]);
-
-          if (lastTime == null || updatedAt.isAfter(lastTime)) {
-            lastTime = updatedAt;
-            // 键格式：read_pos_{bookId}
-            final bookId = int.tryParse(key.replaceFirst('read_pos_', ''));
-            if (bookId != null) {
-              lastPos = ReadPosition(
-                bookId: bookId,
-                chapterId: int.parse(parts[0]),
-                sortNum: int.parse(parts[1]),
-                xPath: parts[2],
-                updatedAt: updatedAt,
-                title:
-                    parts.length >= 5
-                        ? (parts[4].isEmpty ? null : parts[4])
-                        : null,
-                cover:
-                    parts.length >= 6
-                        ? (parts[5].isEmpty ? null : parts[5])
-                        : null,
-                chapterTitle:
-                    parts.length >= 7
-                        ? (parts[6].isEmpty ? null : parts[6])
-                        : null,
-              );
-            }
-          }
-        }
-      } catch (e) {
-        _logger.warning('Failed to parse read pos for key $key: $e');
+    if (indexedPosition != null) {
+      final indexedTime = _effectiveUpdatedAt(indexedPosition);
+      final latestTime = _effectiveUpdatedAt(latestPosition);
+      if (latestPosition.bookId == indexedPosition.bookId ||
+          !latestTime.isAfter(indexedTime)) {
+        return indexedPosition;
       }
     }
 
-    if (lastPos != null) {
-      _positionLogger.info(
-        'Found last read book (via traverse): ${lastPos.bookId} at ${lastTime?.toIso8601String()}',
-      );
-    }
-
-    return lastPos;
+    await prefs.setInt('last_read_book_id', latestPosition.bookId);
+    _positionLogger.info(
+      'REFRESHED: last_read_book_id=${latestPosition.bookId} '
+      '(time=${latestPosition.updatedAt?.toIso8601String()})',
+    );
+    return latestPosition;
   }
 
   /// 刷新最后一次阅读的书籍索引
   /// 遍历所有记录，根据时间戳找到真正最后阅读的书籍并更新索引
   Future<void> refreshLastReadIndex() async {
     final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys().where((k) => k.startsWith('read_pos_'));
+    final latestPosition = _latestReadPositionFromPrefs(prefs);
 
-    int? latestBookId;
-    DateTime? latestTime;
+    if (latestPosition != null) {
+      await prefs.setInt('last_read_book_id', latestPosition.bookId);
+      _positionLogger.info(
+        'REFRESHED: last_read_book_id=${latestPosition.bookId} '
+        '(time=${latestPosition.updatedAt?.toIso8601String()})',
+      );
+    }
+  }
 
-    for (final key in keys) {
+  ReadPosition? _parseStoredPosition(int bookId, String data) {
+    try {
+      final parts = data.split('|');
+      if (parts.length < 3) return null;
+
+      return ReadPosition(
+        bookId: bookId,
+        chapterId: int.parse(parts[0]),
+        sortNum: int.parse(parts[1]),
+        xPath: parts[2],
+        updatedAt: parts.length >= 4 ? DateTime.tryParse(parts[3]) : null,
+        title: parts.length >= 5 ? (parts[4].isEmpty ? null : parts[4]) : null,
+        cover: parts.length >= 6 ? (parts[5].isEmpty ? null : parts[5]) : null,
+        chapterTitle:
+            parts.length >= 7 ? (parts[6].isEmpty ? null : parts[6]) : null,
+      );
+    } catch (e) {
+      _positionLogger.warning('LOAD ERROR: $e');
+      _logger.warning('Failed to parse local position: $e');
+      return null;
+    }
+  }
+
+  ReadPosition? _latestReadPositionFromPrefs(SharedPreferences prefs) {
+    ReadPosition? latestPosition;
+
+    for (final key in prefs.getKeys().where((k) => k.startsWith('read_pos_'))) {
+      final bookId = int.tryParse(key.replaceFirst('read_pos_', ''));
       final data = prefs.getString(key);
-      if (data == null) continue;
+      if (bookId == null || data == null) continue;
 
-      try {
-        final parts = data.split('|');
-        if (parts.length >= 4) {
-          final updatedAt = DateTime.tryParse(parts[3]);
-          if (updatedAt != null) {
-            if (latestTime == null || updatedAt.isAfter(latestTime)) {
-              latestTime = updatedAt;
-              latestBookId = int.tryParse(key.replaceFirst('read_pos_', ''));
-            }
-          }
-        }
-      } catch (e) {
-        _logger.warning('Error parsing key $key during index refresh: $e');
+      final position = _parseStoredPosition(bookId, data);
+      if (position == null) continue;
+
+      if (latestPosition == null ||
+          _effectiveUpdatedAt(
+            position,
+          ).isAfter(_effectiveUpdatedAt(latestPosition))) {
+        latestPosition = position;
       }
     }
 
-    if (latestBookId != null) {
-      await prefs.setInt('last_read_book_id', latestBookId);
+    if (latestPosition != null) {
       _positionLogger.info(
-        'REFRESHED: last_read_book_id=$latestBookId (time=${latestTime?.toIso8601String()})',
+        'Found last read book (via traverse): ${latestPosition.bookId} '
+        'at ${latestPosition.updatedAt?.toIso8601String()}',
       );
     }
+
+    return latestPosition;
+  }
+
+  ReadPosition? _positionFromSyncEntry(String key, Object? value) {
+    final fallbackBookId = int.tryParse(key);
+    if (fallbackBookId == null || value is! Map) {
+      return null;
+    }
+
+    final json = Map<String, dynamic>.from(value);
+    final position = ReadPosition.fromJson(json);
+    final bookId = position.bookId == 0 ? fallbackBookId : position.bookId;
+
+    if (position.chapterId <= 0 || position.sortNum <= 0) {
+      return null;
+    }
+
+    return ReadPosition(
+      bookId: bookId,
+      chapterId: position.chapterId,
+      sortNum: position.sortNum,
+      xPath: position.xPath,
+      title: position.title,
+      cover: position.cover,
+      chapterTitle: position.chapterTitle,
+      updatedAt: _effectiveUpdatedAt(position),
+    );
+  }
+
+  bool _shouldApplySyncedPosition(
+    ReadPosition remotePosition,
+    ReadPosition? localPosition,
+  ) {
+    if (localPosition == null) return true;
+    return _effectiveUpdatedAt(
+      remotePosition,
+    ).isAfter(_effectiveUpdatedAt(localPosition));
+  }
+
+  DateTime _effectiveUpdatedAt(ReadPosition position) {
+    return position.updatedAt ?? _syncEpoch;
   }
 
   /// 私有：本地保存 XPath 位置

@@ -10,6 +10,7 @@ import 'package:novella/core/sync/settings_sync_codec.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_data_model.dart';
 import 'package:novella/data/services/book_mark_service.dart';
+import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,7 +35,11 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
   final GistSyncService _gistService = GistSyncService();
   final BookMarkService _bookMarkService = BookMarkService();
+  final ReadingProgressService _readingProgressService =
+      ReadingProgressService();
   final SecretStorageService _secretStorage = SecretStorageService();
+  static final DateTime _positionSyncEpoch =
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
 
   static const _keyLastSyncTime = 'last_sync_time';
   static const _keyLastSyncId = 'last_sync_id';
@@ -626,6 +631,31 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       );
     }
 
+    final readingPositions =
+        await _readingProgressService.getAllLocalPositions();
+    if (readingPositions.isNotEmpty) {
+      final readingProgressData = <String, dynamic>{};
+      var latestUpdatedAt = _positionSyncEpoch;
+
+      for (final entry in readingPositions.entries) {
+        final position = entry.value;
+        final updatedAt = position.updatedAt ?? _positionSyncEpoch;
+        final positionData = Map<String, dynamic>.from(position.toJson());
+        positionData['updatedAt'] = updatedAt.toIso8601String();
+        readingProgressData[entry.key.toString()] = positionData;
+
+        if (updatedAt.isAfter(latestUpdatedAt)) {
+          latestUpdatedAt = updatedAt;
+        }
+      }
+
+      modules[SyncModuleNames.readingProgress] = SyncModule(
+        version: 1,
+        updatedAt: latestUpdatedAt,
+        data: readingProgressData,
+      );
+    }
+
     if (SettingsSyncCodec.isEnabled(prefs)) {
       final settingsUpdatedAt = await SettingsSyncCodec.ensureSettingsUpdatedAt(
         prefs,
@@ -675,6 +705,14 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
           }
         }
       }
+    }
+
+    final readingProgressModule =
+        remoteData.modules[SyncModuleNames.readingProgress];
+    if (readingProgressModule != null) {
+      await _readingProgressService.applySyncedPositions(
+        readingProgressModule.data,
+      );
     }
 
     // 应用阅读时长 (取每日最大值)
