@@ -12,6 +12,7 @@ import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_cover_card.dart';
+import 'package:novella/src/widgets/book_cover_route_hero.dart';
 import 'package:novella/src/widgets/book_grid_title.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 
@@ -238,6 +239,14 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
 
   Widget _buildBookCard(BuildContext context, Book book) {
     final heroTag = 'recent_cover_${book.id}';
+    final overlays = <Widget>[
+      if (ref.watch(settingsProvider).isBookTypeBadgeEnabled('recent'))
+        BookTypeBadge(
+          category: book.category,
+          level: book.level,
+          interiorLevel: book.interiorLevel,
+        ),
+    ];
 
     return GestureDetector(
       onTap: () {
@@ -255,21 +264,11 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Hero(
+            child: BookCoverRouteHero(
               tag: heroTag,
-              child: BookCoverCard(
-                coverUrl: book.cover,
-                overlays: [
-                  if (ref
-                      .watch(settingsProvider)
-                      .isBookTypeBadgeEnabled('recent'))
-                    BookTypeBadge(
-                      category: book.category,
-                      level: book.level,
-                      interiorLevel: book.interiorLevel,
-                    ),
-                ],
-              ),
+              coverUrl: book.cover,
+              overlays: overlays,
+              child: BookCoverCard(coverUrl: book.cover, overlays: overlays),
             ),
           ),
           BookGridTitle(title: book.title),

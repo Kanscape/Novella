@@ -14,6 +14,8 @@ class BookCoverCard extends StatelessWidget {
   final bool revealedBefore;
   final VoidCallback? onRevealed;
   final bool animateSynchronouslyLoadedImage;
+  final int? memCacheWidth;
+  final int? memCacheHeight;
   final Widget? placeholder;
   final Widget? cardForeground;
   final List<Widget> overlays;
@@ -30,6 +32,8 @@ class BookCoverCard extends StatelessWidget {
     this.revealedBefore = false,
     this.onRevealed,
     this.animateSynchronouslyLoadedImage = false,
+    this.memCacheWidth = 350,
+    this.memCacheHeight,
     this.placeholder,
     this.cardForeground,
     this.overlays = const [],
@@ -74,6 +78,8 @@ class BookCoverCard extends StatelessWidget {
       revealedBefore: revealedBefore,
       onRevealed: onRevealed,
       animateSynchronouslyLoadedImage: animateSynchronouslyLoadedImage,
+      memCacheWidth: memCacheWidth,
+      memCacheHeight: memCacheHeight,
     );
 
     if (!enablePreview) {

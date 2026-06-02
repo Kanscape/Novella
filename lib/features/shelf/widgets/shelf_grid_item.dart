@@ -4,6 +4,7 @@ import 'package:novella/data/models/book.dart';
 import 'package:novella/features/settings/settings_provider.dart';
 import 'package:novella/src/widgets/book_cover_card.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
+import 'package:novella/src/widgets/book_cover_route_hero.dart';
 import 'package:novella/src/widgets/book_grid_title.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 
@@ -54,6 +55,12 @@ class ShelfBookGridItem extends ConsumerWidget {
                 (shelfTitle?.isNotEmpty == true
                     ? shelfTitle!
                     : titleHint ?? '加载中');
+    final resolvedCoverUrl = isInvalid ? '' : book?.cover ?? coverUrlHint ?? '';
+    final canResolveNetworkImage =
+        !isInvalid &&
+        (book != null ||
+            (resolveHintCoverImage && coverUrlHint?.isNotEmpty == true));
+    final cardContent = _buildCardContent(context, ref);
 
     return GestureDetector(
       onTap: onTap,
@@ -63,8 +70,13 @@ class ShelfBookGridItem extends ConsumerWidget {
           Expanded(
             child:
                 enableHero
-                    ? Hero(tag: heroTag, child: _buildCardContent(context, ref))
-                    : _buildCardContent(context, ref),
+                    ? BookCoverRouteHero(
+                      tag: heroTag,
+                      coverUrl: resolvedCoverUrl,
+                      precacheCover: canResolveNetworkImage,
+                      child: cardContent,
+                    )
+                    : cardContent,
           ),
           BookGridTitle(title: displayTitle, animated: true),
         ],

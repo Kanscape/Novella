@@ -10,6 +10,7 @@ import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_cover_card.dart';
+import 'package:novella/src/widgets/book_cover_route_hero.dart';
 import 'package:novella/src/widgets/book_grid_title.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 
@@ -229,6 +230,38 @@ class _RankingPageState extends ConsumerState<RankingPage>
   Widget _buildBookCard(BuildContext context, Book book, int rank) {
     final textTheme = Theme.of(context).textTheme;
     final heroTag = 'ranking_cover_${book.id}';
+    final overlays = <Widget>[
+      if (rank <= 3)
+        Positioned(
+          left: 4,
+          top: 4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color:
+                  rank == 1
+                      ? const Color(0xFFFFD700)
+                      : rank == 2
+                      ? const Color(0xFF78909C)
+                      : const Color(0xFFCD7F32),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '$rank',
+              style: textTheme.labelSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      if (ref.watch(settingsProvider).isBookTypeBadgeEnabled('ranking'))
+        BookTypeBadge(
+          category: book.category,
+          level: book.level,
+          interiorLevel: book.interiorLevel,
+        ),
+    ];
 
     return GestureDetector(
       onTap: () {
@@ -246,50 +279,11 @@ class _RankingPageState extends ConsumerState<RankingPage>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Hero(
+            child: BookCoverRouteHero(
               tag: heroTag,
-              child: BookCoverCard(
-                coverUrl: book.cover,
-                overlays: [
-                  if (rank <= 3)
-                    Positioned(
-                      left: 4,
-                      top: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color:
-                              rank == 1
-                                  ? const Color(0xFFFFD700) // Gold
-                                  : rank == 2
-                                  ? const Color(
-                                    0xFF78909C,
-                                  ) // Silver (blue-tinted)
-                                  : const Color(0xFFCD7F32), // Bronze
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '$rank',
-                          style: textTheme.labelSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (ref
-                      .watch(settingsProvider)
-                      .isBookTypeBadgeEnabled('ranking'))
-                    BookTypeBadge(
-                      category: book.category,
-                      level: book.level,
-                      interiorLevel: book.interiorLevel,
-                    ),
-                ],
-              ),
+              coverUrl: book.cover,
+              overlays: overlays,
+              child: BookCoverCard(coverUrl: book.cover, overlays: overlays),
             ),
           ),
           BookGridTitle(title: book.title),

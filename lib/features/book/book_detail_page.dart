@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
+import 'package:novella/src/widgets/book_cover_route_hero.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
@@ -1608,9 +1609,11 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   }
 
   Widget _buildCoverHero(String coverUrl, ColorScheme colorScheme) {
-    return Hero(
+    return BookCoverRouteHero(
       key: _coverHeroKey,
       tag: widget.heroTag ?? 'cover_${widget.bookId}',
+      coverUrl: coverUrl,
+      borderRadius: 8,
       child: Container(
         width: 100,
         height: 150,
