@@ -31,9 +31,11 @@ bool shouldUseReaderInlineElementAsStandaloneBlock(
     return false;
   }
 
-  return readerInlineNodesHaveRenderableContent([
-    element,
-  ], normalizeText: normalizeText);
+  return readerInlineNodesHaveRenderableContent(
+    [element],
+    isHidden: isHidden,
+    normalizeText: normalizeText,
+  );
 }
 
 bool shouldUseReaderNodeInInlineBlock(
@@ -78,23 +80,30 @@ bool shouldSkipReaderNodeBetweenInlineBlocks(
 
 bool readerInlineNodesHaveRenderableContent(
   Iterable<dom.Node> nodes, {
+  required bool Function(dom.Element element) isHidden,
   required String Function(String text) normalizeText,
 }) {
-  final summary = _summarizeReaderInlineContent(nodes);
+  final summary = _summarizeReaderInlineContent(nodes, isHidden);
 
   return normalizeText(summary.text.toString()).isNotEmpty ||
       summary.hasImage ||
       summary.hasBreak;
 }
 
-dom.Element wrapReaderInlineElementAsParagraph(dom.Element element) {
-  return wrapReaderInlineNodesAsParagraph([element]);
+dom.Element wrapReaderInlineElementAsParagraph(
+  dom.Element element, {
+  required bool Function(dom.Element element) isHidden,
+}) {
+  return wrapReaderInlineNodesAsParagraph([element], isHidden: isHidden);
 }
 
-dom.Element wrapReaderInlineNodesAsParagraph(Iterable<dom.Node> nodes) {
+dom.Element wrapReaderInlineNodesAsParagraph(
+  Iterable<dom.Node> nodes, {
+  required bool Function(dom.Element element) isHidden,
+}) {
   final paragraph = dom.Element.tag('p');
   for (final node in nodes) {
-    final clone = _cloneReaderInlineNode(node);
+    final clone = _cloneReaderInlineNode(node, isHidden);
     if (clone != null) {
       paragraph.nodes.add(clone);
     }
@@ -105,10 +114,11 @@ dom.Element wrapReaderInlineNodesAsParagraph(Iterable<dom.Node> nodes) {
 
 _ReaderInlineContentSummary _summarizeReaderInlineContent(
   Iterable<dom.Node> nodes,
+  bool Function(dom.Element element) isHidden,
 ) {
   final summary = _ReaderInlineContentSummary();
   for (final node in nodes) {
-    _collectReaderInlineContent(node, summary);
+    _collectReaderInlineContent(node, summary, isHidden);
   }
   return summary;
 }
@@ -116,6 +126,7 @@ _ReaderInlineContentSummary _summarizeReaderInlineContent(
 void _collectReaderInlineContent(
   dom.Node node,
   _ReaderInlineContentSummary summary,
+  bool Function(dom.Element element) isHidden,
 ) {
   if (node is dom.Text) {
     if (!_hasReaderMetadataAncestor(node)) {
@@ -129,7 +140,7 @@ void _collectReaderInlineContent(
   }
 
   final tag = node.localName;
-  if (tag != null && _readerMetadataTags.contains(tag)) {
+  if ((tag != null && _readerMetadataTags.contains(tag)) || isHidden(node)) {
     return;
   }
 
@@ -141,31 +152,37 @@ void _collectReaderInlineContent(
   }
 
   for (final child in node.nodes) {
-    _collectReaderInlineContent(child, summary);
+    _collectReaderInlineContent(child, summary, isHidden);
   }
 }
 
-dom.Node? _cloneReaderInlineNode(dom.Node node) {
+dom.Node? _cloneReaderInlineNode(
+  dom.Node node,
+  bool Function(dom.Element element) isHidden,
+) {
   if (node is dom.Text && _hasReaderMetadataAncestor(node)) {
     return null;
   }
 
   if (node is dom.Element) {
     final tag = node.localName;
-    if (tag != null && _readerMetadataTags.contains(tag)) {
+    if ((tag != null && _readerMetadataTags.contains(tag)) || isHidden(node)) {
       return null;
     }
   }
 
   final clone = node.clone(true);
   if (clone is dom.Element) {
-    _removeReaderMetadataDescendants(clone);
+    _removeReaderNonRenderableDescendants(clone, isHidden);
   }
   return clone;
 }
 
-void _removeReaderMetadataDescendants(dom.Element element) {
-  final metadataChildren = <dom.Element>[];
+void _removeReaderNonRenderableDescendants(
+  dom.Element element,
+  bool Function(dom.Element element) isHidden,
+) {
+  final skippedChildren = <dom.Element>[];
 
   for (final child in element.nodes) {
     if (child is! dom.Element) {
@@ -173,15 +190,15 @@ void _removeReaderMetadataDescendants(dom.Element element) {
     }
 
     final tag = child.localName;
-    if (tag != null && _readerMetadataTags.contains(tag)) {
-      metadataChildren.add(child);
+    if ((tag != null && _readerMetadataTags.contains(tag)) || isHidden(child)) {
+      skippedChildren.add(child);
       continue;
     }
 
-    _removeReaderMetadataDescendants(child);
+    _removeReaderNonRenderableDescendants(child, isHidden);
   }
 
-  for (final child in metadataChildren) {
+  for (final child in skippedChildren) {
     child.remove();
   }
 }

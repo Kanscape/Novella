@@ -806,12 +806,13 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       if (nodes.isEmpty ||
           !readerInlineNodesHaveRenderableContent(
             nodes,
+            isHidden: _isElementHidden,
             normalizeText: _normalizeText,
           )) {
         return;
       }
       add(
-        wrapReaderInlineNodesAsParagraph(nodes),
+        wrapReaderInlineNodesAsParagraph(nodes, isHidden: _isElementHidden),
         inlineNodesPath(nodes, currentPath),
       );
     }

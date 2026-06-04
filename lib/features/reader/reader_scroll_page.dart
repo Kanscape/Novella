@@ -652,12 +652,13 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       if (nodes.isEmpty ||
           !readerInlineNodesHaveRenderableContent(
             nodes,
+            isHidden: _isElementHidden,
             normalizeText: _normalizeReaderText,
           )) {
         return;
       }
       addBlock(
-        wrapReaderInlineNodesAsParagraph(nodes),
+        wrapReaderInlineNodesAsParagraph(nodes, isHidden: _isElementHidden),
         inlineNodesPath(nodes, currentPath),
       );
     }

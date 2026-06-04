@@ -55,7 +55,10 @@ void main() {
       '<i>　　<span class="bold">《答。要连结吗？　　YES／NO》</span></i>',
     );
 
-    final paragraph = wrapReaderInlineElementAsParagraph(element);
+    final paragraph = wrapReaderInlineElementAsParagraph(
+      element,
+      isHidden: isHidden,
+    );
 
     expect(
       paragraph.outerHtml,
@@ -66,7 +69,10 @@ void main() {
   test('wraps mixed top-level text and inline elements together', () {
     final fragment = html_parser.parseFragment('Intro <i>emphasis</i> outro');
 
-    final paragraph = wrapReaderInlineNodesAsParagraph(fragment.nodes);
+    final paragraph = wrapReaderInlineNodesAsParagraph(
+      fragment.nodes,
+      isHidden: isHidden,
+    );
 
     expect(paragraph.outerHtml, '<p>Intro <i>emphasis</i> outro</p>');
   });
@@ -87,9 +93,11 @@ void main() {
         isFalse,
       );
       expect(
-        readerInlineNodesHaveRenderableContent([
-          element,
-        ], normalizeText: normalizeReaderText),
+        readerInlineNodesHaveRenderableContent(
+          [element],
+          isHidden: isHidden,
+          normalizeText: normalizeReaderText,
+        ),
         isFalse,
       );
 
@@ -119,9 +127,11 @@ void main() {
       isFalse,
     );
     expect(
-      readerInlineNodesHaveRenderableContent([
-        metadataOnly,
-      ], normalizeText: normalizeReaderText),
+      readerInlineNodesHaveRenderableContent(
+        [metadataOnly],
+        isHidden: isHidden,
+        normalizeText: normalizeReaderText,
+      ),
       isFalse,
     );
 
@@ -130,13 +140,57 @@ void main() {
     );
 
     expect(
-      readerInlineNodesHaveRenderableContent([
-        mixed,
-      ], normalizeText: normalizeReaderText),
+      readerInlineNodesHaveRenderableContent(
+        [mixed],
+        isHidden: isHidden,
+        normalizeText: normalizeReaderText,
+      ),
       isTrue,
     );
     expect(
-      wrapReaderInlineElementAsParagraph(mixed).outerHtml,
+      wrapReaderInlineElementAsParagraph(mixed, isHidden: isHidden).outerHtml,
+      '<p><span>正文</span></p>',
+    );
+  });
+
+  test('ignores hidden descendants inside inline wrappers', () {
+    final hiddenOnly = firstElement(
+      '<span><span style="display:none">hidden</span></span>',
+    );
+
+    expect(
+      shouldUseReaderInlineElementAsStandaloneBlock(
+        hiddenOnly,
+        blockTags: blockTags,
+        isHidden: isHidden,
+        normalizeText: normalizeReaderText,
+      ),
+      isFalse,
+    );
+    expect(
+      readerInlineNodesHaveRenderableContent(
+        [hiddenOnly],
+        isHidden: isHidden,
+        normalizeText: normalizeReaderText,
+      ),
+      isFalse,
+    );
+
+    final mixed = firstElement(
+      '<span><span style="display:none">hidden</span>正文'
+      '<span style="display:none"><img src="hidden.png"></span></span>',
+    );
+
+    expect(
+      readerInlineNodesHaveRenderableContent(
+        [mixed],
+        isHidden: isHidden,
+        normalizeText: normalizeReaderText,
+      ),
+      isTrue,
+    );
+    expect(
+      wrapReaderInlineElementAsParagraph(mixed, isHidden: isHidden).outerHtml,
       '<p><span>正文</span></p>',
     );
   });
@@ -164,7 +218,10 @@ void main() {
     }
 
     expect(
-      wrapReaderInlineNodesAsParagraph(inlineNodes).outerHtml,
+      wrapReaderInlineNodesAsParagraph(
+        inlineNodes,
+        isHidden: isHidden,
+      ).outerHtml,
       '<p>Intro  outro</p>',
     );
   });
