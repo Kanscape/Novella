@@ -1,6 +1,17 @@
 import 'package:html/dom.dart' as dom;
 
 final RegExp _leadingInlineWhitespace = RegExp(r'^[\s\u00A0\u200B\u3000]+');
+const Set<String> _readerMetadataTags = {
+  'base',
+  'head',
+  'link',
+  'meta',
+  'noscript',
+  'script',
+  'style',
+  'template',
+  'title',
+};
 
 bool shouldUseReaderInlineElementAsStandaloneBlock(
   dom.Element element, {
@@ -9,7 +20,10 @@ bool shouldUseReaderInlineElementAsStandaloneBlock(
   required String Function(String text) normalizeText,
 }) {
   final tag = element.localName;
-  if (tag == null || blockTags.contains(tag) || isHidden(element)) {
+  if (tag == null ||
+      _readerMetadataTags.contains(tag) ||
+      blockTags.contains(tag) ||
+      isHidden(element)) {
     return false;
   }
 
@@ -28,7 +42,7 @@ bool shouldUseReaderNodeInInlineBlock(
   required bool Function(dom.Element element) isHidden,
 }) {
   if (node is dom.Text) {
-    return true;
+    return !_hasReaderMetadataAncestor(node);
   }
 
   if (node is! dom.Element) {
@@ -36,7 +50,10 @@ bool shouldUseReaderNodeInInlineBlock(
   }
 
   final tag = node.localName;
-  if (tag == null || blockTags.contains(tag) || isHidden(node)) {
+  if (tag == null ||
+      _readerMetadataTags.contains(tag) ||
+      blockTags.contains(tag) ||
+      isHidden(node)) {
     return false;
   }
 
@@ -53,20 +70,25 @@ bool readerInlineNodesHaveRenderableContent(
 
   for (final node in nodes) {
     if (node is dom.Text) {
+      if (_hasReaderMetadataAncestor(node)) {
+        continue;
+      }
       text.write(node.text);
       continue;
     }
 
     if (node is dom.Element) {
+      final tag = node.localName;
+      if (tag != null && _readerMetadataTags.contains(tag)) {
+        continue;
+      }
       text.write(node.text);
       hasImage =
           hasImage ||
-          node.localName == 'img' ||
+          tag == 'img' ||
           node.getElementsByTagName('img').isNotEmpty;
       hasBreak =
-          hasBreak ||
-          node.localName == 'br' ||
-          node.getElementsByTagName('br').isNotEmpty;
+          hasBreak || tag == 'br' || node.getElementsByTagName('br').isNotEmpty;
     }
   }
 
@@ -102,6 +124,20 @@ bool _hasReaderBlockDescendant(
     if (_hasReaderBlockDescendant(child, blockTags, isHidden)) {
       return true;
     }
+  }
+  return false;
+}
+
+bool _hasReaderMetadataAncestor(dom.Node node) {
+  dom.Node? current = node.parentNode;
+  while (current != null) {
+    if (current is dom.Element) {
+      final tag = current.localName;
+      if (tag != null && _readerMetadataTags.contains(tag)) {
+        return true;
+      }
+    }
+    current = current.parentNode;
   }
   return false;
 }

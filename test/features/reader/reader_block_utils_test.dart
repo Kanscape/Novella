@@ -70,4 +70,39 @@ void main() {
 
     expect(paragraph.outerHtml, '<p>Intro <i>emphasis</i> outro</p>');
   });
+
+  test('excludes metadata elements and their text from inline blocks', () {
+    final fragment = html_parser.parseFragment(
+      '<style>body{color:red}</style><script>alert(1)</script>',
+    );
+    final elements = fragment.nodes.whereType<dom.Element>().toList();
+
+    for (final element in elements) {
+      expect(
+        shouldUseReaderNodeInInlineBlock(
+          element,
+          blockTags: blockTags,
+          isHidden: isHidden,
+        ),
+        isFalse,
+      );
+      expect(
+        readerInlineNodesHaveRenderableContent([
+          element,
+        ], normalizeText: normalizeReaderText),
+        isFalse,
+      );
+
+      for (final text in element.nodes.whereType<dom.Text>()) {
+        expect(
+          shouldUseReaderNodeInInlineBlock(
+            text,
+            blockTags: blockTags,
+            isHidden: isHidden,
+          ),
+          isFalse,
+        );
+      }
+    }
+  });
 }
