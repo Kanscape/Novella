@@ -25,6 +25,7 @@ import 'package:novella/data/services/chapter_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/features/reader/reader_background_page.dart';
+import 'package:novella/features/reader/shared/reader_block_utils.dart';
 import 'package:novella/features/reader/shared/reader_battery_indicator.dart';
 import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
 import 'package:novella/features/reader/shared/reader_footnote_processor.dart';
@@ -760,9 +761,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   (List<_ReaderBlock>, Map<String, int>) _buildBlocks(String html) {
     final blocks = <_ReaderBlock>[];
     final indexByXPath = <String, int>{};
-    void add(dom.Element element, String rawXPath) {
+    void add(dom.Element element, String rawXPath, {bool wrapInline = false}) {
       final cleanXPath = XPathUtils.cleanXPath(rawXPath);
-      final renderable = _buildRenderableBlockContent(element);
+      final blockElement =
+          wrapInline ? wrapReaderInlineElementAsParagraph(element) : element;
+      final renderable = _buildRenderableBlockContent(blockElement);
       indexByXPath.putIfAbsent(cleanXPath, () => blocks.length);
       blocks.add(
         _ReaderBlock(
@@ -795,6 +798,10 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       }
       if (_shouldUseAsBlock(node)) {
         add(node, path);
+        return;
+      }
+      if (_shouldUseInlineElementAsBlock(node)) {
+        add(node, path, wrapInline: true);
         return;
       }
       for (final child in node.nodes) {
@@ -1093,6 +1100,15 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     return _normalizeText(element.text).isNotEmpty ||
         element.getElementsByTagName('img').isNotEmpty ||
         element.getElementsByTagName('br').isNotEmpty;
+  }
+
+  bool _shouldUseInlineElementAsBlock(dom.Element element) {
+    return shouldUseReaderInlineElementAsStandaloneBlock(
+      element,
+      blockTags: _blockTags,
+      isHidden: _isElementHidden,
+      normalizeText: _normalizeText,
+    );
   }
 
   bool _hasAncestorTag(

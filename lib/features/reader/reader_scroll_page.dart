@@ -23,6 +23,7 @@ import 'package:novella/features/book/book_detail_page.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 import 'package:novella/features/reader/reader_background_page.dart';
+import 'package:novella/features/reader/shared/reader_block_utils.dart';
 import 'package:novella/features/reader/shared/reader_battery_indicator.dart';
 import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
 import 'package:novella/features/reader/shared/reader_footnote_processor.dart';
@@ -559,6 +560,15 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     return text.isNotEmpty || hasImg || _shouldPreserveExplicitBlankLine(el);
   }
 
+  bool _shouldUseInlineElementAsBlock(dom.Element element) {
+    return shouldUseReaderInlineElementAsStandaloneBlock(
+      element,
+      blockTags: _kBlockTags,
+      isHidden: _isElementHidden,
+      normalizeText: _normalizeReaderText,
+    );
+  }
+
   double _computeBlockWeight({
     required int textLength,
     required int imageCount,
@@ -575,8 +585,10 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     final prefixWeights = <double>[];
     double totalWeight = 0.0;
 
-    void addBlock(dom.Element el, String rawXPath) {
-      final renderable = _buildRenderableBlockContent(el);
+    void addBlock(dom.Element el, String rawXPath, {bool wrapInline = false}) {
+      final blockElement =
+          wrapInline ? wrapReaderInlineElementAsParagraph(el) : el;
+      final renderable = _buildRenderableBlockContent(blockElement);
 
       final weight = _computeBlockWeight(
         textLength: renderable.textLength,
@@ -630,6 +642,10 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
         if (_shouldTreatElementAsBlock(node)) {
           addBlock(node, myPath);
           return; // block 叶子：不再下钻，避免重复拆分
+        }
+        if (_shouldUseInlineElementAsBlock(node)) {
+          addBlock(node, myPath, wrapInline: true);
+          return;
         }
 
         // 非 block：继续下钻
