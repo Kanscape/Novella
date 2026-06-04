@@ -60,6 +60,22 @@ bool shouldUseReaderNodeInInlineBlock(
   return !_hasReaderBlockDescendant(node, blockTags, isHidden);
 }
 
+bool shouldSkipReaderNodeBetweenInlineBlocks(
+  dom.Node node, {
+  required bool Function(dom.Element element) isHidden,
+}) {
+  if (node is dom.Text) {
+    return _hasReaderMetadataAncestor(node);
+  }
+
+  if (node is! dom.Element) {
+    return true;
+  }
+
+  final tag = node.localName;
+  return tag == null || _readerMetadataTags.contains(tag) || isHidden(node);
+}
+
 bool readerInlineNodesHaveRenderableContent(
   Iterable<dom.Node> nodes, {
   required String Function(String text) normalizeText,

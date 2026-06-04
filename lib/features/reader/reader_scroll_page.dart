@@ -568,6 +568,13 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     );
   }
 
+  bool _shouldSkipNodeBetweenInlineBlocks(dom.Node node) {
+    return shouldSkipReaderNodeBetweenInlineBlocks(
+      node,
+      isHidden: _isElementHidden,
+    );
+  }
+
   double _computeBlockWeight({
     required int textLength,
     required int imageCount,
@@ -668,6 +675,9 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       for (final node in nodes) {
         if (_shouldUseNodeInInlineBlock(node)) {
           inlineNodes.add(node);
+          continue;
+        }
+        if (_shouldSkipNodeBetweenInlineBlocks(node)) {
           continue;
         }
         flushInlineNodes();

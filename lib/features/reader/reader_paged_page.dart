@@ -831,6 +831,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           inlineNodes.add(node);
           continue;
         }
+        if (_shouldSkipNodeBetweenInlineBlocks(node)) {
+          continue;
+        }
         flushInlineNodes();
         walk(node, currentPath);
       }
@@ -1145,6 +1148,13 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     return shouldUseReaderNodeInInlineBlock(
       node,
       blockTags: _blockTags,
+      isHidden: _isElementHidden,
+    );
+  }
+
+  bool _shouldSkipNodeBetweenInlineBlocks(dom.Node node) {
+    return shouldSkipReaderNodeBetweenInlineBlocks(
+      node,
       isHidden: _isElementHidden,
     );
   }

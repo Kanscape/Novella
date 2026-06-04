@@ -140,4 +140,32 @@ void main() {
       '<p><span>正文</span></p>',
     );
   });
+
+  test('skips non-renderable separators without splitting inline text', () {
+    final fragment = html_parser.parseFragment(
+      'Intro <!--note--><span style="display:none">hidden</span>'
+      '<style>.x{}</style> outro',
+    );
+    final inlineNodes = <dom.Node>[];
+
+    for (final node in fragment.nodes) {
+      if (shouldUseReaderNodeInInlineBlock(
+        node,
+        blockTags: blockTags,
+        isHidden: isHidden,
+      )) {
+        inlineNodes.add(node);
+        continue;
+      }
+      if (shouldSkipReaderNodeBetweenInlineBlocks(node, isHidden: isHidden)) {
+        continue;
+      }
+      fail('unexpected rendered block separator: $node');
+    }
+
+    expect(
+      wrapReaderInlineNodesAsParagraph(inlineNodes).outerHtml,
+      '<p>Intro  outro</p>',
+    );
+  });
 }
