@@ -287,7 +287,8 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
       // 1. 收集本地
       stage = 'collect_local';
-      final localData = await _collectLocalData();
+      var localData = await _collectLocalData();
+      var trackedSettingsModule = localData.modules[SyncModuleNames.settings];
       _logger.info(
         'SYNC run=$syncRunId stage=$stage modules=${localData.modules.keys.join(',')}',
       );
@@ -374,24 +375,67 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       }
 
       final syncPrefs = await SharedPreferences.getInstance();
-      final shouldAdoptCloudSettings =
+      var shouldAdoptCloudSettings =
           SettingsSyncCodec.isEnabled(syncPrefs) &&
           SettingsSyncCodec.needsCloudAdoption(syncPrefs);
-
-      var mergedData =
-          remoteData != null ? localData.mergeWith(remoteData) : localData;
       final remoteSettingsModule =
           remoteData?.modules[SyncModuleNames.settings];
-      if (shouldAdoptCloudSettings && remoteSettingsModule != null) {
-        mergedData = _replaceModule(
-          mergedData,
-          SyncModuleNames.settings,
-          remoteSettingsModule,
-        );
+
+      void refreshCloudAdoptionState(String refreshStage) {
+        final latestShouldAdoptCloudSettings =
+            SettingsSyncCodec.isEnabled(syncPrefs) &&
+            SettingsSyncCodec.needsCloudAdoption(syncPrefs);
+        if (latestShouldAdoptCloudSettings != shouldAdoptCloudSettings) {
+          shouldAdoptCloudSettings = latestShouldAdoptCloudSettings;
+          _logger.info(
+            'SYNC run=$syncRunId stage=$refreshStage settingsCloudAdoptionChanged=$shouldAdoptCloudSettings',
+          );
+        }
       }
+
+      Future<void> refreshLocalSettingsIfNeeded(String refreshStage) async {
+        refreshCloudAdoptionState(refreshStage);
+        final currentSettingsModule =
+            shouldAdoptCloudSettings
+                ? null
+                : await _collectCurrentSettingsModule(syncPrefs);
+        final refreshedLocalData = refreshLocalSettingsModuleForSync(
+          localData: localData,
+          trackedSettingsModule: trackedSettingsModule,
+          currentSettingsModule: currentSettingsModule,
+          shouldAdoptCloudSettings: shouldAdoptCloudSettings,
+        );
+        if (!identical(refreshedLocalData, localData)) {
+          localData = refreshedLocalData;
+          trackedSettingsModule = currentSettingsModule;
+          _logger.info(
+            'SYNC run=$syncRunId stage=$refreshStage localSettingsChanged=true',
+          );
+        }
+      }
+
+      SyncData buildMergedData() {
+        refreshCloudAdoptionState('build_merge');
+        var data =
+            remoteData != null ? localData.mergeWith(remoteData) : localData;
+        if (shouldAdoptCloudSettings && remoteSettingsModule != null) {
+          data = _replaceModule(
+            data,
+            SyncModuleNames.settings,
+            remoteSettingsModule,
+          );
+        }
+        return data;
+      }
+
+      await refreshLocalSettingsIfNeeded('pre_merge_settings');
+
+      var mergedData = buildMergedData();
 
       // 4. 加密上传 (复用 CachedKey)
       stage = 'encrypt_upload';
+      await refreshLocalSettingsIfNeeded('pre_upload_settings');
+      mergedData = buildMergedData();
       if (_cachedKey == null || _cachedSalt == null) {
         throw Exception("Key cache missing");
       }
@@ -414,7 +458,27 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       // 5. 应用合并后的数据 (Update Local)
       // 关键修正：必须应用 mergedData，否则本地的新更改会被远程旧数据覆盖
       stage = 'apply_remote';
-      await _applyRemoteData(mergedData);
+      var applySettingsModule = true;
+      if (!shouldAdoptCloudSettings) {
+        final currentSettingsModule = await _collectCurrentSettingsModule(
+          syncPrefs,
+        );
+        applySettingsModule = shouldApplySettingsModuleForSync(
+          trackedSettingsModule: trackedSettingsModule,
+          currentSettingsModule: currentSettingsModule,
+          shouldAdoptCloudSettings: shouldAdoptCloudSettings,
+        );
+        if (!applySettingsModule) {
+          _pendingSyncCount = max(_pendingSyncCount, 1);
+          _logger.info(
+            'SYNC run=$syncRunId stage=$stage settingsApplySkipped=true reason=local_settings_changed_after_upload',
+          );
+        }
+      }
+      await _applyRemoteData(
+        mergedData,
+        applySettingsModule: applySettingsModule,
+      );
       if (shouldAdoptCloudSettings) {
         await SettingsSyncCodec.markCloudAdopted(syncPrefs);
       }
@@ -492,6 +556,23 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       syncedAt: DateTime.now(),
       syncId: DateTime.now().millisecondsSinceEpoch.toString(),
       modules: modules,
+    );
+  }
+
+  Future<SyncModule?> _collectCurrentSettingsModule(
+    SharedPreferences prefs,
+  ) async {
+    if (!SettingsSyncCodec.isEnabled(prefs)) {
+      return null;
+    }
+
+    final settingsUpdatedAt = await SettingsSyncCodec.ensureSettingsUpdatedAt(
+      prefs,
+    );
+    return SyncModule(
+      version: 1,
+      updatedAt: settingsUpdatedAt,
+      data: SettingsSyncCodec.collectGeneralSettings(prefs),
     );
   }
 
@@ -684,7 +765,10 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
   }
 
   /// 应用远程数据到本地
-  Future<void> _applyRemoteData(SyncData remoteData) async {
+  Future<void> _applyRemoteData(
+    SyncData remoteData, {
+    bool applySettingsModule = true,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
 
     // 应用书签
@@ -733,7 +817,9 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
     // 应用设置
     final settingsModule = remoteData.modules[SyncModuleNames.settings];
-    if (settingsModule != null && SettingsSyncCodec.isEnabled(prefs)) {
+    if (applySettingsModule &&
+        settingsModule != null &&
+        SettingsSyncCodec.isEnabled(prefs)) {
       final settingsChanged =
           await SettingsSyncCodec.applyRemoteSettingsIfEnabled(
             prefs,
@@ -780,6 +866,62 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       return {};
     }
   }
+}
+
+@visibleForTesting
+SyncData refreshLocalSettingsModuleForSync({
+  required SyncData localData,
+  required SyncModule? trackedSettingsModule,
+  required SyncModule? currentSettingsModule,
+  required bool shouldAdoptCloudSettings,
+  bool? latestShouldAdoptCloudSettings,
+}) {
+  final effectiveShouldAdoptCloudSettings =
+      latestShouldAdoptCloudSettings ?? shouldAdoptCloudSettings;
+  if (effectiveShouldAdoptCloudSettings ||
+      _settingsModulesEqual(trackedSettingsModule, currentSettingsModule)) {
+    return localData;
+  }
+
+  final modules = Map<String, SyncModule>.from(localData.modules);
+  if (currentSettingsModule == null) {
+    modules.remove(SyncModuleNames.settings);
+  } else {
+    modules[SyncModuleNames.settings] = currentSettingsModule;
+  }
+
+  return SyncData(
+    schemaVersion: SyncData.currentSchemaVersion,
+    appVersion: localData.appVersion,
+    syncedAt: DateTime.now(),
+    syncId: DateTime.now().millisecondsSinceEpoch.toString(),
+    modules: modules,
+  );
+}
+
+@visibleForTesting
+bool shouldApplySettingsModuleForSync({
+  required SyncModule? trackedSettingsModule,
+  required SyncModule? currentSettingsModule,
+  required bool shouldAdoptCloudSettings,
+}) {
+  if (shouldAdoptCloudSettings) {
+    return true;
+  }
+  return _settingsModulesEqual(trackedSettingsModule, currentSettingsModule);
+}
+
+bool _settingsModulesEqual(SyncModule? left, SyncModule? right) {
+  if (identical(left, right)) {
+    return true;
+  }
+  if (left == null || right == null) {
+    return false;
+  }
+  if (!left.updatedAt.isAtSameMomentAs(right.updatedAt)) {
+    return false;
+  }
+  return SettingsSyncCodec.generalSettingsEqual(left.data, right.data);
 }
 
 /// Isolate 专用：后台解密
