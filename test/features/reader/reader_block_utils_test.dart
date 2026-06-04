@@ -62,4 +62,12 @@ void main() {
       '<p><i><span class="bold">《答。要连结吗？　　YES／NO》</span></i></p>',
     );
   });
+
+  test('wraps mixed top-level text and inline elements together', () {
+    final fragment = html_parser.parseFragment('Intro <i>emphasis</i> outro');
+
+    final paragraph = wrapReaderInlineNodesAsParagraph(fragment.nodes);
+
+    expect(paragraph.outerHtml, '<p>Intro <i>emphasis</i> outro</p>');
+  });
 }

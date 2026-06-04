@@ -761,11 +761,9 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   (List<_ReaderBlock>, Map<String, int>) _buildBlocks(String html) {
     final blocks = <_ReaderBlock>[];
     final indexByXPath = <String, int>{};
-    void add(dom.Element element, String rawXPath, {bool wrapInline = false}) {
+    void add(dom.Element element, String rawXPath) {
       final cleanXPath = XPathUtils.cleanXPath(rawXPath);
-      final blockElement =
-          wrapInline ? wrapReaderInlineElementAsParagraph(element) : element;
-      final renderable = _buildRenderableBlockContent(blockElement);
+      final renderable = _buildRenderableBlockContent(element);
       indexByXPath.putIfAbsent(cleanXPath, () => blocks.length);
       blocks.add(
         _ReaderBlock(
@@ -778,8 +776,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       );
     }
 
-    void walk(dom.Node node, String currentPath) {
-      if (node is! dom.Element) return;
+    String elementPath(dom.Element node, String currentPath) {
       final tag = node.localName ?? '';
       int index = 1;
       final parent = node.parentNode;
@@ -793,6 +790,56 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           currentPath.isEmpty
               ? '//*/$tag[$index]'
               : '$currentPath/$tag[$index]';
+      return path;
+    }
+
+    String inlineNodesPath(List<dom.Node> nodes, String currentPath) {
+      for (final node in nodes) {
+        if (node is dom.Element) {
+          return elementPath(node, currentPath);
+        }
+      }
+      return currentPath.isEmpty ? '//*' : currentPath;
+    }
+
+    void addInlineNodes(List<dom.Node> nodes, String currentPath) {
+      if (nodes.isEmpty ||
+          !readerInlineNodesHaveRenderableContent(
+            nodes,
+            normalizeText: _normalizeText,
+          )) {
+        return;
+      }
+      add(
+        wrapReaderInlineNodesAsParagraph(nodes),
+        inlineNodesPath(nodes, currentPath),
+      );
+    }
+
+    late void Function(dom.Node node, String currentPath) walk;
+
+    void walkChildren(List<dom.Node> nodes, String currentPath) {
+      final inlineNodes = <dom.Node>[];
+
+      void flushInlineNodes() {
+        addInlineNodes(inlineNodes, currentPath);
+        inlineNodes.clear();
+      }
+
+      for (final node in nodes) {
+        if (_shouldUseNodeInInlineBlock(node)) {
+          inlineNodes.add(node);
+          continue;
+        }
+        flushInlineNodes();
+        walk(node, currentPath);
+      }
+      flushInlineNodes();
+    }
+
+    walk = (dom.Node node, String currentPath) {
+      if (node is! dom.Element) return;
+      final path = elementPath(node, currentPath);
       if (_isElementHidden(node)) {
         return;
       }
@@ -800,19 +847,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         add(node, path);
         return;
       }
-      if (_shouldUseInlineElementAsBlock(node)) {
-        add(node, path, wrapInline: true);
-        return;
-      }
-      for (final child in node.nodes) {
-        walk(child, path);
-      }
-    }
+      walkChildren(node.nodes, path);
+    };
 
     final fragment = html_parser.parseFragment(html);
-    for (final node in fragment.nodes) {
-      walk(node, '');
-    }
+    walkChildren(fragment.nodes, '');
     if (blocks.isEmpty) {
       final wrapper = dom.Element.tag('div')..innerHtml = html;
       add(wrapper, '//*');
@@ -1102,12 +1141,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         element.getElementsByTagName('br').isNotEmpty;
   }
 
-  bool _shouldUseInlineElementAsBlock(dom.Element element) {
-    return shouldUseReaderInlineElementAsStandaloneBlock(
-      element,
+  bool _shouldUseNodeInInlineBlock(dom.Node node) {
+    return shouldUseReaderNodeInInlineBlock(
+      node,
       blockTags: _blockTags,
       isHidden: _isElementHidden,
-      normalizeText: _normalizeText,
     );
   }
 

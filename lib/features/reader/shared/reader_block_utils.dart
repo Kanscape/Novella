@@ -22,8 +22,66 @@ bool shouldUseReaderInlineElementAsStandaloneBlock(
       element.getElementsByTagName('br').isNotEmpty;
 }
 
+bool shouldUseReaderNodeInInlineBlock(
+  dom.Node node, {
+  required Set<String> blockTags,
+  required bool Function(dom.Element element) isHidden,
+}) {
+  if (node is dom.Text) {
+    return true;
+  }
+
+  if (node is! dom.Element) {
+    return false;
+  }
+
+  final tag = node.localName;
+  if (tag == null || blockTags.contains(tag) || isHidden(node)) {
+    return false;
+  }
+
+  return !_hasReaderBlockDescendant(node, blockTags, isHidden);
+}
+
+bool readerInlineNodesHaveRenderableContent(
+  Iterable<dom.Node> nodes, {
+  required String Function(String text) normalizeText,
+}) {
+  final text = StringBuffer();
+  var hasImage = false;
+  var hasBreak = false;
+
+  for (final node in nodes) {
+    if (node is dom.Text) {
+      text.write(node.text);
+      continue;
+    }
+
+    if (node is dom.Element) {
+      text.write(node.text);
+      hasImage =
+          hasImage ||
+          node.localName == 'img' ||
+          node.getElementsByTagName('img').isNotEmpty;
+      hasBreak =
+          hasBreak ||
+          node.localName == 'br' ||
+          node.getElementsByTagName('br').isNotEmpty;
+    }
+  }
+
+  return normalizeText(text.toString()).isNotEmpty || hasImage || hasBreak;
+}
+
 dom.Element wrapReaderInlineElementAsParagraph(dom.Element element) {
-  final paragraph = dom.Element.tag('p')..innerHtml = element.outerHtml;
+  return wrapReaderInlineNodesAsParagraph([element]);
+}
+
+dom.Element wrapReaderInlineNodesAsParagraph(Iterable<dom.Node> nodes) {
+  final paragraph = dom.Element.tag('p');
+  for (final node in nodes) {
+    paragraph.nodes.add(node.clone(true));
+  }
   _stripLeadingInlineWhitespace(paragraph);
   return paragraph;
 }
