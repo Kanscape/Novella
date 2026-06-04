@@ -23,6 +23,7 @@ import 'package:novella/features/book/book_detail_page.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 import 'package:novella/features/reader/reader_background_page.dart';
+import 'package:novella/features/reader/shared/reader_block_utils.dart';
 import 'package:novella/features/reader/shared/reader_battery_indicator.dart';
 import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
 import 'package:novella/features/reader/shared/reader_footnote_processor.dart';
@@ -559,6 +560,21 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
     return text.isNotEmpty || hasImg || _shouldPreserveExplicitBlankLine(el);
   }
 
+  bool _shouldUseNodeInInlineBlock(dom.Node node) {
+    return shouldUseReaderNodeInInlineBlock(
+      node,
+      blockTags: _kBlockTags,
+      isHidden: _isElementHidden,
+    );
+  }
+
+  bool _shouldSkipNodeBetweenInlineBlocks(dom.Node node) {
+    return shouldSkipReaderNodeBetweenInlineBlocks(
+      node,
+      isHidden: _isElementHidden,
+    );
+  }
+
   double _computeBlockWeight({
     required int textLength,
     required int imageCount,
@@ -601,47 +617,97 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       prefixWeights.add(totalWeight);
     }
 
-    void walk(dom.Node node, String currentPath) {
-      if (node is dom.Element) {
-        final tag = node.localName ?? '';
+    String elementPath(dom.Element node, String currentPath) {
+      final tag = node.localName ?? '';
 
-        // 构建当前层级 XPath 片段（与 XPathUtils._traverseAndInject 同构）
-        int index = 1;
-        final parent = node.parentNode;
-        if (parent != null) {
-          for (final sibling in parent.nodes) {
-            if (sibling == node) break;
-            if (sibling is dom.Element && sibling.localName == tag) {
-              index++;
-            }
+      // 构建当前层级 XPath 片段（与 XPathUtils._traverseAndInject 同构）
+      int index = 1;
+      final parent = node.parentNode;
+      if (parent != null) {
+        for (final sibling in parent.nodes) {
+          if (sibling == node) break;
+          if (sibling is dom.Element && sibling.localName == tag) {
+            index++;
           }
         }
+      }
 
-        String myPath = '$currentPath/$tag[$index]';
-        if (currentPath.isEmpty) {
-          myPath = '//*/$tag[$index]';
-        }
+      String myPath = '$currentPath/$tag[$index]';
+      if (currentPath.isEmpty) {
+        myPath = '//*/$tag[$index]';
+      }
+      return myPath;
+    }
 
-        // display:none 的注释节点：不进入 block 列表，也不下钻（保持 DOM 结构用于 XPath index）。
-        if (_isElementHidden(node)) {
-          return;
-        }
-
-        if (_shouldTreatElementAsBlock(node)) {
-          addBlock(node, myPath);
-          return; // block 叶子：不再下钻，避免重复拆分
-        }
-
-        // 非 block：继续下钻
-        for (final child in node.nodes) {
-          walk(child, myPath);
+    String inlineNodesPath(List<dom.Node> nodes, String currentPath) {
+      for (final node in nodes) {
+        if (node is dom.Element) {
+          return elementPath(node, currentPath);
         }
       }
+      return currentPath.isEmpty ? '//*' : currentPath;
     }
 
-    for (final node in fragment.nodes) {
-      walk(node, '');
+    void addInlineNodes(List<dom.Node> nodes, String currentPath) {
+      if (nodes.isEmpty ||
+          !readerInlineNodesHaveRenderableContent(
+            nodes,
+            isHidden: _isElementHidden,
+            normalizeText: _normalizeReaderText,
+          )) {
+        return;
+      }
+      addBlock(
+        wrapReaderInlineNodesAsParagraph(nodes, isHidden: _isElementHidden),
+        inlineNodesPath(nodes, currentPath),
+      );
     }
+
+    late void Function(dom.Node node, String currentPath) walk;
+
+    void walkChildren(List<dom.Node> nodes, String currentPath) {
+      final inlineNodes = <dom.Node>[];
+
+      void flushInlineNodes() {
+        addInlineNodes(inlineNodes, currentPath);
+        inlineNodes.clear();
+      }
+
+      for (final node in nodes) {
+        if (_shouldUseNodeInInlineBlock(node)) {
+          inlineNodes.add(node);
+          continue;
+        }
+        if (_shouldSkipNodeBetweenInlineBlocks(node)) {
+          continue;
+        }
+        flushInlineNodes();
+        walk(node, currentPath);
+      }
+      flushInlineNodes();
+    }
+
+    walk = (dom.Node node, String currentPath) {
+      if (node is! dom.Element) {
+        return;
+      }
+      final myPath = elementPath(node, currentPath);
+
+      // display:none 的注释节点：不进入 block 列表，也不下钻（保持 DOM 结构用于 XPath index）。
+      if (_isElementHidden(node)) {
+        return;
+      }
+
+      if (_shouldTreatElementAsBlock(node)) {
+        addBlock(node, myPath);
+        return; // block 叶子：不再下钻，避免重复拆分
+      }
+
+      // 非 block：继续下钻
+      walkChildren(node.nodes, myPath);
+    };
+
+    walkChildren(fragment.nodes, '');
 
     // 兜底：若完全无法拆分，则退化为单 block（避免空白页）
     if (blocks.isEmpty) {

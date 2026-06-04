@@ -25,6 +25,7 @@ import 'package:novella/data/services/chapter_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/features/reader/reader_background_page.dart';
+import 'package:novella/features/reader/shared/reader_block_utils.dart';
 import 'package:novella/features/reader/shared/reader_battery_indicator.dart';
 import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
 import 'package:novella/features/reader/shared/reader_footnote_processor.dart';
@@ -775,8 +776,7 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       );
     }
 
-    void walk(dom.Node node, String currentPath) {
-      if (node is! dom.Element) return;
+    String elementPath(dom.Element node, String currentPath) {
       final tag = node.localName ?? '';
       int index = 1;
       final parent = node.parentNode;
@@ -790,6 +790,60 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
           currentPath.isEmpty
               ? '//*/$tag[$index]'
               : '$currentPath/$tag[$index]';
+      return path;
+    }
+
+    String inlineNodesPath(List<dom.Node> nodes, String currentPath) {
+      for (final node in nodes) {
+        if (node is dom.Element) {
+          return elementPath(node, currentPath);
+        }
+      }
+      return currentPath.isEmpty ? '//*' : currentPath;
+    }
+
+    void addInlineNodes(List<dom.Node> nodes, String currentPath) {
+      if (nodes.isEmpty ||
+          !readerInlineNodesHaveRenderableContent(
+            nodes,
+            isHidden: _isElementHidden,
+            normalizeText: _normalizeText,
+          )) {
+        return;
+      }
+      add(
+        wrapReaderInlineNodesAsParagraph(nodes, isHidden: _isElementHidden),
+        inlineNodesPath(nodes, currentPath),
+      );
+    }
+
+    late void Function(dom.Node node, String currentPath) walk;
+
+    void walkChildren(List<dom.Node> nodes, String currentPath) {
+      final inlineNodes = <dom.Node>[];
+
+      void flushInlineNodes() {
+        addInlineNodes(inlineNodes, currentPath);
+        inlineNodes.clear();
+      }
+
+      for (final node in nodes) {
+        if (_shouldUseNodeInInlineBlock(node)) {
+          inlineNodes.add(node);
+          continue;
+        }
+        if (_shouldSkipNodeBetweenInlineBlocks(node)) {
+          continue;
+        }
+        flushInlineNodes();
+        walk(node, currentPath);
+      }
+      flushInlineNodes();
+    }
+
+    walk = (dom.Node node, String currentPath) {
+      if (node is! dom.Element) return;
+      final path = elementPath(node, currentPath);
       if (_isElementHidden(node)) {
         return;
       }
@@ -797,15 +851,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
         add(node, path);
         return;
       }
-      for (final child in node.nodes) {
-        walk(child, path);
-      }
-    }
+      walkChildren(node.nodes, path);
+    };
 
     final fragment = html_parser.parseFragment(html);
-    for (final node in fragment.nodes) {
-      walk(node, '');
-    }
+    walkChildren(fragment.nodes, '');
     if (blocks.isEmpty) {
       final wrapper = dom.Element.tag('div')..innerHtml = html;
       add(wrapper, '//*');
@@ -1093,6 +1143,21 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     return _normalizeText(element.text).isNotEmpty ||
         element.getElementsByTagName('img').isNotEmpty ||
         element.getElementsByTagName('br').isNotEmpty;
+  }
+
+  bool _shouldUseNodeInInlineBlock(dom.Node node) {
+    return shouldUseReaderNodeInInlineBlock(
+      node,
+      blockTags: _blockTags,
+      isHidden: _isElementHidden,
+    );
+  }
+
+  bool _shouldSkipNodeBetweenInlineBlocks(dom.Node node) {
+    return shouldSkipReaderNodeBetweenInlineBlocks(
+      node,
+      isHidden: _isElementHidden,
+    );
   }
 
   bool _hasAncestorTag(
