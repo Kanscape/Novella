@@ -19,21 +19,23 @@ class CommunityThreadPage extends StatefulWidget {
     this.initialTitle,
     this.replyId,
     this.parentReplyId,
-  });
+    CommunityService? communityService,
+  }) : _communityService = communityService;
 
   final int threadId;
   final String? initialTitle;
   final int? replyId;
   final int? parentReplyId;
+  final CommunityService? _communityService;
 
   @override
   State<CommunityThreadPage> createState() => _CommunityThreadPageState();
 }
 
 class _CommunityThreadPageState extends State<CommunityThreadPage> {
-  final CommunityService _communityService = CommunityService();
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _replyAnchorKeys = <int, GlobalKey>{};
+  late final CommunityService _communityService;
 
   bool _loading = true;
   bool _loadingMoreReplies = false;
@@ -50,6 +52,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
   @override
   void initState() {
     super.initState();
+    _communityService = widget._communityService ?? CommunityService();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_loadThread());
@@ -113,6 +116,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
             title: detail.title,
             excerpt: detail.excerpt,
             authorName: detail.authorName,
+            authorIsDeleted: detail.authorIsDeleted,
             authorAvatar: detail.authorAvatar,
             publishedAt: detail.publishedAt,
             replies: detail.replies,
@@ -288,6 +292,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
             return CommunityThreadReply(
               id: current.id,
               authorName: current.authorName,
+              authorIsDeleted: current.authorIsDeleted,
               authorBadge: current.authorBadge,
               authorAvatar: current.authorAvatar,
               publishedAt: current.publishedAt,
@@ -368,6 +373,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
           title: thread.title,
           excerpt: thread.excerpt,
           authorName: thread.authorName,
+          authorIsDeleted: thread.authorIsDeleted,
           authorAvatar: thread.authorAvatar,
           publishedAt: thread.publishedAt,
           replies: thread.replies,
@@ -417,6 +423,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
           title: thread.title,
           excerpt: thread.excerpt,
           authorName: thread.authorName,
+          authorIsDeleted: thread.authorIsDeleted,
           authorAvatar: thread.authorAvatar,
           publishedAt: thread.publishedAt,
           replies: thread.replies,
@@ -451,7 +458,10 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
       isScrollControlled: true,
       builder:
           (context) => CommentInputSheet(
-            hintText: reply == null ? '回复帖子...' : '回复 ${reply.authorName}',
+            hintText:
+                reply == null
+                    ? '回复帖子...'
+                    : '回复 ${_communityAuthorText(reply.authorName, reply.authorIsDeleted)}',
             onSubmit: (content) {
               unawaited(_postReply(content, replyTo: reply));
             },
@@ -499,6 +509,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
             return CommunityThreadReply(
               id: current.id,
               authorName: current.authorName,
+              authorIsDeleted: current.authorIsDeleted,
               authorBadge: current.authorBadge,
               authorAvatar: current.authorAvatar,
               publishedAt: current.publishedAt,
@@ -537,6 +548,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
             return CommunityThreadReply(
               id: current.id,
               authorName: current.authorName,
+              authorIsDeleted: current.authorIsDeleted,
               authorBadge: current.authorBadge,
               authorAvatar: current.authorAvatar,
               publishedAt: current.publishedAt,
@@ -568,6 +580,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
       title: thread.title,
       excerpt: thread.excerpt,
       authorName: thread.authorName,
+      authorIsDeleted: thread.authorIsDeleted,
       authorAvatar: thread.authorAvatar,
       publishedAt: thread.publishedAt,
       replies: thread.replies,
@@ -604,6 +617,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
           return CommunityThreadReply(
             id: reply.id,
             authorName: reply.authorName,
+            authorIsDeleted: reply.authorIsDeleted,
             authorBadge: reply.authorBadge,
             authorAvatar: reply.authorAvatar,
             publishedAt: reply.publishedAt,
@@ -885,8 +899,12 @@ class _ThreadMainPost extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            thread.authorName,
+                          Text.rich(
+                            _communityAuthorSpan(
+                              context,
+                              authorName: thread.authorName,
+                              authorIsDeleted: thread.authorIsDeleted,
+                            ),
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -1199,8 +1217,12 @@ class _ReplyCard extends StatelessWidget {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              reply.authorName,
+                            child: Text.rich(
+                              _communityAuthorSpan(
+                                context,
+                                authorName: reply.authorName,
+                                authorIsDeleted: reply.authorIsDeleted,
+                              ),
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1211,12 +1233,33 @@ class _ReplyCard extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        reply.replyTo != null
-                            ? '回复 ${reply.replyTo!.authorName} · ${_formatThreadTime(reply.publishedAt)}'
-                            : _formatThreadTime(reply.publishedAt),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
+                      Text.rich(
+                        TextSpan(
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          children:
+                              reply.replyTo != null
+                                  ? [
+                                    const TextSpan(text: '回复 '),
+                                    _communityAuthorSpan(
+                                      context,
+                                      authorName: reply.replyTo!.authorName,
+                                      authorIsDeleted:
+                                          reply.replyTo!.authorIsDeleted,
+                                    ),
+                                    TextSpan(
+                                      text:
+                                          ' · ${_formatThreadTime(reply.publishedAt)}',
+                                    ),
+                                  ]
+                                  : [
+                                    TextSpan(
+                                      text: _formatThreadTime(
+                                        reply.publishedAt,
+                                      ),
+                                    ),
+                                  ],
                         ),
                       ),
                     ],
@@ -1339,10 +1382,34 @@ class _ChildReplyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            reply.replyTo != null
-                ? '${reply.authorName} 回复 ${reply.replyTo!.authorName}'
-                : reply.authorName,
+          Text.rich(
+            TextSpan(
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+              children:
+                  reply.replyTo != null
+                      ? [
+                        _communityAuthorSpan(
+                          context,
+                          authorName: reply.authorName,
+                          authorIsDeleted: reply.authorIsDeleted,
+                        ),
+                        const TextSpan(text: ' 回复 '),
+                        _communityAuthorSpan(
+                          context,
+                          authorName: reply.replyTo!.authorName,
+                          authorIsDeleted: reply.replyTo!.authorIsDeleted,
+                        ),
+                      ]
+                      : [
+                        _communityAuthorSpan(
+                          context,
+                          authorName: reply.authorName,
+                          authorIsDeleted: reply.authorIsDeleted,
+                        ),
+                      ],
+            ),
             style: theme.textTheme.labelLarge?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -1435,13 +1502,24 @@ class _RelatedThreadCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      '${item.authorName} · ${_formatThreadTime(item.publishedAt)}',
+                    child: Text.rich(
+                      TextSpan(
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        children: [
+                          _communityAuthorSpan(
+                            context,
+                            authorName: item.authorName,
+                            authorIsDeleted: item.authorIsDeleted,
+                          ),
+                          TextSpan(
+                            text: ' · ${_formatThreadTime(item.publishedAt)}',
+                          ),
+                        ],
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
                     ),
                   ),
                   _MetricBubble(
@@ -1871,6 +1949,32 @@ String _extractThreadPreformattedText(dom.Element element) {
       .replaceAll('\u00A0', ' ')
       .replaceAll(RegExp(r'\n{3,}'), '\n\n')
       .trimRight();
+}
+
+const _deletedAuthorSuffix = '（被封禁）';
+
+String _communityAuthorText(String authorName, bool authorIsDeleted) {
+  return authorIsDeleted ? '$authorName$_deletedAuthorSuffix' : authorName;
+}
+
+TextSpan _communityAuthorSpan(
+  BuildContext context, {
+  required String authorName,
+  required bool authorIsDeleted,
+}) {
+  return TextSpan(
+    children: [
+      TextSpan(text: authorName),
+      if (authorIsDeleted)
+        TextSpan(
+          text: _deletedAuthorSuffix,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.error,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+    ],
+  );
 }
 
 String _formatThreadTime(DateTime? value) {
