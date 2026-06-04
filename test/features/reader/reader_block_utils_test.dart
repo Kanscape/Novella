@@ -105,4 +105,39 @@ void main() {
       }
     }
   });
+
+  test('filters metadata descendants inside inline wrappers', () {
+    final metadataOnly = firstElement('<span><style>.x{}</style></span>');
+
+    expect(
+      shouldUseReaderInlineElementAsStandaloneBlock(
+        metadataOnly,
+        blockTags: blockTags,
+        isHidden: isHidden,
+        normalizeText: normalizeReaderText,
+      ),
+      isFalse,
+    );
+    expect(
+      readerInlineNodesHaveRenderableContent([
+        metadataOnly,
+      ], normalizeText: normalizeReaderText),
+      isFalse,
+    );
+
+    final mixed = firstElement(
+      '<span><style>.x{}</style>正文<script>alert(1)</script></span>',
+    );
+
+    expect(
+      readerInlineNodesHaveRenderableContent([
+        mixed,
+      ], normalizeText: normalizeReaderText),
+      isTrue,
+    );
+    expect(
+      wrapReaderInlineElementAsParagraph(mixed).outerHtml,
+      '<p><span>正文</span></p>',
+    );
+  });
 }

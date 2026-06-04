@@ -31,9 +31,9 @@ bool shouldUseReaderInlineElementAsStandaloneBlock(
     return false;
   }
 
-  return normalizeText(element.text).isNotEmpty ||
-      element.getElementsByTagName('img').isNotEmpty ||
-      element.getElementsByTagName('br').isNotEmpty;
+  return readerInlineNodesHaveRenderableContent([
+    element,
+  ], normalizeText: normalizeText);
 }
 
 bool shouldUseReaderNodeInInlineBlock(
@@ -64,35 +64,11 @@ bool readerInlineNodesHaveRenderableContent(
   Iterable<dom.Node> nodes, {
   required String Function(String text) normalizeText,
 }) {
-  final text = StringBuffer();
-  var hasImage = false;
-  var hasBreak = false;
+  final summary = _summarizeReaderInlineContent(nodes);
 
-  for (final node in nodes) {
-    if (node is dom.Text) {
-      if (_hasReaderMetadataAncestor(node)) {
-        continue;
-      }
-      text.write(node.text);
-      continue;
-    }
-
-    if (node is dom.Element) {
-      final tag = node.localName;
-      if (tag != null && _readerMetadataTags.contains(tag)) {
-        continue;
-      }
-      text.write(node.text);
-      hasImage =
-          hasImage ||
-          tag == 'img' ||
-          node.getElementsByTagName('img').isNotEmpty;
-      hasBreak =
-          hasBreak || tag == 'br' || node.getElementsByTagName('br').isNotEmpty;
-    }
-  }
-
-  return normalizeText(text.toString()).isNotEmpty || hasImage || hasBreak;
+  return normalizeText(summary.text.toString()).isNotEmpty ||
+      summary.hasImage ||
+      summary.hasBreak;
 }
 
 dom.Element wrapReaderInlineElementAsParagraph(dom.Element element) {
@@ -102,10 +78,96 @@ dom.Element wrapReaderInlineElementAsParagraph(dom.Element element) {
 dom.Element wrapReaderInlineNodesAsParagraph(Iterable<dom.Node> nodes) {
   final paragraph = dom.Element.tag('p');
   for (final node in nodes) {
-    paragraph.nodes.add(node.clone(true));
+    final clone = _cloneReaderInlineNode(node);
+    if (clone != null) {
+      paragraph.nodes.add(clone);
+    }
   }
   _stripLeadingInlineWhitespace(paragraph);
   return paragraph;
+}
+
+_ReaderInlineContentSummary _summarizeReaderInlineContent(
+  Iterable<dom.Node> nodes,
+) {
+  final summary = _ReaderInlineContentSummary();
+  for (final node in nodes) {
+    _collectReaderInlineContent(node, summary);
+  }
+  return summary;
+}
+
+void _collectReaderInlineContent(
+  dom.Node node,
+  _ReaderInlineContentSummary summary,
+) {
+  if (node is dom.Text) {
+    if (!_hasReaderMetadataAncestor(node)) {
+      summary.text.write(node.text);
+    }
+    return;
+  }
+
+  if (node is! dom.Element) {
+    return;
+  }
+
+  final tag = node.localName;
+  if (tag != null && _readerMetadataTags.contains(tag)) {
+    return;
+  }
+
+  if (tag == 'img') {
+    summary.hasImage = true;
+  }
+  if (tag == 'br') {
+    summary.hasBreak = true;
+  }
+
+  for (final child in node.nodes) {
+    _collectReaderInlineContent(child, summary);
+  }
+}
+
+dom.Node? _cloneReaderInlineNode(dom.Node node) {
+  if (node is dom.Text && _hasReaderMetadataAncestor(node)) {
+    return null;
+  }
+
+  if (node is dom.Element) {
+    final tag = node.localName;
+    if (tag != null && _readerMetadataTags.contains(tag)) {
+      return null;
+    }
+  }
+
+  final clone = node.clone(true);
+  if (clone is dom.Element) {
+    _removeReaderMetadataDescendants(clone);
+  }
+  return clone;
+}
+
+void _removeReaderMetadataDescendants(dom.Element element) {
+  final metadataChildren = <dom.Element>[];
+
+  for (final child in element.nodes) {
+    if (child is! dom.Element) {
+      continue;
+    }
+
+    final tag = child.localName;
+    if (tag != null && _readerMetadataTags.contains(tag)) {
+      metadataChildren.add(child);
+      continue;
+    }
+
+    _removeReaderMetadataDescendants(child);
+  }
+
+  for (final child in metadataChildren) {
+    child.remove();
+  }
 }
 
 bool _hasReaderBlockDescendant(
@@ -162,4 +224,10 @@ bool _stripLeadingInlineWhitespace(dom.Node node) {
     }
   }
   return false;
+}
+
+class _ReaderInlineContentSummary {
+  final StringBuffer text = StringBuffer();
+  bool hasImage = false;
+  bool hasBreak = false;
 }
