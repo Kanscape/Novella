@@ -265,6 +265,7 @@ class CommunityFeedItem {
     required this.title,
     required this.excerpt,
     required this.authorName,
+    required this.authorIsDeleted,
     required this.authorAvatar,
     required this.publishedAt,
     required this.replies,
@@ -286,6 +287,7 @@ class CommunityFeedItem {
   final String title;
   final String excerpt;
   final String authorName;
+  final bool authorIsDeleted;
   final String authorAvatar;
   final DateTime? publishedAt;
   final int replies;
@@ -308,6 +310,7 @@ class CommunityFeedItem {
       title: _toString(json['Title']),
       excerpt: _toString(json['Excerpt']),
       authorName: _toString(json['AuthorName']),
+      authorIsDeleted: _toBool(json['AuthorIsDeleted']),
       authorAvatar: _toString(json['AuthorAvatar']),
       publishedAt: _toDateTime(json['PublishedAt']),
       replies: _toInt(json['Replies']),
@@ -379,15 +382,21 @@ class CommunityActiveUserItem {
 }
 
 class CommunityReplyTarget {
-  const CommunityReplyTarget({required this.id, required this.authorName});
+  const CommunityReplyTarget({
+    required this.id,
+    required this.authorName,
+    required this.authorIsDeleted,
+  });
 
   final int id;
   final String authorName;
+  final bool authorIsDeleted;
 
   factory CommunityReplyTarget.fromJson(Map<dynamic, dynamic> json) {
     return CommunityReplyTarget(
       id: _toInt(json['Id']),
       authorName: _toString(json['AuthorName']),
+      authorIsDeleted: _toBool(json['AuthorIsDeleted']),
     );
   }
 }
@@ -396,6 +405,7 @@ class CommunityThreadReply {
   const CommunityThreadReply({
     required this.id,
     required this.authorName,
+    required this.authorIsDeleted,
     required this.authorBadge,
     required this.authorAvatar,
     required this.publishedAt,
@@ -409,6 +419,7 @@ class CommunityThreadReply {
 
   final int id;
   final String authorName;
+  final bool authorIsDeleted;
   final String authorBadge;
   final String authorAvatar;
   final DateTime? publishedAt;
@@ -423,6 +434,7 @@ class CommunityThreadReply {
     return CommunityThreadReply(
       id: _toInt(json['Id']),
       authorName: _toString(json['AuthorName']),
+      authorIsDeleted: _toBool(json['AuthorIsDeleted']),
       authorBadge: _toString(json['AuthorBadge']),
       authorAvatar: _toString(json['AuthorAvatar']),
       publishedAt: _toDateTime(json['PublishedAt']),
@@ -456,6 +468,7 @@ class CommunityThreadDetail extends CommunityFeedItem {
     required super.title,
     required super.excerpt,
     required super.authorName,
+    required super.authorIsDeleted,
     required super.authorAvatar,
     required super.publishedAt,
     required super.replies,
@@ -493,6 +506,7 @@ class CommunityThreadDetail extends CommunityFeedItem {
       title: base.title,
       excerpt: base.excerpt,
       authorName: base.authorName,
+      authorIsDeleted: base.authorIsDeleted,
       authorAvatar: base.authorAvatar,
       publishedAt: base.publishedAt,
       replies: base.replies,

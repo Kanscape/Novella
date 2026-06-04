@@ -1417,13 +1417,25 @@ class _CommunityFeedCard extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            '${item.authorName} · ${_formatTimeLabel(item.publishedAt)}',
+                          child: Text.rich(
+                            TextSpan(
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              children: [
+                                _communityAuthorSpan(
+                                  context,
+                                  authorName: item.authorName,
+                                  authorIsDeleted: item.authorIsDeleted,
+                                ),
+                                TextSpan(
+                                  text:
+                                      ' · ${_formatTimeLabel(item.publishedAt)}',
+                                ),
+                              ],
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
                           ),
                         ),
                         _TinyStat(
@@ -1795,6 +1807,28 @@ class _ChipOption<T> {
 Color _boardAccentColor(BuildContext context, String key) {
   final colorScheme = Theme.of(context).colorScheme;
   return colorScheme.primary;
+}
+
+const _deletedAuthorSuffix = '（被封禁）';
+
+TextSpan _communityAuthorSpan(
+  BuildContext context, {
+  required String authorName,
+  required bool authorIsDeleted,
+}) {
+  return TextSpan(
+    children: [
+      TextSpan(text: authorName),
+      if (authorIsDeleted)
+        TextSpan(
+          text: _deletedAuthorSuffix,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.error,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+    ],
+  );
 }
 
 String _formatTimeLabel(DateTime? value) {

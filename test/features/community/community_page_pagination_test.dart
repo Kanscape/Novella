@@ -159,6 +159,7 @@ CommunityFeedItem _feedItem(int id, String title) {
     title: title,
     excerpt: 'excerpt',
     authorName: 'user',
+    authorIsDeleted: false,
     authorAvatar: '',
     publishedAt: DateTime(2026),
     replies: 0,
