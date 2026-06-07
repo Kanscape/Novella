@@ -201,6 +201,9 @@ class BookInfo {
   final String cover;
   final String author;
   final String? seriesName;
+  final String? originalSeriesName;
+  final String? categoryName;
+  final String? categoryShortName;
   final List<String> tags;
   final String introduction;
   final DateTime lastUpdatedAt;
@@ -219,6 +222,9 @@ class BookInfo {
     required this.cover,
     required this.author,
     this.seriesName,
+    this.originalSeriesName,
+    this.categoryName,
+    this.categoryShortName,
     this.tags = const [],
     required this.introduction,
     required this.lastUpdatedAt,
@@ -252,6 +258,9 @@ class BookInfo {
       cover: book['Cover'] as String? ?? '',
       author: book['Author'] as String? ?? 'Unknown',
       seriesName: _readBookSeriesName(book),
+      originalSeriesName: _readBookOriginalSeriesName(book),
+      categoryName: _readBookCategoryField(book, 'Name'),
+      categoryShortName: _readBookCategoryField(book, 'ShortName'),
       tags: _readBookTags(book),
       introduction: book['Introduction'] as String? ?? '',
       lastUpdatedAt:
@@ -266,6 +275,30 @@ class BookInfo {
       serverReadPosition: readPos,
     );
   }
+
+  String? resolveSeriesSearchKeyword(SeriesSearchMode mode) {
+    final displayName = seriesName?.trim();
+    final originalName = originalSeriesName?.trim();
+    final hasDisplayName = displayName != null && displayName.isNotEmpty;
+    final hasOriginalName = originalName != null && originalName.isNotEmpty;
+
+    switch (mode) {
+      case SeriesSearchMode.original:
+        return hasOriginalName ? originalName : displayName;
+      case SeriesSearchMode.display:
+        return hasDisplayName ? displayName : originalName;
+      case SeriesSearchMode.system:
+        if (isJapaneseOriginalCategory && hasOriginalName) {
+          return originalName;
+        }
+        return hasDisplayName ? displayName : originalName;
+    }
+  }
+
+  bool get isJapaneseOriginalCategory {
+    return _japaneseOriginalCategoryNames.contains(categoryName) ||
+        _japaneseOriginalCategoryShortNames.contains(categoryShortName);
+  }
 }
 
 String? _readBookSeriesName(Map<dynamic, dynamic> book) {
@@ -275,6 +308,22 @@ String? _readBookSeriesName(Map<dynamic, dynamic> book) {
 
     final originalName = _trimmedString(classification['series_name']);
     if (originalName != null) return originalName;
+  }
+  return null;
+}
+
+String? _readBookOriginalSeriesName(Map<dynamic, dynamic> book) {
+  for (final classification in _readBookClassifications(book)) {
+    final originalName = _trimmedString(classification['series_name']);
+    if (originalName != null) return originalName;
+  }
+  return null;
+}
+
+String? _readBookCategoryField(Map<dynamic, dynamic> book, String key) {
+  final category = book['Category'];
+  if (category is Map) {
+    return _trimmedString(category[key]);
   }
   return null;
 }
@@ -316,6 +365,9 @@ String? _trimmedString(Object? value) {
   final text = value?.toString().trim();
   return text == null || text.isEmpty ? null : text;
 }
+
+const _japaneseOriginalCategoryNames = {'日文原版'};
+const _japaneseOriginalCategoryShortNames = {'日文', '日原', '日文原版'};
 
 /// 服务端阅读进度结构
 class ServerReadPosition {
@@ -902,6 +954,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           cached.title != info.title ||
           cached.author != info.author ||
           cached.seriesName != info.seriesName ||
+          cached.originalSeriesName != info.originalSeriesName ||
+          cached.categoryName != info.categoryName ||
+          cached.categoryShortName != info.categoryShortName ||
           !listEquals(cached.tags, info.tags) ||
           cached.introduction != info.introduction ||
           cached.cover != info.cover ||
@@ -1851,6 +1906,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   Widget _buildContent(ColorScheme colorScheme) {
     final settings = ref.watch(settingsProvider);
     final book = _bookInfo!;
+    final seriesSearchKeyword = book.resolveSeriesSearchKeyword(
+      settings.seriesSearchMode,
+    );
     // 复用封面 URL 利用缓存
     final coverUrl =
         widget.initialCoverUrl?.isNotEmpty == true
@@ -1968,16 +2026,16 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                               children: [
                                 _buildQuickSearchText(
                                   text: book.title,
-                                  searchKeyword: book.seriesName,
+                                  searchKeyword: seriesSearchKeyword,
                                   style: Theme.of(context).textTheme.titleLarge
                                       ?.copyWith(fontWeight: FontWeight.bold),
                                   maxLines: 4,
                                   semanticsLabel:
-                                      book.seriesName == null
+                                      seriesSearchKeyword == null
                                           ? '搜索书名 ${book.title}'
-                                          : '搜索系列 ${book.seriesName}',
+                                          : '搜索系列 $seriesSearchKeyword',
                                   mode:
-                                      book.seriesName == null
+                                      seriesSearchKeyword == null
                                           ? BookSearchMode.fuzzy
                                           : BookSearchMode.name,
                                 ),

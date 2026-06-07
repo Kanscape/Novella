@@ -15,6 +15,8 @@ enum ReaderViewMode { scroll, paged }
 
 enum ReaderBatteryIndicatorStyle { capsule, capsuleDynamic, text }
 
+enum SeriesSearchMode { system, original, display }
+
 String _normalizeIOSDisplayStyle(String? value) {
   if (value == 'ios26' && PlatformInfo.isNativeIOS26OrHigher()) {
     return 'ios26';
@@ -54,6 +56,7 @@ class AppSettings {
   final List<String> enabledHomeModules;
   final bool bookDetailCacheEnabled;
   final List<String> bookTypeBadgeScopes;
+  final SeriesSearchMode seriesSearchMode;
   final bool coverColorExtraction; // 封面取色开关
   final int seedColorValue; // 主题种子色 ARGB 值
   final bool useSystemColor; // 是否使用系统动态颜色
@@ -128,6 +131,7 @@ class AppSettings {
     this.enabledHomeModules = defaultEnabledModules,
     this.bookDetailCacheEnabled = true,
     this.bookTypeBadgeScopes = defaultBookTypeBadgeScopes,
+    this.seriesSearchMode = SeriesSearchMode.system,
     this.coverColorExtraction = false, // 默认关闭
     this.seedColorValue = 0xFFB71C1C, // 勃艮第红
     this.useSystemColor = false,
@@ -195,6 +199,7 @@ class AppSettings {
     List<String>? enabledHomeModules,
     bool? bookDetailCacheEnabled,
     List<String>? bookTypeBadgeScopes,
+    SeriesSearchMode? seriesSearchMode,
     bool? coverColorExtraction,
     int? seedColorValue,
     bool? useSystemColor,
@@ -254,6 +259,7 @@ class AppSettings {
       bookDetailCacheEnabled:
           bookDetailCacheEnabled ?? this.bookDetailCacheEnabled,
       bookTypeBadgeScopes: bookTypeBadgeScopes ?? this.bookTypeBadgeScopes,
+      seriesSearchMode: seriesSearchMode ?? this.seriesSearchMode,
       coverColorExtraction: coverColorExtraction ?? this.coverColorExtraction,
       seedColorValue: seedColorValue ?? this.seedColorValue,
       useSystemColor: useSystemColor ?? this.useSystemColor,
@@ -375,6 +381,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       bookTypeBadgeScopes: List<String>.from(
         prefs.getStringList('setting_bookTypeBadgeScopes') ??
             AppSettings.defaultBookTypeBadgeScopes,
+      ),
+      seriesSearchMode: _parseSeriesSearchMode(
+        prefs.getString('setting_seriesSearchMode'),
       ),
       coverColorExtraction:
           prefs.getBool('setting_coverColorExtraction') ?? false,
@@ -502,6 +511,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await prefs.setStringList(
       'setting_bookTypeBadgeScopes',
       state.bookTypeBadgeScopes,
+    );
+    await prefs.setString(
+      'setting_seriesSearchMode',
+      state.seriesSearchMode.name,
     );
     await prefs.setBool(
       'setting_coverColorExtraction',
@@ -736,6 +749,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _save();
   }
 
+  void setSeriesSearchMode(SeriesSearchMode mode) {
+    state = state.copyWith(seriesSearchMode: mode);
+    _save();
+  }
+
   void setSeedColor(int colorValue) {
     state = state.copyWith(seedColorValue: colorValue);
     _save();
@@ -882,6 +900,18 @@ ReaderBatteryIndicatorStyle _parseReaderBatteryIndicatorStyle(String? raw) {
   return Platform.isIOS
       ? ReaderBatteryIndicatorStyle.capsule
       : ReaderBatteryIndicatorStyle.text;
+}
+
+SeriesSearchMode _parseSeriesSearchMode(String? raw) {
+  if (raw != null) {
+    for (final mode in SeriesSearchMode.values) {
+      if (mode.name == raw) {
+        return mode;
+      }
+    }
+  }
+
+  return SeriesSearchMode.system;
 }
 
 /// 设置提供者
