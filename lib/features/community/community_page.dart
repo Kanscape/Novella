@@ -13,15 +13,21 @@ import 'package:novella/data/services/community_service.dart';
 import 'package:novella/features/community/community_board_icon.dart';
 import 'package:novella/features/community/community_compose_page.dart';
 import 'package:novella/features/community/community_notification_page.dart';
+import 'package:novella/features/community/community_post_notice_sheet.dart';
 import 'package:novella/features/community/community_thread_page.dart';
 import 'package:novella/features/community/notification_unread_provider.dart';
 import 'package:novella/features/settings/settings_page.dart';
 
 class CommunityPage extends ConsumerStatefulWidget {
-  const CommunityPage({super.key, CommunityService? communityService})
-    : _communityService = communityService;
+  const CommunityPage({
+    super.key,
+    CommunityService? communityService,
+    CommunityPostNoticeStore? communityPostNoticeStore,
+  }) : _communityService = communityService,
+       _communityPostNoticeStore = communityPostNoticeStore;
 
   final CommunityService? _communityService;
+  final CommunityPostNoticeStore? _communityPostNoticeStore;
 
   @override
   ConsumerState<CommunityPage> createState() => CommunityPageState();
@@ -30,6 +36,7 @@ class CommunityPage extends ConsumerStatefulWidget {
 class CommunityPageState extends ConsumerState<CommunityPage> {
   static const int _feedPreloadRemainingItems = 2;
   late final CommunityService _communityService;
+  late final CommunityPostNoticeStore _communityPostNoticeStore;
 
   bool _isTabActive = true;
   bool _loading = true;
@@ -50,6 +57,8 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   void initState() {
     super.initState();
     _communityService = widget._communityService ?? CommunityService();
+    _communityPostNoticeStore =
+        widget._communityPostNoticeStore ?? CommunityPostNoticeStore();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -78,10 +87,18 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   }
 
   Future<void> _openComposePage() async {
+    final accepted = await ensureCommunityPostNoticeAccepted(
+      context,
+      store: _communityPostNoticeStore,
+    );
+    if (!mounted || !accepted) {
+      return;
+    }
+
     final createdThread =
         await AppRouteLauncher.pushDetail<CommunityThreadDetail>(
           context,
-          (_) => const CommunityComposePage(),
+          (_) => CommunityComposePage(communityService: _communityService),
         );
     if (!mounted || createdThread == null) {
       return;
