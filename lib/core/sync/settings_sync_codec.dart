@@ -66,6 +66,7 @@ class SettingsSyncCodec {
       'shelf',
       'history',
     ],
+    'setting_seriesSearchMode': 'system',
     'setting_coverColorExtraction': false,
     'setting_seedColorValue': 0xFFB71C1C,
     'setting_useSystemColor': false,

@@ -161,6 +161,41 @@ class ContentSettingsPage extends ConsumerWidget {
                 ),
                 onTap: () => _showBookTypeBadgeSheet(context),
               ),
+              ListTile(
+                leading: const Icon(Icons.manage_search),
+                title: const Text('系列搜索'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _getSeriesSearchSummary(settings),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.chevron_right, size: 20),
+                  ],
+                ),
+                onTap:
+                    () => SettingsUIHelper.showSelectionSheet<SeriesSearchMode>(
+                      context: context,
+                      title: '系列搜索',
+                      subtitle: '控制详情页快速搜索的方式',
+                      currentValue: settings.seriesSearchMode,
+                      options: const {
+                        SeriesSearchMode.system: '系统',
+                        SeriesSearchMode.original: '日文',
+                        SeriesSearchMode.display: '中文',
+                      },
+                      icons: const {
+                        SeriesSearchMode.system: Icons.auto_mode_outlined,
+                        SeriesSearchMode.original: Icons.translate,
+                        SeriesSearchMode.display: Icons.language,
+                      },
+                      onSelected: notifier.setSeriesSearchMode,
+                    ),
+              ),
               const SizedBox(height: 32),
             ]),
           ),
@@ -182,6 +217,14 @@ class ContentSettingsPage extends ConsumerWidget {
     return const {0: '发现', 1: '书架', 2: '历史', 3: '社区'}[settings
             .startupTabIndex] ??
         '发现';
+  }
+
+  String _getSeriesSearchSummary(AppSettings settings) {
+    return switch (settings.seriesSearchMode) {
+      SeriesSearchMode.system => '系统',
+      SeriesSearchMode.original => '日文',
+      SeriesSearchMode.display => '中文',
+    };
   }
 
   void _showContentFilterSheet(BuildContext context) {

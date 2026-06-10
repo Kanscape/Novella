@@ -25,6 +25,30 @@ void main() {
     });
 
     expect(info.seriesName, '公爵家千金大小姐的爱好');
+    expect(info.originalSeriesName, '公爵令嬢の嗜み');
+  });
+
+  test('reads original series name only from classification series field', () {
+    final info = BookInfo.fromJson({
+      'Book': {
+        'Id': 578,
+        'Title': '公爵千金大小姐的爱好 3',
+        'Cover': '',
+        'Author': '',
+        'Introduction': '',
+        'LastUpdatedAt': '2026-05-20T14:04:06.8181455Z',
+        'Favorite': 23,
+        'Views': 0,
+        'CanEdit': false,
+        'Chapter': [],
+        'Extra': {
+          'classification': {'series_name_cn': '公爵家千金大小姐的爱好'},
+        },
+      },
+    });
+
+    expect(info.seriesName, '公爵家千金大小姐的爱好');
+    expect(info.originalSeriesName, isNull);
   });
 
   test('parses tags from book classification extra', () {

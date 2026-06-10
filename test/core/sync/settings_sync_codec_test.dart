@@ -19,6 +19,7 @@ void main() {
           'setting_seedColorValue': 0xFF0061A4,
           'setting_useSystemColor': false,
           'setting_dynamicSchemeVariant': 3,
+          'setting_seriesSearchMode': 'original',
         }, DateTime.utc(2026, 1, 2));
 
     expect(changed, isTrue);
@@ -26,5 +27,6 @@ void main() {
     expect(prefs.getInt('setting_seedColorValue'), 0xFF0061A4);
     expect(prefs.getBool('setting_useSystemColor'), isFalse);
     expect(prefs.getInt('setting_dynamicSchemeVariant'), 3);
+    expect(prefs.getString('setting_seriesSearchMode'), 'original');
   });
 }
