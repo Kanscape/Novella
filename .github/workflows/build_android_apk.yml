@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           lfs: false
+          fetch-depth: 0
 
       - name: Restore Git LFS Cache
         uses: actions/cache@v5
@@ -44,8 +45,30 @@ jobs:
           git lfs install --local
           git lfs pull --include="android/app/src/main/jniLibs,android/app/src/main/res" --exclude=""
 
-      - name: Set Commit SHA
-        run: echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+      - name: Set Build Metadata
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BUILD_NUMBER="$(git rev-list --count origin/main)"
+            BUILD_CHANNEL="pr"
+            BUILD_LABEL="PR #${{ github.event.pull_request.number }}"
+          elif [ "$GITHUB_REF_NAME" = "main" ]; then
+            BUILD_NUMBER="$(git rev-list --count HEAD)"
+            BUILD_CHANNEL="main"
+            BUILD_LABEL="Build $BUILD_NUMBER"
+          else
+            BUILD_NUMBER="$(git rev-list --count origin/main)"
+            BUILD_CHANNEL="branch"
+            BUILD_LABEL="$GITHUB_REF_NAME"
+          fi
+
+          {
+            echo "BUILD_NUMBER=$BUILD_NUMBER"
+            echo "BUILD_CHANNEL=$BUILD_CHANNEL"
+            echo "BUILD_LABEL=$BUILD_LABEL"
+          } >> "$GITHUB_ENV"
 
       # 配置 Java 环境
       - name: Setup Java
@@ -69,7 +92,11 @@ jobs:
 
       # 构建免签 APK
       - name: Build Unsigned APK
-        run: flutter build apk --release --verbose --dart-define=COMMIT_ID=$COMMIT_SHA
+        run: |
+          flutter build apk --release --verbose \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define=BUILD_CHANNEL="$BUILD_CHANNEL" \
+            --dart-define=BUILD_LABEL="$BUILD_LABEL"
 
       # 重命名 APK
       - name: Rename APK
@@ -95,6 +122,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           lfs: false
+          fetch-depth: 0
 
       - name: Restore Git LFS Cache
         uses: actions/cache@v5
@@ -109,8 +137,30 @@ jobs:
           git lfs install --local
           git lfs pull --include="android/app/src/main/jniLibs,android/app/src/main/res" --exclude=""
 
-      - name: Set Commit SHA
-        run: echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+      - name: Set Build Metadata
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BUILD_NUMBER="$(git rev-list --count origin/main)"
+            BUILD_CHANNEL="pr"
+            BUILD_LABEL="PR #${{ github.event.pull_request.number }}"
+          elif [ "$GITHUB_REF_NAME" = "main" ]; then
+            BUILD_NUMBER="$(git rev-list --count HEAD)"
+            BUILD_CHANNEL="main"
+            BUILD_LABEL="Build $BUILD_NUMBER"
+          else
+            BUILD_NUMBER="$(git rev-list --count origin/main)"
+            BUILD_CHANNEL="branch"
+            BUILD_LABEL="$GITHUB_REF_NAME"
+          fi
+
+          {
+            echo "BUILD_NUMBER=$BUILD_NUMBER"
+            echo "BUILD_CHANNEL=$BUILD_CHANNEL"
+            echo "BUILD_LABEL=$BUILD_LABEL"
+          } >> "$GITHUB_ENV"
 
       # 配置 Java 环境
       - name: Setup Java
@@ -146,7 +196,11 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: flutter build apk --release --verbose --dart-define=COMMIT_ID=$COMMIT_SHA
+        run: |
+          flutter build apk --release --verbose \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define=BUILD_CHANNEL="$BUILD_CHANNEL" \
+            --dart-define=BUILD_LABEL="$BUILD_LABEL"
 
       # 重命名 APK
       - name: Rename APK
