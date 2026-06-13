@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/network/request_queue.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/app_notification.dart';
 import 'package:novella/data/services/notification_service.dart';
@@ -140,6 +141,7 @@ class _CommunityNotificationPageState
           (_) => BookDetailPage(
             bookId: objectId,
             initialTitle: item.extra.objectTitle,
+            telemetrySource: TelemetryBookDetailSources.communityNotification,
           ),
         );
         return;

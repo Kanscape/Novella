@@ -18,6 +18,7 @@ import 'package:novella/core/network/backend_user_agent.dart';
 import 'package:novella/core/storage/secret_storage_service.dart';
 // gzip 数据为 JSON 格式，无需 msgpack
 import 'package:novella/core/network/request_queue.dart';
+import 'package:novella/core/network/signalr_telemetry.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 import 'package:novella/core/network/novel_hub_protocol.dart';
 
@@ -161,7 +162,16 @@ class SignalRService {
     }
 
     _detachRegisteredEventHandlers(existingConnection);
-    await existingConnection.stop();
+    try {
+      await existingConnection.stop();
+    } catch (e, stackTrace) {
+      SignalRHubTelemetry.capture(
+        e,
+        stackTrace: stackTrace,
+        source: SignalRHubTelemetrySources.stop,
+      );
+      rethrow;
+    }
     _hubConnection = null;
     _isStarting = false;
     _connectionCompleter = null;
@@ -332,10 +342,24 @@ class SignalRService {
     _hubConnection?.onclose(({Exception? error}) {
       _logger.info('Closed: $error');
       _isStarting = false;
+      if (error != null) {
+        SignalRHubTelemetry.capture(
+          error,
+          stackTrace: StackTrace.current,
+          source: SignalRHubTelemetrySources.closed,
+        );
+      }
     });
 
     _hubConnection?.onreconnecting(({Exception? error}) {
       _logger.info('Reconnecting: $error');
+      if (error != null) {
+        SignalRHubTelemetry.capture(
+          error,
+          stackTrace: StackTrace.current,
+          source: SignalRHubTelemetrySources.reconnecting,
+        );
+      }
     });
 
     _hubConnection?.onreconnected(({String? connectionId}) {
@@ -346,9 +370,14 @@ class SignalRService {
       await _hubConnection?.start();
       _logger.info('Connected successfully');
       _connectionCompleter?.complete();
-    } catch (e) {
+    } catch (e, stackTrace) {
       _logger.warning('Failed to connect: $e');
-      _connectionCompleter?.completeError(e);
+      SignalRHubTelemetry.capture(
+        e,
+        stackTrace: stackTrace,
+        source: SignalRHubTelemetrySources.connect,
+      );
+      _connectionCompleter?.completeError(e, stackTrace);
       _isStarting = false;
       rethrow;
     }
@@ -373,10 +402,23 @@ class SignalRService {
     String methodName,
     SignalREventHandler handler,
   ) {
+    void safeHandler(List<Object?>? arguments) {
+      try {
+        handler(arguments);
+      } catch (e, stackTrace) {
+        SignalRHubTelemetry.capture(
+          e,
+          stackTrace: stackTrace,
+          source: SignalRHubTelemetrySources.eventHandler,
+        );
+        rethrow;
+      }
+    }
+
     final registration = _SignalREventRegistration(
       id: _nextEventRegistrationId++,
       methodName: methodName,
-      handler: handler,
+      handler: safeHandler,
     );
     _eventRegistrations[registration.id] = registration;
     _hubConnection?.on(methodName, registration.handler);
@@ -459,24 +501,35 @@ class SignalRService {
       try {
         await _hubConnection?.start();
         _logger.info('Restart successful');
-      } catch (e) {
+      } catch (e, stackTrace) {
         _logger.warning('Restart failed: $e');
+        SignalRHubTelemetry.capture(
+          e,
+          stackTrace: stackTrace,
+          source: SignalRHubTelemetrySources.restart,
+        );
         throw Exception('SignalR connection failed: $e');
       }
     }
 
     // 最终检查
     if (_hubConnection?.state != HubConnectionState.Connected) {
-      throw Exception(
+      final error = Exception(
         'SignalR not connected (state: ${_hubConnection?.state})',
       );
+      SignalRHubTelemetry.capture(
+        error,
+        stackTrace: StackTrace.current,
+        source: SignalRHubTelemetrySources.invoke,
+      );
+      throw error;
     }
 
     try {
       _logger.info('Invoking: $methodName');
       final result = await _hubConnection!.invoke(methodName, args: args);
       return _processResponse<T>(result);
-    } catch (e) {
+    } catch (e, stackTrace) {
       _logger.warning('Invoke error: $e');
 
       if (!retrying && _isAuthError(e)) {
@@ -491,6 +544,11 @@ class SignalRService {
         );
       }
 
+      SignalRHubTelemetry.capture(
+        e,
+        stackTrace: stackTrace,
+        source: SignalRHubTelemetrySources.invoke,
+      );
       rethrow;
     }
   }

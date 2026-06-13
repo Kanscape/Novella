@@ -7,6 +7,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_cover_hint_service.dart';
@@ -549,6 +550,7 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
         initialCoverUrl: book?.cover,
         initialTitle: book?.title,
         heroTag: 'shelf_folder_${widget.folderId}_$bookId',
+        telemetrySource: TelemetryBookDetailSources.shelfFolder,
       ),
     );
   }

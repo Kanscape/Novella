@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
@@ -419,6 +421,7 @@ class BookDetailPage extends ConsumerStatefulWidget {
   final String? initialCoverUrl;
   final String? initialTitle;
   final String? heroTag;
+  final String? telemetrySource;
 
   const BookDetailPage({
     super.key,
@@ -426,6 +429,7 @@ class BookDetailPage extends ConsumerStatefulWidget {
     this.initialCoverUrl,
     this.initialTitle,
     this.heroTag,
+    this.telemetrySource,
   });
 
   @override
@@ -534,6 +538,17 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   @override
   void initState() {
     super.initState();
+    final telemetrySource = widget.telemetrySource;
+    if (telemetrySource != null) {
+      TelemetryService.instance.track(
+        TelemetryEvents.bookDetailOpened,
+        properties: {TelemetryProperties.source: telemetrySource},
+      );
+      TelemetryService.instance.addDiagnosticBreadcrumb(
+        'book_detail_opened',
+        properties: {TelemetryProperties.source: telemetrySource},
+      );
+    }
     _loadBookInfo();
   }
 
@@ -1247,6 +1262,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     required String semanticsLabel,
     int? maxLines,
     BookSearchMode mode = BookSearchMode.fuzzy,
+    String? telemetryTarget,
   }) {
     final trimmedText = text.trim();
     if (trimmedText.isEmpty) {
@@ -1261,7 +1277,15 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       button: true,
       label: semanticsLabel,
       child: GestureDetector(
-        onTap: () => _openQuickSearch(trimmedKeyword, mode: mode),
+        onTap: () {
+          if (telemetryTarget != null) {
+            TelemetryService.instance.track(
+              TelemetryEvents.bookDetailQuickSearchClicked,
+              properties: {TelemetryProperties.target: telemetryTarget},
+            );
+          }
+          _openQuickSearch(trimmedKeyword, mode: mode);
+        },
         child: Text(
           trimmedText,
           style: style,
@@ -2038,6 +2062,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                       seriesSearchKeyword == null
                                           ? BookSearchMode.fuzzy
                                           : BookSearchMode.name,
+                                  telemetryTarget:
+                                      TelemetryQuickSearchTargets.title,
                                 ),
                                 if (book.author.isNotEmpty) ...[
                                   const SizedBox(height: 4),
@@ -2050,6 +2076,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                     ),
                                     semanticsLabel: '搜索作者 ${book.author}',
                                     mode: BookSearchMode.author,
+                                    telemetryTarget:
+                                        TelemetryQuickSearchTargets.author,
                                   ),
                                 ],
                               ],
@@ -2488,6 +2516,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     final tags = _bookInfo?.tags ?? const <String>[];
     if (tags.isEmpty) return;
 
+    TelemetryService.instance.track(TelemetryEvents.tagFeatureUsed);
     final sheetTheme = _effectiveDynamicThemeData();
     showModalBottomSheet(
       context: context,

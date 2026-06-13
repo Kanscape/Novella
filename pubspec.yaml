@@ -81,6 +81,10 @@ dependencies:
   flutter_quill: ^11.5.1
   flutter_quill_delta_from_html: ^1.5.2
   vsc_quill_delta_to_html: ^1.0.5
+  rena_rtk:
+    git:
+      url: https://github.com/Kanscape/RTK-Flutter.git
+      ref: v0.1.0
 
 dev_dependencies:
   flutter_test:

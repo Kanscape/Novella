@@ -55,20 +55,24 @@ jobs:
             BUILD_NUMBER="$(git rev-list --count origin/main)"
             BUILD_CHANNEL="pr"
             BUILD_LABEL="PR #${{ github.event.pull_request.number }}"
+            RENA_ENVIRONMENT="development"
           elif [ "$GITHUB_REF_NAME" = "main" ]; then
             BUILD_NUMBER="$(git rev-list --count HEAD)"
             BUILD_CHANNEL="main"
             BUILD_LABEL="Build $BUILD_NUMBER"
+            RENA_ENVIRONMENT="production"
           else
             BUILD_NUMBER="$(git rev-list --count origin/main)"
             BUILD_CHANNEL="branch"
             BUILD_LABEL="$GITHUB_REF_NAME"
+            RENA_ENVIRONMENT="development"
           fi
 
           {
             echo "BUILD_NUMBER=$BUILD_NUMBER"
             echo "BUILD_CHANNEL=$BUILD_CHANNEL"
             echo "BUILD_LABEL=$BUILD_LABEL"
+            echo "RENA_ENVIRONMENT=$RENA_ENVIRONMENT"
           } >> "$GITHUB_ENV"
 
       # 指定 Xcode 26
@@ -126,11 +130,17 @@ jobs:
 
       # 构建免签 Release
       - name: Build iOS Release (No Codesign)
+        env:
+          RENA_ENDPOINT: ${{ secrets.RENA_ENDPOINT }}
+          RENA_PUBLIC_WRITE_KEY: ${{ secrets.RENA_PUBLIC_WRITE_KEY }}
         run: |
           flutter build ios --release --no-codesign --verbose \
             --build-number="$BUILD_NUMBER" \
             --dart-define=BUILD_CHANNEL="$BUILD_CHANNEL" \
-            --dart-define=BUILD_LABEL="$BUILD_LABEL"
+            --dart-define=BUILD_LABEL="$BUILD_LABEL" \
+            --dart-define=RENA_ENDPOINT="$RENA_ENDPOINT" \
+            --dart-define=RENA_PUBLIC_WRITE_KEY="$RENA_PUBLIC_WRITE_KEY" \
+            --dart-define=RENA_ENVIRONMENT="$RENA_ENVIRONMENT"
 
       # 打包 IPA
       - name: Package IPA

@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/config/app_build_info.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/main.dart' show rustLibInitialized, rustLibInitError;
 import 'package:novella/features/settings/settings_provider.dart';
 import 'package:novella/features/settings/source_code_page.dart';
@@ -25,36 +27,42 @@ class AboutSettingsPage extends ConsumerWidget {
       subtitle: 'novella.celia.sh',
       url: 'https://novella.celia.sh',
       icon: Icons.language,
+      telemetryItem: TelemetryExternalLinkItems.projectSite,
     ),
     _FeedbackLink(
       title: 'GitHub Repository',
       subtitle: '点亮仓库的小星星',
       url: 'https://github.com/Kanscape/Novella',
       icon: Icons.star_border,
+      telemetryItem: TelemetryExternalLinkItems.githubRepository,
     ),
     _FeedbackLink(
       title: 'GitHub Discussions',
       subtitle: '功能建议与使用讨论',
       url: 'https://github.com/Kanscape/Novella/discussions',
       icon: Icons.forum_outlined,
+      telemetryItem: TelemetryExternalLinkItems.githubDiscussions,
     ),
     _FeedbackLink(
       title: 'GitHub Issues',
       subtitle: '问题反馈与进度追踪',
       url: 'https://github.com/Kanscape/Novella/issues',
       icon: Icons.bug_report_outlined,
+      telemetryItem: TelemetryExternalLinkItems.githubIssues,
     ),
     _FeedbackLink(
       title: '轻书架留学生',
       subtitle: '轻书架官方群组，严禁讨论软件相关',
       url: 'https://t.me/+J5xdTWVGOJMyOWRl',
       icon: Icons.telegram,
+      telemetryItem: TelemetryExternalLinkItems.lightnovelGroup,
     ),
     _FeedbackLink(
       title: '白毛是对的',
       subtitle: '客户端开发群组，更新动态与软件反馈',
       url: 'https://t.me/+rZYx8H_TvUpmZjJh',
       icon: Icons.telegram,
+      telemetryItem: TelemetryExternalLinkItems.developerGroup,
     ),
   ];
 
@@ -108,6 +116,18 @@ class AboutSettingsPage extends ConsumerWidget {
                 value: settings.autoCheckUpdate,
                 onChanged: (value) {
                   ref.read(settingsProvider.notifier).setAutoCheckUpdate(value);
+                },
+              ),
+
+              SwitchListTile(
+                secondary: const Icon(Icons.health_and_safety_outlined),
+                title: const Text('协助改进'),
+                subtitle: const Text('发送错误报告与诊断上下文'),
+                value: settings.telemetryDiagnosticsEnabled,
+                onChanged: (value) {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setTelemetryDiagnosticsEnabled(value);
                 },
               ),
 
@@ -234,7 +254,7 @@ class AboutSettingsPage extends ConsumerWidget {
                   vertical: 12,
                 ),
                 child: Text(
-                  '交流与反馈',
+                  '反馈与交流',
                   style: textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -261,6 +281,12 @@ class AboutSettingsPage extends ConsumerWidget {
                   ),
                   onTap: () async {
                     Navigator.pop(sheetContext);
+                    TelemetryService.instance.track(
+                      TelemetryEvents.externalLinkClicked,
+                      properties: {
+                        TelemetryProperties.item: link.telemetryItem,
+                      },
+                    );
                     await _launchFeedbackUrl(context, link.url);
                   },
                 ),
@@ -381,10 +407,12 @@ class _FeedbackLink {
     required this.subtitle,
     required this.url,
     required this.icon,
+    required this.telemetryItem,
   });
 
   final String title;
   final String subtitle;
   final String url;
   final IconData icon;
+  final String telemetryItem;
 }

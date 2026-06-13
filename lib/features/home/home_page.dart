@@ -6,6 +6,8 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/src/widgets/book_cover_card.dart';
@@ -151,6 +153,19 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     final latestMissing =
         settings.isModuleEnabled('recentlyUpdated') && _latestBooks.isEmpty;
     return rankingMissing || latestMissing;
+  }
+
+  void _trackHomeRecommendationClick({
+    required String module,
+    required String action,
+  }) {
+    TelemetryService.instance.track(
+      TelemetryEvents.homeRecommendationClicked,
+      properties: {
+        TelemetryProperties.module: module,
+        TelemetryProperties.action: action,
+      },
+    );
   }
 
   @override
@@ -771,6 +786,10 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () {
+                    _trackHomeRecommendationClick(
+                      module: TelemetryModules.continueReading,
+                      action: TelemetryActions.bookCard,
+                    );
                     // 快速进入书籍详情页
                     AppRouteLauncher.pushDetail(
                       context,
@@ -779,6 +798,8 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                         initialCoverUrl: book.cover,
                         initialTitle: book.title,
                         heroTag: 'continue_reading_${book.id}',
+                        telemetrySource:
+                            TelemetryBookDetailSources.homeContinueReading,
                       ),
                     ).then((_) {
                       _loadReadingStats();
@@ -943,6 +964,10 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
               ),
               TextButton(
                 onPressed: () {
+                  _trackHomeRecommendationClick(
+                    module: TelemetryModules.recentlyUpdated,
+                    action: TelemetryActions.more,
+                  );
                   AppRouteLauncher.pushDetail(
                     context,
                     (_) => const RecentlyUpdatedPage(),
@@ -1051,6 +1076,10 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
               ),
               TextButton(
                 onPressed: () {
+                  _trackHomeRecommendationClick(
+                    module: TelemetryModules.ranking,
+                    action: TelemetryActions.more,
+                  );
                   AppRouteLauncher.pushDetail(
                     context,
                     (_) => RankingPage(initialType: settings.homeRankType),
@@ -1153,9 +1182,21 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   ) {
     final textTheme = Theme.of(context).textTheme;
     final heroTag = 'home_${source}_cover_${book.id}';
+    final telemetryModule =
+        source == 'rank'
+            ? TelemetryModules.ranking
+            : TelemetryModules.recentlyUpdated;
+    final telemetrySource =
+        source == 'rank'
+            ? TelemetryBookDetailSources.homeRanking
+            : TelemetryBookDetailSources.homeRecentlyUpdated;
 
     return GestureDetector(
       onTap: () {
+        _trackHomeRecommendationClick(
+          module: telemetryModule,
+          action: TelemetryActions.bookCard,
+        );
         AppRouteLauncher.pushDetail(
           context,
           (_) => BookDetailPage(
@@ -1163,6 +1204,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
             initialCoverUrl: book.cover,
             initialTitle: book.title,
             heroTag: heroTag,
+            telemetrySource: telemetrySource,
           ),
         ).then((_) {
           _loadReadingStats();
