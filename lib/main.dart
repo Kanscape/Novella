@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show File, Platform;
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -13,6 +14,8 @@ import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/core/storage/secret_storage_service.dart';
 import 'package:novella/core/system_ui/app_system_ui.dart';
+import 'package:novella/core/telemetry/rena_telemetry_sink.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/auth/login_page.dart';
@@ -81,6 +84,26 @@ bool rustLibInitialized = false;
 String? rustLibInitError;
 const double _macOSTitleBarFallbackInset = 28;
 double _initialDesktopWindowTopInset = 0;
+
+void _installTelemetryErrorHooks() {
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    TelemetryService.instance.captureError(
+      details.exception,
+      stackTrace: details.stack,
+      module: 'flutter_framework',
+    );
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    TelemetryService.instance.captureError(
+      error,
+      stackTrace: stack,
+      module: 'platform_dispatcher',
+    );
+    return false;
+  };
+}
 
 int? _parseAppleMajorVersion(String version) {
   final versionMatch = RegExp(r'Version\s+(\d+)').firstMatch(version);
@@ -265,6 +288,20 @@ void main() async {
   // 初始化日志缓冲服务，尽早捕获启动日志。
   LogBufferService.init();
 
+  final telemetryPrefs = await SharedPreferences.getInstance();
+  try {
+    await RenaTelemetrySink.configureFromEnvironment(
+      diagnosticsEnabled:
+          telemetryPrefs.getBool(
+            AppSettings.telemetryDiagnosticsEnabledPrefsKey,
+          ) ??
+          true,
+    );
+  } catch (e, stack) {
+    _flutterLogger.warning('Failed to initialize telemetry: $e', e, stack);
+  }
+  _installTelemetryErrorHooks();
+
   // 配置边到边显示（Android 小白条沉浸）
   await AppSystemUi.restoreDefault(Brightness.light);
 
@@ -294,6 +331,11 @@ void main() async {
     rustLibInitialized = false;
     rustLibInitError = e.toString();
     _flutterLogger.severe('*** FAILED to initialize RustLib: $e', e, stack);
+    TelemetryService.instance.captureError(
+      e,
+      stackTrace: stack,
+      module: 'rust_ffi',
+    );
   }
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -330,6 +372,11 @@ void main() async {
         'Failed to initialize WindowManager: $e',
         e,
         stack,
+      );
+      TelemetryService.instance.captureError(
+        e,
+        stackTrace: stack,
+        module: 'window_manager',
       );
     }
   }
@@ -395,15 +442,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     // 策略：退后台主动 stop，回前台预热 refresh_token -> session token，并重建 SignalR。
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      TelemetryService.instance.endForeground(endedBy: state.name);
       unawaited(
         _signalRService.stop().catchError((e) {
           _lifecycleLogger.warning('SignalR stop error: $e');
         }),
       );
+      unawaited(TelemetryService.instance.flush());
       return;
     }
 
     if (state == AppLifecycleState.resumed) {
+      TelemetryService.instance.startForeground();
       unawaited(_prewarmAuthAndSignalR());
     }
   }
@@ -435,8 +485,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
       await _signalRService.init();
       _lifecycleLogger.info('Prewarm SignalR init done');
-    } catch (e) {
+    } catch (e, stack) {
       _lifecycleLogger.warning('Prewarm failed: $e');
+      TelemetryService.instance.captureError(
+        e,
+        stackTrace: stack,
+        module: 'foreground_recovery',
+      );
     } finally {
       _signalRService.endForegroundRecovery();
     }

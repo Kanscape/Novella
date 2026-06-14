@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_content_filter.dart';
 import 'package:novella/data/services/book_service.dart';
@@ -248,6 +249,7 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
             initialCoverUrl: book.cover,
             initialTitle: book.title,
             heroTag: heroTag,
+            telemetrySource: TelemetryBookDetailSources.homeRecentlyUpdated,
           ),
         );
       },

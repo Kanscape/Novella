@@ -9,6 +9,8 @@ import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/services/update_service.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/announcements/required_announcement_coordinator.dart';
 import 'package:novella/features/community/community_page.dart';
@@ -55,6 +57,21 @@ class _MainPageState extends ConsumerState<MainPage> with RouteAware {
       default:
         return null;
     }
+  }
+
+  String _telemetryTabForIndex(int index) => TelemetryTabs.fromIndex(index);
+
+  void _trackTabClick(int index) {
+    final tab = _telemetryTabForIndex(index);
+    TelemetryService.instance.setCurrentTab(tab);
+    TelemetryService.instance.track(
+      TelemetryEvents.tabClicked,
+      properties: {TelemetryProperties.tab: tab},
+    );
+    TelemetryService.instance.addDiagnosticBreadcrumb(
+      'tab_clicked',
+      properties: {TelemetryProperties.tab: tab},
+    );
   }
 
   void _updateTabActivity(int activeIndex) {
@@ -152,6 +169,8 @@ class _MainPageState extends ConsumerState<MainPage> with RouteAware {
   }
 
   void _handleTabChanged(int index) {
+    _trackTabClick(index);
+
     if (_currentIndex == index) {
       if (index == 1) {
         _shelfKey.currentState?.refresh();
@@ -189,6 +208,10 @@ class _MainPageState extends ConsumerState<MainPage> with RouteAware {
 
     _startupApplied = true;
     _currentIndex = settings.startupTabIndex;
+    final startupTab = _telemetryTabForIndex(_currentIndex);
+    TelemetryService.instance.setCurrentTab(startupTab);
+    TelemetryService.instance.startForeground(startupTab: startupTab);
+    TelemetryService.instance.recordDayType();
     _loadedPages
       ..clear()
       ..add(_currentIndex);

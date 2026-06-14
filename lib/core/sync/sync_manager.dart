@@ -9,6 +9,8 @@ import 'package:novella/core/sync/gist_sync_service.dart';
 import 'package:novella/core/sync/settings_sync_codec.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_data_model.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/data/services/book_mark_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -502,7 +504,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
         'SYNC run=$syncRunId stage=done lastKnownSyncId=${_lastKnownSyncId ?? 'null'} gistId=${_gistService.gistId ?? 'null'}',
       );
       notifyListeners();
-    } catch (e) {
+    } catch (e, stack) {
       _status = SyncStatus.error;
       _errorMessage = e.toString();
       _lastFailureTime = DateTime.now();
@@ -510,6 +512,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       _logger.severe(
         'SYNC run=$syncRunId stage=$stage status=error error=${e.toString()}',
       );
+      _captureSyncFailure(e, stack);
 
       // 判断是否应该重试
       final shouldRetry = _shouldRetryError(e);
@@ -592,6 +595,32 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
     return true;
   }
 
+  bool _isTelemetryReportableSyncError(Object error) {
+    final errorMsg = error.toString().toLowerCase();
+    return !errorMsg.contains('密码') &&
+        !errorMsg.contains('解密失败') &&
+        !errorMsg.contains('authorization_pending') &&
+        !errorMsg.contains('access_denied') &&
+        !errorMsg.contains('unauthorized') &&
+        !errorMsg.contains('cancel') &&
+        !errorMsg.contains('token');
+  }
+
+  void _captureSyncFailure(Object error, StackTrace stackTrace) {
+    if (!_isTelemetryReportableSyncError(error)) {
+      return;
+    }
+    TelemetryService.instance.addDiagnosticBreadcrumb(
+      'sync_failed',
+      properties: {TelemetryProperties.module: 'sync'},
+    );
+    TelemetryService.instance.captureError(
+      error,
+      stackTrace: stackTrace,
+      module: 'sync',
+    );
+  }
+
   /// 从 GitHub 恢复数据
   Future<bool> restoreFromGist(String password) async {
     if (!_gistService.isConnected) {
@@ -657,10 +686,11 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       _logger.info('SYNC run=$syncRunId stage=restore_done');
       notifyListeners();
       return true;
-    } catch (e) {
+    } catch (e, stack) {
       _logger.severe('Gist sync failed: $e');
       _status = SyncStatus.error;
       _errorMessage = e.toString();
+      _captureSyncFailure(e, stack);
       notifyListeners();
       rethrow;
     } finally {

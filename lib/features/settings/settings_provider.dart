@@ -6,6 +6,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:novella/core/sync/settings_sync_codec.dart';
 import 'package:novella/core/sync/sync_manager.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/utils/app_ui_font_manager.dart';
 import 'package:novella/features/book/book_detail_page.dart'
     show BookDetailPageState;
@@ -73,7 +75,10 @@ class AppSettings {
   final String iosDisplayStyle;
   final bool autoCheckUpdate;
   final String ignoredUpdateVersion; // 忽略的更新版本号
+  final bool telemetryDiagnosticsEnabled;
 
+  static const telemetryDiagnosticsEnabledPrefsKey =
+      'setting_telemetryDiagnosticsEnabled';
   static const defaultModuleOrder = [
     'stats',
     'continueReading',
@@ -146,6 +151,7 @@ class AppSettings {
     this.iosDisplayStyle = 'md3', // 默认使用 MD3 样式
     this.autoCheckUpdate = true, // 默认开启自动检查
     this.ignoredUpdateVersion = '',
+    this.telemetryDiagnosticsEnabled = true,
   });
 
   /// 是否使用 iOS 26 液态玻璃样式
@@ -214,6 +220,7 @@ class AppSettings {
     String? iosDisplayStyle,
     bool? autoCheckUpdate,
     String? ignoredUpdateVersion,
+    bool? telemetryDiagnosticsEnabled,
   }) {
     return AppSettings(
       isLoaded: isLoaded ?? this.isLoaded,
@@ -277,6 +284,8 @@ class AppSettings {
       iosDisplayStyle: iosDisplayStyle ?? this.iosDisplayStyle,
       autoCheckUpdate: autoCheckUpdate ?? this.autoCheckUpdate,
       ignoredUpdateVersion: ignoredUpdateVersion ?? this.ignoredUpdateVersion,
+      telemetryDiagnosticsEnabled:
+          telemetryDiagnosticsEnabled ?? this.telemetryDiagnosticsEnabled,
     );
   }
 
@@ -297,6 +306,7 @@ class AppSettings {
 /// 基于 Riverpod 3.x Notifier API 的设置通知器
 class SettingsNotifier extends Notifier<AppSettings> {
   final _logger = Logger('Settings');
+  bool _telemetrySettingsSnapshotSent = false;
 
   int _normalizeStartupTabIndex(int? index) {
     final safeIndex = index ?? 0;
@@ -407,8 +417,15 @@ class SettingsNotifier extends Notifier<AppSettings> {
       autoCheckUpdate: prefs.getBool('setting_autoCheckUpdate') ?? true,
       ignoredUpdateVersion:
           prefs.getString('setting_ignoredUpdateVersion') ?? '',
+      telemetryDiagnosticsEnabled:
+          prefs.getBool(AppSettings.telemetryDiagnosticsEnabledPrefsKey) ??
+          true,
     );
     state = loadedSettings;
+    TelemetryService.instance.setDiagnosticsEnabled(
+      loadedSettings.telemetryDiagnosticsEnabled,
+    );
+    _trackSettingsSnapshotIfNeeded(loadedSettings);
 
     if (storedIOSDisplayStyle != normalizedIOSDisplayStyle) {
       await prefs.setString(
@@ -548,6 +565,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
       'setting_ignoredUpdateVersion',
       state.ignoredUpdateVersion,
     );
+    await prefs.setBool(
+      AppSettings.telemetryDiagnosticsEnabledPrefsKey,
+      state.telemetryDiagnosticsEnabled,
+    );
 
     final currentGeneralSettings = SettingsSyncCodec.collectGeneralSettings(
       prefs,
@@ -594,6 +615,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setReaderViewMode(ReaderViewMode value) {
     state = state.copyWith(readerViewMode: value);
+    _trackPreferenceChanged(TelemetryProperties.readerViewMode, value.name);
     _save();
   }
 
@@ -673,6 +695,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setHomeRankType(String type) {
     state = state.copyWith(homeRankType: type);
+    _trackPreferenceChanged(TelemetryProperties.homeRankType, type);
     _save();
   }
 
@@ -702,31 +725,41 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setIgnoreJapanese(bool value) {
     state = state.copyWith(ignoreJapanese: value);
+    _trackPreferenceChanged(TelemetryProperties.ignoreJapanese, value);
     _save();
   }
 
   void setIgnoreAI(bool value) {
     state = state.copyWith(ignoreAI: value);
+    _trackPreferenceChanged(TelemetryProperties.ignoreAI, value);
     _save();
   }
 
   void setIgnoreLevel6(bool value) {
     state = state.copyWith(ignoreLevel6: value);
+    _trackPreferenceChanged(TelemetryProperties.ignoreLevel6, value);
     _save();
   }
 
   void setStartupTabIndex(int index) {
-    state = state.copyWith(startupTabIndex: _normalizeStartupTabIndex(index));
+    final normalizedIndex = _normalizeStartupTabIndex(index);
+    state = state.copyWith(startupTabIndex: normalizedIndex);
+    _trackPreferenceChanged(
+      TelemetryProperties.startupTab,
+      TelemetryTabs.fromIndex(normalizedIndex),
+    );
     _save();
   }
 
   void setHomeModuleOrder(List<String> order) {
     state = state.copyWith(homeModuleOrder: order);
+    _trackPreferenceChanged(TelemetryProperties.homeModuleOrder, order);
     _save();
   }
 
   void setEnabledHomeModules(List<String> modules) {
     state = state.copyWith(enabledHomeModules: modules);
+    _trackPreferenceChanged(TelemetryProperties.enabledHomeModules, modules);
     _save();
   }
 
@@ -741,6 +774,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
     required List<String> enabled,
   }) {
     state = state.copyWith(homeModuleOrder: order, enabledHomeModules: enabled);
+    _trackPreferenceChanged(TelemetryProperties.homeModuleOrder, order);
+    _trackPreferenceChanged(TelemetryProperties.enabledHomeModules, enabled);
     _save();
   }
 
@@ -751,6 +786,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setSeriesSearchMode(SeriesSearchMode mode) {
     state = state.copyWith(seriesSearchMode: mode);
+    _trackPreferenceChanged(TelemetryProperties.seriesSearchMode, mode.name);
     _save();
   }
 
@@ -869,6 +905,46 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(ignoredUpdateVersion: version);
     _save();
   }
+
+  void setTelemetryDiagnosticsEnabled(bool value) {
+    state = state.copyWith(telemetryDiagnosticsEnabled: value);
+    TelemetryService.instance.setDiagnosticsEnabled(value);
+    _save();
+  }
+
+  void _trackSettingsSnapshotIfNeeded(AppSettings settings) {
+    if (_telemetrySettingsSnapshotSent) {
+      return;
+    }
+    _telemetrySettingsSnapshotSent = true;
+    TelemetryService.instance.track(
+      TelemetryEvents.settingsSnapshot,
+      properties: _telemetrySettingsProperties(settings),
+    );
+  }
+
+  void _trackPreferenceChanged(String preference, Object? value) {
+    TelemetryService.instance.track(
+      TelemetryEvents.settingPreferenceChanged,
+      properties: {preference: value},
+    );
+  }
+}
+
+Map<String, Object?> _telemetrySettingsProperties(AppSettings settings) {
+  return {
+    TelemetryProperties.readerViewMode: settings.readerViewMode.name,
+    TelemetryProperties.ignoreJapanese: settings.ignoreJapanese,
+    TelemetryProperties.ignoreAI: settings.ignoreAI,
+    TelemetryProperties.ignoreLevel6: settings.ignoreLevel6,
+    TelemetryProperties.startupTab: TelemetryTabs.fromIndex(
+      settings.startupTabIndex,
+    ),
+    TelemetryProperties.homeRankType: settings.homeRankType,
+    TelemetryProperties.enabledHomeModules: settings.enabledHomeModules,
+    TelemetryProperties.homeModuleOrder: settings.homeModuleOrder,
+    TelemetryProperties.seriesSearchMode: settings.seriesSearchMode.name,
+  };
 }
 
 ReaderViewMode _parseReaderViewMode(String? raw) {
