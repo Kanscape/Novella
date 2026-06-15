@@ -39,10 +39,15 @@ class SignalRHubTelemetry {
     required String source,
   }) {
     final safeSource = SignalRHubTelemetrySources.safe(source);
+    final telemetryError = SignalRHubTelemetryError.from(
+      error,
+      source: safeSource,
+    );
     TelemetryService.instance.captureError(
-      SignalRHubTelemetryError.from(error, source: safeSource),
+      telemetryError,
       stackTrace: stackTrace,
       module: module,
+      reportable: telemetryError.isReportable,
       properties: {TelemetryProperties.source: safeSource},
     );
   }
@@ -73,6 +78,13 @@ class SignalRHubTelemetryError {
   final String category;
   final int? statusCode;
 
+  bool get isReportable {
+    return switch (category) {
+      'network' || 'timeout' || 'cancelled' => false,
+      _ => true,
+    };
+  }
+
   @override
   String toString() {
     final status = statusCode == null ? '' : ' status=$statusCode';
@@ -98,6 +110,7 @@ class SignalRHubTelemetryError {
         DioExceptionType.receiveTimeout ||
         DioExceptionType.sendTimeout => 'timeout',
         DioExceptionType.connectionError => 'network',
+        DioExceptionType.cancel => 'cancelled',
         DioExceptionType.badResponse => 'server_error',
         _ => _categoryForText(error.toString()),
       };
@@ -121,6 +134,9 @@ class SignalRHubTelemetryError {
     }
     if (text.contains('timeout') || text.contains('timed out')) {
       return 'timeout';
+    }
+    if (text.contains('cancel') || text.contains('cancelled')) {
+      return 'cancelled';
     }
     if (text.contains('socket') ||
         text.contains('connection') ||

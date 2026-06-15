@@ -6,6 +6,8 @@ list(APPEND FLUTTER_PLUGIN_LIST
   battery_plus
   dynamic_color
   file_selector_windows
+  firebase_core
+  firebase_remote_config
   flutter_inappwebview_windows
   flutter_secure_storage_windows
   gal

@@ -539,6 +539,14 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   void initState() {
     super.initState();
     final telemetrySource = widget.telemetrySource;
+    TelemetryService.instance.trackScreenView(
+      TelemetryScreens.bookDetail,
+      screenClass: 'BookDetailPage',
+      properties: {
+        if (telemetrySource != null)
+          TelemetryProperties.source: telemetrySource,
+      },
+    );
     if (telemetrySource != null) {
       TelemetryService.instance.track(
         TelemetryEvents.bookDetailOpened,

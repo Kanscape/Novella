@@ -1,5 +1,9 @@
 plugins {
     id("com.android.application")
+    // START: FlutterFire Configuration
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
+    // END: FlutterFire Configuration
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
@@ -8,6 +12,10 @@ plugins {
 val hasReleaseSigningEnv =
     listOf("KEYSTORE_FILE", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
         .all { !System.getenv(it).isNullOrBlank() }
+
+val crashlyticsMappingFileUploadEnabled =
+    System.getenv("FIREBASE_CRASHLYTICS_MAPPING_UPLOAD_ENABLED")
+        ?.equals("false", ignoreCase = true) != true
 
 android {
     namespace = "sh.celia.novella"
@@ -49,6 +57,9 @@ android {
         release {
             if (hasReleaseSigningEnv) {
                 signingConfig = signingConfigs.getByName("release")
+            }
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+                mappingFileUploadEnabled = crashlyticsMappingFileUploadEnabled
             }
         }
     }

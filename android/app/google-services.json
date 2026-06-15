@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "769098031079",
+    "project_id": "novella-flutter",
+    "storage_bucket": "novella-flutter.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:769098031079:android:b9e1cc8e08ec88b177e742",
+        "android_client_info": {
+          "package_name": "sh.celia.novella"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "__FIREBASE_ANDROID_API_KEY__"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

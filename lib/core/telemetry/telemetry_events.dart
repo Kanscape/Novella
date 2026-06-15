@@ -18,6 +18,8 @@ class TelemetryProperties {
   const TelemetryProperties._();
 
   static const action = 'action';
+  static const buildChannel = 'build_channel';
+  static const buildLabel = 'build_label';
   static const buildNumber = 'build_number';
   static const dayType = 'day_type';
   static const enabledHomeModules = 'enabled_home_modules';
@@ -34,12 +36,32 @@ class TelemetryProperties {
   static const platform = 'platform';
   static const readerViewMode = 'reader_view_mode';
   static const seriesSearchMode = 'series_search_mode';
+  static const screenName = 'screen_name';
   static const sessionDurationBucket = 'session_duration_bucket';
   static const source = 'source';
   static const startupTab = 'startup_tab';
   static const tab = 'tab';
   static const target = 'target';
   static const appVersion = 'app_version';
+}
+
+class TelemetryScreens {
+  const TelemetryScreens._();
+
+  static const home = 'home';
+  static const shelf = 'shelf';
+  static const history = 'history';
+  static const community = 'community';
+  static const settings = 'settings';
+  static const bookDetail = 'book_detail';
+  static const reader = 'reader';
+  static const search = 'search';
+  static const ranking = 'ranking';
+  static const recentlyUpdated = 'recently_updated';
+  static const shelfFolder = 'shelf_folder';
+  static const announcement = 'announcement';
+  static const communityThread = 'community_thread';
+  static const communityNotifications = 'community_notifications';
 }
 
 class TelemetryTabs {

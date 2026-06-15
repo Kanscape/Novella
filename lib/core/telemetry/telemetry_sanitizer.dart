@@ -36,6 +36,7 @@ class TelemetrySanitizer {
     TelemetryProperties.localHourBucket,
     TelemetryProperties.module,
     TelemetryProperties.readerViewMode,
+    TelemetryProperties.screenName,
     TelemetryProperties.sessionDurationBucket,
     TelemetryProperties.source,
     TelemetryProperties.startupTab,

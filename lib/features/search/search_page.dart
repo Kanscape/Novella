@@ -9,6 +9,7 @@ import 'package:novella/data/services/book_search_mode.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -102,6 +103,13 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   @override
   void initState() {
     super.initState();
+    TelemetryService.instance.trackScreenView(
+      TelemetryScreens.search,
+      screenClass: 'SearchPage',
+      properties: {
+        TelemetryProperties.seriesSearchMode: widget.initialMode.name,
+      },
+    );
     _initializeSearchPage();
   }
 
