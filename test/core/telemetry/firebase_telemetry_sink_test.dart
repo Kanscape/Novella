@@ -32,7 +32,7 @@ void main() {
     });
   });
 
-  test('tracks screen views with Firebase screen view API', () {
+  test('tracks screen views with Firebase report dimensions', () {
     final analytics = _FakeAnalyticsClient();
     final sink = FirebaseTelemetrySink(
       analytics: analytics,
@@ -45,14 +45,14 @@ void main() {
       properties: {TelemetryProperties.tab: TelemetryTabs.shelf},
     );
 
-    expect(analytics.events, isEmpty);
-    expect(analytics.screenViews, [
-      const _AnalyticsScreenView(
-        screenName: TelemetryScreens.shelf,
-        screenClass: 'MainTab',
-        parameters: {TelemetryProperties.tab: TelemetryTabs.shelf},
-      ),
-    ]);
+    expect(analytics.screenViews, isEmpty);
+    expect(analytics.events, hasLength(1));
+    expect(analytics.events.single.name, 'screen_view');
+    expect(analytics.events.single.parameters, {
+      'firebase_screen': TelemetryScreens.shelf,
+      'firebase_screen_class': 'MainTab',
+      TelemetryProperties.tab: TelemetryTabs.shelf,
+    });
   });
 
   test('records breadcrumbs and errors in Crashlytics format', () {
