@@ -15,6 +15,8 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/system_ui/app_system_ui.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:novella/core/utils/font_manager.dart';
@@ -236,6 +238,11 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    TelemetryService.instance.trackScreenView(
+      TelemetryScreens.reader,
+      screenClass: 'ReaderPagedPage',
+      properties: {TelemetryProperties.readerViewMode: 'paged'},
+    );
     _targetSortNum = widget.sortNum;
     _applyReaderSystemUiMode(ref.read(settingsProvider), force: true);
     _initInfoBar();

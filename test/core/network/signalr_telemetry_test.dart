@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novella/core/network/signalr_telemetry.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
@@ -45,6 +46,61 @@ void main() {
     expect(message, isNot(contains('https://example.com/hub/api')));
     expect(message, isNot(contains('/Users/alice/private.log')));
   });
+
+  test('skips SignalR reports caused by user connectivity failures', () {
+    final sink = _FakeTelemetrySink();
+    TelemetryService.instance.configure(sink: sink, diagnosticsEnabled: true);
+    final requestOptions = RequestOptions(path: '/hub/api');
+
+    SignalRHubTelemetry.capture(
+      DioException.connectionError(
+        requestOptions: requestOptions,
+        reason: 'Failed host lookup',
+      ),
+      stackTrace: StackTrace.current,
+      source: SignalRHubTelemetrySources.connect,
+    );
+    SignalRHubTelemetry.capture(
+      DioException.receiveTimeout(
+        timeout: const Duration(seconds: 30),
+        requestOptions: requestOptions,
+      ),
+      stackTrace: StackTrace.current,
+      source: SignalRHubTelemetrySources.invoke,
+    );
+    SignalRHubTelemetry.capture(
+      Exception('WebSocketException: Connection closed before full header'),
+      stackTrace: StackTrace.current,
+      source: SignalRHubTelemetrySources.reconnecting,
+    );
+
+    expect(sink.errors, isEmpty);
+  });
+
+  test('still reports SignalR server failures', () {
+    final sink = _FakeTelemetrySink();
+    TelemetryService.instance.configure(sink: sink, diagnosticsEnabled: true);
+    final requestOptions = RequestOptions(path: '/hub/api');
+
+    SignalRHubTelemetry.capture(
+      DioException.badResponse(
+        statusCode: 500,
+        requestOptions: requestOptions,
+        response: Response(
+          requestOptions: requestOptions,
+          statusCode: 500,
+          data: {'message': 'Internal Server Error'},
+        ),
+      ),
+      stackTrace: StackTrace.current,
+      source: SignalRHubTelemetrySources.invoke,
+    );
+
+    expect(sink.errors, hasLength(1));
+    final message = sink.errors.single.error.toString();
+    expect(message, contains('category=server_error'));
+    expect(message, contains('status=500'));
+  });
 }
 
 class _FakeTelemetrySink implements TelemetrySink {
@@ -52,6 +108,13 @@ class _FakeTelemetrySink implements TelemetrySink {
 
   @override
   void track(String name, {Map<String, Object?> properties = const {}}) {}
+
+  @override
+  void trackScreenView(
+    String screenName, {
+    String? screenClass,
+    Map<String, Object?> properties = const {},
+  }) {}
 
   @override
   void addBreadcrumb(

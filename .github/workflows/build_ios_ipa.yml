@@ -10,6 +10,8 @@ on:
       - 'macos/Novella.icon/**'
       - 'rust/**'
       - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'firebase.json'
       - '.github/workflows/build_ios_ipa.yml'
   push:
     branches: ["main"]
@@ -19,6 +21,8 @@ on:
       - 'macos/Novella.icon/**'
       - 'rust/**'
       - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'firebase.json'
       - '.github/workflows/build_ios_ipa.yml'
 
 jobs:
@@ -55,24 +59,20 @@ jobs:
             BUILD_NUMBER="$(git rev-list --count origin/main)"
             BUILD_CHANNEL="pr"
             BUILD_LABEL="PR #${{ github.event.pull_request.number }}"
-            RENA_ENVIRONMENT="development"
           elif [ "$GITHUB_REF_NAME" = "main" ]; then
             BUILD_NUMBER="$(git rev-list --count HEAD)"
             BUILD_CHANNEL="main"
             BUILD_LABEL="Build $BUILD_NUMBER"
-            RENA_ENVIRONMENT="production"
           else
             BUILD_NUMBER="$(git rev-list --count origin/main)"
             BUILD_CHANNEL="branch"
             BUILD_LABEL="$GITHUB_REF_NAME"
-            RENA_ENVIRONMENT="development"
           fi
 
           {
             echo "BUILD_NUMBER=$BUILD_NUMBER"
             echo "BUILD_CHANNEL=$BUILD_CHANNEL"
             echo "BUILD_LABEL=$BUILD_LABEL"
-            echo "RENA_ENVIRONMENT=$RENA_ENVIRONMENT"
           } >> "$GITHUB_ENV"
 
       # 指定 Xcode 26
@@ -94,6 +94,29 @@ jobs:
       # 获取依赖
       - name: Flutter Pub Get
         run: flutter pub get
+
+      # 写入 iOS Firebase API key
+      - name: Inject iOS Firebase API Key
+        env:
+          FIREBASE_IOS_API_KEY: ${{ secrets.FIREBASE_IOS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_IOS_API_KEY:-}" ]; then
+            if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+              echo "Firebase iOS API key secret is unavailable for this PR; keeping placeholder key for build-only validation."
+              exit 0
+            fi
+            echo "::error::Missing FIREBASE_IOS_API_KEY secret."
+            exit 1
+          fi
+          perl -0pi -e 's/__FIREBASE_IOS_API_KEY__/$ENV{FIREBASE_IOS_API_KEY}/g' \
+            lib/firebase_options.dart \
+            ios/Runner/GoogleService-Info.plist
+
+      # FlutterFire Crashlytics dSYM 上传脚本需要 flutterfire 命令
+      - name: Install FlutterFire CLI
+        if: github.event_name != 'pull_request'
+        run: dart pub global activate flutterfire_cli
 
       # 安装 Pods 生成项目文件
       - name: Install CocoaPods Dependencies
@@ -130,17 +153,11 @@ jobs:
 
       # 构建免签 Release
       - name: Build iOS Release (No Codesign)
-        env:
-          RENA_ENDPOINT: ${{ secrets.RENA_ENDPOINT }}
-          RENA_PUBLIC_WRITE_KEY: ${{ secrets.RENA_PUBLIC_WRITE_KEY }}
         run: |
           flutter build ios --release --no-codesign --verbose \
             --build-number="$BUILD_NUMBER" \
             --dart-define=BUILD_CHANNEL="$BUILD_CHANNEL" \
-            --dart-define=BUILD_LABEL="$BUILD_LABEL" \
-            --dart-define=RENA_ENDPOINT="$RENA_ENDPOINT" \
-            --dart-define=RENA_PUBLIC_WRITE_KEY="$RENA_PUBLIC_WRITE_KEY" \
-            --dart-define=RENA_ENVIRONMENT="$RENA_ENVIRONMENT"
+            --dart-define=BUILD_LABEL="$BUILD_LABEL"
 
       # 打包 IPA
       - name: Package IPA

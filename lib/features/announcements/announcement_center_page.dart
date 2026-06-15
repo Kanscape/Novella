@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/announcements/announcement_detail_page.dart';
 import 'package:novella/features/announcements/announcement_models.dart';
@@ -34,11 +36,27 @@ class AnnouncementIconButton extends StatelessWidget {
   }
 }
 
-class AnnouncementCenterPage extends ConsumerWidget {
+class AnnouncementCenterPage extends ConsumerStatefulWidget {
   const AnnouncementCenterPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AnnouncementCenterPage> createState() =>
+      _AnnouncementCenterPageState();
+}
+
+class _AnnouncementCenterPageState
+    extends ConsumerState<AnnouncementCenterPage> {
+  @override
+  void initState() {
+    super.initState();
+    TelemetryService.instance.trackScreenView(
+      TelemetryScreens.announcement,
+      screenClass: 'AnnouncementCenterPage',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final announcements = ref.watch(announcementProvider);
     return Scaffold(
       appBar: AppBar(

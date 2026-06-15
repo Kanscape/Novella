@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_content_filter.dart';
 import 'package:novella/data/services/book_service.dart';
@@ -39,6 +40,10 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
   @override
   void initState() {
     super.initState();
+    TelemetryService.instance.trackScreenView(
+      TelemetryScreens.recentlyUpdated,
+      screenClass: 'RecentlyUpdatedPage',
+    );
     _fetchPage(1, isRefresh: true);
   }
 

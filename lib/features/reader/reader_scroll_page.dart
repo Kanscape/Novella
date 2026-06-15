@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/system_ui/app_system_ui.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1537,6 +1539,11 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    TelemetryService.instance.trackScreenView(
+      TelemetryScreens.reader,
+      screenClass: 'ReaderScrollPage',
+      properties: {TelemetryProperties.readerViewMode: 'scroll'},
+    );
 
     // 初始化 SharedPreferences 及图片比例缓存
     SharedPreferences.getInstance().then((prefs) {

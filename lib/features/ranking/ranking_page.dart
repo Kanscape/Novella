@@ -4,6 +4,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/layout/app_window_class.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_content_filter.dart';
 import 'package:novella/data/services/book_service.dart';
@@ -51,6 +52,11 @@ class _RankingPageState extends ConsumerState<RankingPage>
       length: 3,
       vsync: this,
       initialIndex: initialIndex >= 0 ? initialIndex : 1,
+    );
+    TelemetryService.instance.trackScreenView(
+      TelemetryScreens.ranking,
+      screenClass: 'RankingPage',
+      properties: {TelemetryProperties.homeRankType: _currentType},
     );
     _tabController.addListener(_onTabChange);
     _scrollController.addListener(_onScroll);

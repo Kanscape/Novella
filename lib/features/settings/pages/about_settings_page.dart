@@ -120,7 +120,7 @@ class AboutSettingsPage extends ConsumerWidget {
               ),
 
               SwitchListTile(
-                secondary: const Icon(Icons.health_and_safety_outlined),
+                secondary: const Icon(Icons.local_fire_department_outlined),
                 title: const Text('协助改进'),
                 subtitle: const Text('发送错误报告与诊断上下文'),
                 value: settings.telemetryDiagnosticsEnabled,

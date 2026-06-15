@@ -14,7 +14,7 @@ import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/core/storage/secret_storage_service.dart';
 import 'package:novella/core/system_ui/app_system_ui.dart';
-import 'package:novella/core/telemetry/rena_telemetry_sink.dart';
+import 'package:novella/core/telemetry/firebase_telemetry_bootstrap.dart';
 import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -290,7 +290,7 @@ void main() async {
 
   final telemetryPrefs = await SharedPreferences.getInstance();
   try {
-    await RenaTelemetrySink.configureFromEnvironment(
+    await FirebaseTelemetryBootstrap.configureFromEnvironment(
       diagnosticsEnabled:
           telemetryPrefs.getBool(
             AppSettings.telemetryDiagnosticsEnabledPrefsKey,

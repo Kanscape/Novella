@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:novella/core/navigation/app_route_launcher.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/utils/time_utils.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/community.dart';
@@ -52,6 +54,10 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
   @override
   void initState() {
     super.initState();
+    TelemetryService.instance.trackScreenView(
+      TelemetryScreens.communityThread,
+      screenClass: 'CommunityThreadPage',
+    );
     _communityService = widget._communityService ?? CommunityService();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {

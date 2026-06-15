@@ -47,6 +47,236 @@ void main() {
     expect(sink.errors, isEmpty);
   });
 
+  test(
+    'remote policy can disable usage events without changing diagnostics',
+    () {
+      final sink = _FakeTelemetrySink();
+      final service = TelemetryService(
+        sink: sink,
+        remotePolicy: const TelemetryRemotePolicy(analyticsEnabled: false),
+      );
+
+      service.track(
+        TelemetryEvents.tabClicked,
+        properties: {TelemetryProperties.tab: TelemetryTabs.home},
+      );
+      service.addDiagnosticBreadcrumb(
+        'foreground_started',
+        properties: {TelemetryProperties.tab: TelemetryTabs.home},
+      );
+
+      expect(sink.events, isEmpty);
+      expect(sink.breadcrumbs, hasLength(1));
+    },
+  );
+
+  test('screen views are usage analytics and respect remote policy', () {
+    final sink = _FakeTelemetrySink();
+    final service = TelemetryService(
+      sink: sink,
+      remotePolicy: const TelemetryRemotePolicy(analyticsEnabled: false),
+    );
+
+    service.trackScreenView(TelemetryScreens.home);
+
+    expect(sink.screenViews, isEmpty);
+
+    service.setRemotePolicy(const TelemetryRemotePolicy());
+    service.trackScreenView(
+      TelemetryScreens.search,
+      screenClass: 'SearchPage',
+      properties: {TelemetryProperties.source: TelemetryScreens.bookDetail},
+    );
+
+    expect(sink.screenViews, [
+      const _RecordedScreenView(
+        screenName: TelemetryScreens.search,
+        screenClass: 'SearchPage',
+        properties: {TelemetryProperties.source: TelemetryScreens.bookDetail},
+      ),
+    ]);
+  });
+
+  test('usage events wait for a pending analytics policy', () {
+    final sink = _FakeTelemetrySink();
+    final service = TelemetryService(
+      sink: sink,
+      remotePolicy: const TelemetryRemotePolicy(
+        analyticsEnabled: false,
+        usageCollectionPending: true,
+      ),
+      now: () => DateTime(2026, 6, 15, 8),
+    );
+
+    service.track(
+      TelemetryEvents.settingsSnapshot,
+      properties: {TelemetryProperties.ignoreAI: false},
+    );
+    service.recordDayType();
+    service.trackScreenView(TelemetryScreens.home, screenClass: 'MainTab');
+
+    expect(sink.events, isEmpty);
+    expect(sink.screenViews, isEmpty);
+
+    service.setRemotePolicy(const TelemetryRemotePolicy());
+    service.recordDayType();
+
+    expect(sink.events, hasLength(2));
+    expect(sink.events[0].name, TelemetryEvents.settingsSnapshot);
+    expect(sink.events[0].properties, {TelemetryProperties.ignoreAI: false});
+    expect(sink.events[1].name, TelemetryEvents.appDayType);
+    expect(sink.events[1].properties, {
+      TelemetryProperties.dayType: TelemetryDayTypes.weekday,
+    });
+    expect(sink.screenViews, [
+      const _RecordedScreenView(
+        screenName: TelemetryScreens.home,
+        screenClass: 'MainTab',
+        properties: {},
+      ),
+    ]);
+  });
+
+  test('pending usage events are dropped when analytics stays disabled', () {
+    final sink = _FakeTelemetrySink();
+    final service = TelemetryService(
+      sink: sink,
+      remotePolicy: const TelemetryRemotePolicy(
+        analyticsEnabled: false,
+        usageCollectionPending: true,
+      ),
+    );
+
+    service.track(TelemetryEvents.settingsSnapshot);
+    service.setRemotePolicy(
+      const TelemetryRemotePolicy(analyticsEnabled: false),
+    );
+    service.setRemotePolicy(const TelemetryRemotePolicy());
+
+    expect(sink.events, isEmpty);
+  });
+
+  test(
+    'screen views leave diagnostic breadcrumbs even when analytics is off',
+    () {
+      final sink = _FakeTelemetrySink();
+      final service = TelemetryService(
+        sink: sink,
+        remotePolicy: const TelemetryRemotePolicy(
+          analyticsEnabled: false,
+          diagnosticsEnabled: true,
+        ),
+      );
+
+      service.trackScreenView(
+        TelemetryScreens.reader,
+        screenClass: 'ReaderPagedPage',
+        properties: {
+          TelemetryProperties.readerViewMode: 'paged',
+          'book_title': 'private title',
+        },
+      );
+
+      expect(sink.screenViews, isEmpty);
+      expect(sink.breadcrumbs, hasLength(1));
+      expect(sink.breadcrumbs.single.name, 'screen_view');
+      expect(sink.breadcrumbs.single.properties, {
+        TelemetryProperties.screenName: TelemetryScreens.reader,
+        TelemetryProperties.readerViewMode: 'paged',
+      });
+    },
+  );
+
+  test('manual screen taxonomy includes a single announcement screen', () {
+    expect(TelemetryScreens.announcement, 'announcement');
+  });
+
+  test('remote policy and local setting both gate diagnostic errors', () {
+    final sink = _FakeTelemetrySink();
+    var sample = 0.4;
+    final service = TelemetryService(
+      sink: sink,
+      diagnosticsEnabled: true,
+      diagnosticSample: () => sample,
+      remotePolicy: const TelemetryRemotePolicy(
+        diagnosticsEnabled: true,
+        nonFatalErrorSampleRate: 0.5,
+      ),
+    );
+
+    service.captureError(StateError('first'), module: 'sync');
+    sample = 0.6;
+    service.captureError(StateError('second'), module: 'sync');
+    service.setDiagnosticsEnabled(false);
+    sample = 0.1;
+    service.captureError(StateError('third'), module: 'sync');
+
+    expect(sink.errors, hasLength(1));
+    expect(sink.errors.single.error.toString(), contains('first'));
+  });
+
+  test('collection settings combine remote policy and local diagnostics', () {
+    final sink = _ConfigurableTelemetrySink();
+    final service = TelemetryService(
+      sink: sink,
+      diagnosticsEnabled: true,
+      remotePolicy: const TelemetryRemotePolicy(
+        analyticsEnabled: true,
+        diagnosticsEnabled: true,
+      ),
+    );
+
+    expect(sink.collectionSettings, [
+      const _CollectionSettings(
+        analyticsEnabled: true,
+        diagnosticsEnabled: true,
+      ),
+    ]);
+
+    service.setDiagnosticsEnabled(false);
+    service.setRemotePolicy(
+      const TelemetryRemotePolicy(
+        analyticsEnabled: false,
+        diagnosticsEnabled: true,
+      ),
+    );
+
+    expect(sink.collectionSettings, [
+      const _CollectionSettings(
+        analyticsEnabled: true,
+        diagnosticsEnabled: true,
+      ),
+      const _CollectionSettings(
+        analyticsEnabled: true,
+        diagnosticsEnabled: false,
+      ),
+      const _CollectionSettings(
+        analyticsEnabled: false,
+        diagnosticsEnabled: false,
+      ),
+    ]);
+  });
+
+  test('flush is skipped while diagnostics are disabled', () async {
+    final sink = _FakeTelemetrySink();
+    final service = TelemetryService(
+      sink: sink,
+      diagnosticsEnabled: true,
+      remotePolicy: const TelemetryRemotePolicy(diagnosticsEnabled: true),
+    );
+
+    await service.flush();
+    service.setDiagnosticsEnabled(false);
+    await service.flush();
+    service.setDiagnosticsEnabled(true);
+    service.setRemotePolicy(
+      const TelemetryRemotePolicy(diagnosticsEnabled: false),
+    );
+    await service.flush();
+
+    expect(sink.flushCount, 1);
+  });
+
   test('records day type separately because SDK records app launch', () {
     final sink = _FakeTelemetrySink();
     final service = TelemetryService(
@@ -225,12 +455,29 @@ void main() {
 
 class _FakeTelemetrySink implements TelemetrySink {
   final events = <_RecordedEvent>[];
+  final screenViews = <_RecordedScreenView>[];
   final breadcrumbs = <_RecordedEvent>[];
   final errors = <_RecordedError>[];
+  int flushCount = 0;
 
   @override
   void track(String name, {Map<String, Object?> properties = const {}}) {
     events.add(_RecordedEvent(name, properties));
+  }
+
+  @override
+  void trackScreenView(
+    String screenName, {
+    String? screenClass,
+    Map<String, Object?> properties = const {},
+  }) {
+    screenViews.add(
+      _RecordedScreenView(
+        screenName: screenName,
+        screenClass: screenClass,
+        properties: properties,
+      ),
+    );
   }
 
   @override
@@ -251,7 +498,80 @@ class _FakeTelemetrySink implements TelemetrySink {
   }
 
   @override
+  Future<void> flush() async {
+    flushCount++;
+  }
+}
+
+class _ConfigurableTelemetrySink
+    implements TelemetrySink, TelemetryCollectionConfigurable {
+  final collectionSettings = <_CollectionSettings>[];
+
+  @override
+  void setCollectionEnabled({
+    required bool analyticsEnabled,
+    required bool diagnosticsEnabled,
+  }) {
+    collectionSettings.add(
+      _CollectionSettings(
+        analyticsEnabled: analyticsEnabled,
+        diagnosticsEnabled: diagnosticsEnabled,
+      ),
+    );
+  }
+
+  @override
+  void track(String name, {Map<String, Object?> properties = const {}}) {}
+
+  @override
+  void trackScreenView(
+    String screenName, {
+    String? screenClass,
+    Map<String, Object?> properties = const {},
+  }) {}
+
+  @override
+  void addBreadcrumb(
+    String name, {
+    Map<String, Object?> properties = const {},
+  }) {}
+
+  @override
+  void captureError(
+    Object error, {
+    StackTrace? stackTrace,
+    Map<String, Object?> properties = const {},
+  }) {}
+
+  @override
   Future<void> flush() async {}
+}
+
+class _CollectionSettings {
+  const _CollectionSettings({
+    required this.analyticsEnabled,
+    required this.diagnosticsEnabled,
+  });
+
+  final bool analyticsEnabled;
+  final bool diagnosticsEnabled;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _CollectionSettings &&
+        other.analyticsEnabled == analyticsEnabled &&
+        other.diagnosticsEnabled == diagnosticsEnabled;
+  }
+
+  @override
+  int get hashCode => Object.hash(analyticsEnabled, diagnosticsEnabled);
+
+  @override
+  String toString() {
+    return 'CollectionSettings('
+        'analyticsEnabled: $analyticsEnabled, '
+        'diagnosticsEnabled: $diagnosticsEnabled)';
+  }
 }
 
 class _RecordedEvent {
@@ -261,10 +581,53 @@ class _RecordedEvent {
   final Map<String, Object?> properties;
 }
 
+class _RecordedScreenView {
+  const _RecordedScreenView({
+    required this.screenName,
+    required this.screenClass,
+    required this.properties,
+  });
+
+  final String screenName;
+  final String? screenClass;
+  final Map<String, Object?> properties;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _RecordedScreenView &&
+        other.screenName == screenName &&
+        other.screenClass == screenClass &&
+        _mapEquals(other.properties, properties);
+  }
+
+  @override
+  int get hashCode => Object.hash(screenName, screenClass, properties);
+
+  @override
+  String toString() {
+    return 'ScreenView('
+        'screenName: $screenName, '
+        'screenClass: $screenClass, '
+        'properties: $properties)';
+  }
+}
+
 class _RecordedError {
   const _RecordedError(this.error, this.stackTrace, this.properties);
 
   final Object error;
   final StackTrace? stackTrace;
   final Map<String, Object?> properties;
+}
+
+bool _mapEquals(Map<String, Object?> left, Map<String, Object?> right) {
+  if (left.length != right.length) {
+    return false;
+  }
+  for (final entry in left.entries) {
+    if (!right.containsKey(entry.key) || right[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
 }

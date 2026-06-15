@@ -29,4 +29,22 @@ void main() {
   test('devtools options file is not kept in the app repository root', () {
     expect(File('devtools_options.yaml').existsSync(), isFalse);
   });
+
+  test('manual screen reporting stays on navigation-level pages', () {
+    final dartFiles = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'));
+
+    final violations = <String>[];
+    for (final file in dartFiles) {
+      final source = file.readAsStringSync();
+      if (source.contains('TelemetryScreens.comments') ||
+          source.contains('TelemetryScreens.communityCompose')) {
+        violations.add(file.path);
+      }
+    }
+
+    expect(violations, isEmpty);
+  });
 }

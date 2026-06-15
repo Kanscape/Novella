@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/app_notification.dart';
 import 'package:novella/data/services/notification_service.dart';
@@ -36,6 +37,10 @@ class _CommunityNotificationPageState
   @override
   void initState() {
     super.initState();
+    TelemetryService.instance.trackScreenView(
+      TelemetryScreens.communityNotifications,
+      screenClass: 'CommunityNotificationPage',
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_loadNotifications());

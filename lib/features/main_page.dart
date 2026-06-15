@@ -61,15 +61,21 @@ class _MainPageState extends ConsumerState<MainPage> with RouteAware {
 
   String _telemetryTabForIndex(int index) => TelemetryTabs.fromIndex(index);
 
-  void _trackTabClick(int index) {
+  void _trackTabTapBreadcrumb(int index) {
     final tab = _telemetryTabForIndex(index);
     TelemetryService.instance.setCurrentTab(tab);
-    TelemetryService.instance.track(
-      TelemetryEvents.tabClicked,
-      properties: {TelemetryProperties.tab: tab},
-    );
     TelemetryService.instance.addDiagnosticBreadcrumb(
       'tab_clicked',
+      properties: {TelemetryProperties.tab: tab},
+    );
+  }
+
+  void _trackTabScreenView(int index) {
+    final tab = _telemetryTabForIndex(index);
+    TelemetryService.instance.setCurrentTab(tab);
+    TelemetryService.instance.trackScreenView(
+      tab,
+      screenClass: 'MainTab',
       properties: {TelemetryProperties.tab: tab},
     );
   }
@@ -169,7 +175,7 @@ class _MainPageState extends ConsumerState<MainPage> with RouteAware {
   }
 
   void _handleTabChanged(int index) {
-    _trackTabClick(index);
+    _trackTabTapBreadcrumb(index);
 
     if (_currentIndex == index) {
       if (index == 1) {
@@ -187,6 +193,7 @@ class _MainPageState extends ConsumerState<MainPage> with RouteAware {
       _loadedPages.add(index);
     });
 
+    _trackTabScreenView(index);
     _updateTabActivity(index);
     _cancelInactiveTabRequests(index);
 
@@ -212,6 +219,7 @@ class _MainPageState extends ConsumerState<MainPage> with RouteAware {
     TelemetryService.instance.setCurrentTab(startupTab);
     TelemetryService.instance.startForeground(startupTab: startupTab);
     TelemetryService.instance.recordDayType();
+    _trackTabScreenView(_currentIndex);
     _loadedPages
       ..clear()
       ..add(_currentIndex);

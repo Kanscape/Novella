@@ -1,6 +1,12 @@
 abstract interface class TelemetrySink {
   void track(String name, {Map<String, Object?> properties = const {}});
 
+  void trackScreenView(
+    String screenName, {
+    String? screenClass,
+    Map<String, Object?> properties = const {},
+  });
+
   void addBreadcrumb(String name, {Map<String, Object?> properties = const {}});
 
   void captureError(
@@ -17,6 +23,13 @@ class NoopTelemetrySink implements TelemetrySink {
 
   @override
   void track(String name, {Map<String, Object?> properties = const {}}) {}
+
+  @override
+  void trackScreenView(
+    String screenName, {
+    String? screenClass,
+    Map<String, Object?> properties = const {},
+  }) {}
 
   @override
   void addBreadcrumb(
