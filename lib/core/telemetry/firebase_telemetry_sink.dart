@@ -49,6 +49,9 @@ class FirebaseTelemetrySink
   final FirebaseCrashlyticsTelemetryClient crashlytics;
   bool _diagnosticsCollectionEnabled = false;
 
+  static const String _screenViewEventName = 'screen_view';
+  static const String _firebaseScreenParameter = 'firebase_screen';
+  static const String _firebaseScreenClassParameter = 'firebase_screen_class';
   static const int _maxAnalyticsStringLength = 100;
   static const int _maxCrashlyticsLogLength = 1000;
 
@@ -69,10 +72,13 @@ class FirebaseTelemetrySink
     Map<String, Object?> properties = const {},
   }) {
     _send(
-      analytics.logScreenView(
-        screenName: _analyticsString(screenName),
-        screenClass: screenClass == null ? null : _analyticsString(screenClass),
-        parameters: _analyticsParameters(properties),
+      analytics.logEvent(
+        name: _screenViewEventName,
+        parameters: _screenViewParameters(
+          screenName: screenName,
+          screenClass: screenClass,
+          properties: properties,
+        ),
       ),
     );
   }
@@ -151,6 +157,19 @@ class FirebaseTelemetrySink
       }
     }
     return parameters.isEmpty ? null : parameters;
+  }
+
+  Map<String, Object> _screenViewParameters({
+    required String screenName,
+    required String? screenClass,
+    required Map<String, Object?> properties,
+  }) {
+    return {
+      ...?_analyticsParameters(properties),
+      _firebaseScreenParameter: _analyticsString(screenName),
+      if (screenClass != null)
+        _firebaseScreenClassParameter: _analyticsString(screenClass),
+    };
   }
 
   Object? _analyticsValue(Object? value) {
