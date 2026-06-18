@@ -193,9 +193,11 @@ class TelemetryService {
       return;
     }
     final configurableSink = sink as TelemetryCollectionConfigurable;
-    configurableSink.setCollectionEnabled(
-      analyticsEnabled: _remotePolicy.analyticsEnabled,
-      diagnosticsEnabled: _effectiveDiagnosticsEnabled,
+    unawaited(
+      configurableSink.setCollectionEnabled(
+        analyticsEnabled: _remotePolicy.analyticsEnabled,
+        diagnosticsEnabled: _effectiveDiagnosticsEnabled,
+      ),
     );
   }
 
@@ -234,7 +236,7 @@ class TelemetryService {
 }
 
 abstract interface class TelemetryCollectionConfigurable {
-  void setCollectionEnabled({
+  Future<void> setCollectionEnabled({
     required bool analyticsEnabled,
     required bool diagnosticsEnabled,
   });

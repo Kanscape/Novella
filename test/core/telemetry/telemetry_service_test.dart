@@ -472,10 +472,10 @@ class _ConfigurableTelemetrySink
   final collectionSettings = <_CollectionSettings>[];
 
   @override
-  void setCollectionEnabled({
+  Future<void> setCollectionEnabled({
     required bool analyticsEnabled,
     required bool diagnosticsEnabled,
-  }) {
+  }) async {
     collectionSettings.add(
       _CollectionSettings(
         analyticsEnabled: analyticsEnabled,

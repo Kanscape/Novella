@@ -1,8 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novella/core/telemetry/rena_telemetry_sink.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   test('tracks usage events through RTK with original property values', () {
     final client = _FakeRenaTelemetryClient();
     final sink = RenaTelemetrySink(client: client);
@@ -95,18 +104,91 @@ void main() {
     });
   });
 
-  test('collection toggles do not opt out of RTK usage telemetry', () {
+  test('collection toggles do not opt out of RTK usage telemetry', () async {
     final client = _FakeRenaTelemetryClient();
     final sink = RenaTelemetrySink(client: client);
 
-    sink.setCollectionEnabled(
+    await sink.setCollectionEnabled(
       analyticsEnabled: false,
       diagnosticsEnabled: false,
     );
     sink.track(TelemetryEvents.tabClicked);
 
     expect(client.events.single.name, TelemetryEvents.tabClicked);
+    expect(client.clearQueuedTelemetryCount, 0);
   });
+
+  test(
+    'diagnostics opt-out clears persisted RTK errors while preserving events',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'flutter.rena_rtk.queue': [
+          _queuedRow({
+            'type': 'event',
+            'name': 'settings_snapshot',
+            'timestamp': '2026-06-18T00:00:00.000Z',
+            'properties': {'source': 'test'},
+          }),
+          _queuedRow({
+            'type': 'error',
+            'error_type': 'StateError',
+            'message': 'safe error',
+            'timestamp': '2026-06-18T00:00:01.000Z',
+            'properties': {'module': 'sync'},
+            'breadcrumbs': [],
+          }),
+        ],
+      });
+      final client = _FakeRenaTelemetryClient();
+      final sink = RenaTelemetrySink(client: client);
+
+      await sink.setCollectionEnabled(
+        analyticsEnabled: true,
+        diagnosticsEnabled: false,
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      final rows = prefs.getStringList('rena_rtk.queue')!;
+      expect(rows, hasLength(1));
+      expect(jsonDecode(rows.single), {
+        'item': {
+          'type': 'event',
+          'name': 'settings_snapshot',
+          'timestamp': '2026-06-18T00:00:00.000Z',
+          'properties': {'source': 'test'},
+        },
+        'attempt_count': 0,
+      });
+
+      sink.addBreadcrumb('foreground_started');
+      sink.captureError(StateError('safe error'));
+
+      expect(client.breadcrumbs, isEmpty);
+      expect(client.errors, isEmpty);
+      expect(client.clearQueuedTelemetryCount, 0);
+    },
+  );
+
+  test(
+    'diagnostics opt-out clears active RTK queue after capturing an error',
+    () async {
+      final client = _FakeRenaTelemetryClient();
+      final sink = RenaTelemetrySink(client: client);
+
+      sink.captureError(StateError('safe error'));
+      await sink.setCollectionEnabled(
+        analyticsEnabled: true,
+        diagnosticsEnabled: false,
+      );
+
+      expect(client.errors, hasLength(1));
+      expect(client.clearQueuedTelemetryCount, 1);
+    },
+  );
+}
+
+String _queuedRow(Map<String, Object?> item) {
+  return jsonEncode({'item': item, 'attempt_count': 0});
 }
 
 class _FakeRenaTelemetryClient implements RenaTelemetryClient {
@@ -115,6 +197,7 @@ class _FakeRenaTelemetryClient implements RenaTelemetryClient {
   final errors = <_RecordedError>[];
   Map<String, Object?> superProperties = {};
   int flushCount = 0;
+  int clearQueuedTelemetryCount = 0;
 
   @override
   void track(String name, {Map<String, Object?> properties = const {}}) {
@@ -146,6 +229,11 @@ class _FakeRenaTelemetryClient implements RenaTelemetryClient {
   @override
   void setSuperProperties(Map<String, Object?> properties) {
     superProperties = properties;
+  }
+
+  @override
+  Future<void> clearQueuedTelemetry() async {
+    clearQueuedTelemetryCount++;
   }
 }
 
