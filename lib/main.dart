@@ -14,7 +14,7 @@ import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/core/storage/secret_storage_service.dart';
 import 'package:novella/core/system_ui/app_system_ui.dart';
-import 'package:novella/core/telemetry/firebase_telemetry_bootstrap.dart';
+import 'package:novella/core/telemetry/rena_telemetry_bootstrap.dart';
 import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
@@ -290,7 +290,7 @@ void main() async {
 
   final telemetryPrefs = await SharedPreferences.getInstance();
   try {
-    await FirebaseTelemetryBootstrap.configureFromEnvironment(
+    await RenaTelemetryBootstrap.configureFromEnvironment(
       diagnosticsEnabled:
           telemetryPrefs.getBool(
             AppSettings.telemetryDiagnosticsEnabledPrefsKey,
@@ -442,7 +442,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     // 策略：退后台主动 stop，回前台预热 refresh_token -> session token，并重建 SignalR。
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      TelemetryService.instance.endForeground(endedBy: state.name);
+      TelemetryService.instance.endForeground();
       unawaited(
         _signalRService.stop().catchError((e) {
           _lifecycleLogger.warning('SignalR stop error: $e');

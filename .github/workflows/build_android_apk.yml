@@ -10,7 +10,6 @@ on:
       - 'rust/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
-      - 'firebase.json'
       - '.github/workflows/build_android_apk.yml'
   push:
     branches: ["main"]
@@ -20,7 +19,6 @@ on:
       - 'rust/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
-      - 'firebase.json'
       - '.github/workflows/build_android_apk.yml'
 
 jobs:
@@ -94,33 +92,18 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
-      # 写入 Android Firebase API key
-      - name: Inject Android Firebase API Key
-        env:
-          FIREBASE_ANDROID_API_KEY: ${{ secrets.FIREBASE_ANDROID_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${FIREBASE_ANDROID_API_KEY:-}" ]; then
-            if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
-              echo "Firebase Android API key secret is unavailable for this PR; keeping placeholder key for build-only validation."
-              exit 0
-            fi
-            echo "::error::Missing FIREBASE_ANDROID_API_KEY secret."
-            exit 1
-          fi
-          perl -0pi -e 's/__FIREBASE_ANDROID_API_KEY__/$ENV{FIREBASE_ANDROID_API_KEY}/g' \
-            lib/firebase_options.dart \
-            android/app/google-services.json
-
       # 构建免签 APK
       - name: Build Unsigned APK
         env:
-          FIREBASE_CRASHLYTICS_MAPPING_UPLOAD_ENABLED: "false"
+          RENA_ENDPOINT: ${{ secrets.RENA_ENDPOINT }}
+          RENA_PUBLIC_WRITE_KEY: ${{ secrets.RENA_PUBLIC_WRITE_KEY }}
         run: |
           flutter build apk --release --verbose \
             --build-number="$BUILD_NUMBER" \
             --dart-define=BUILD_CHANNEL="$BUILD_CHANNEL" \
-            --dart-define=BUILD_LABEL="$BUILD_LABEL"
+            --dart-define=BUILD_LABEL="$BUILD_LABEL" \
+            --dart-define=RENA_ENDPOINT="$RENA_ENDPOINT" \
+            --dart-define=RENA_PUBLIC_WRITE_KEY="$RENA_PUBLIC_WRITE_KEY"
 
       # 重命名 APK
       - name: Rename APK
@@ -206,24 +189,6 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
-      # 写入 Android Firebase API key
-      - name: Inject Android Firebase API Key
-        env:
-          FIREBASE_ANDROID_API_KEY: ${{ secrets.FIREBASE_ANDROID_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${FIREBASE_ANDROID_API_KEY:-}" ]; then
-            if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
-              echo "Firebase Android API key secret is unavailable for this PR; keeping placeholder key for build-only validation."
-              exit 0
-            fi
-            echo "::error::Missing FIREBASE_ANDROID_API_KEY secret."
-            exit 1
-          fi
-          perl -0pi -e 's/__FIREBASE_ANDROID_API_KEY__/$ENV{FIREBASE_ANDROID_API_KEY}/g' \
-            lib/firebase_options.dart \
-            android/app/google-services.json
-
       # 还原 Release Keystore
       - name: Decode Keystore
         env:
@@ -238,11 +203,15 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          RENA_ENDPOINT: ${{ secrets.RENA_ENDPOINT }}
+          RENA_PUBLIC_WRITE_KEY: ${{ secrets.RENA_PUBLIC_WRITE_KEY }}
         run: |
           flutter build apk --release --verbose \
             --build-number="$BUILD_NUMBER" \
             --dart-define=BUILD_CHANNEL="$BUILD_CHANNEL" \
-            --dart-define=BUILD_LABEL="$BUILD_LABEL"
+            --dart-define=BUILD_LABEL="$BUILD_LABEL" \
+            --dart-define=RENA_ENDPOINT="$RENA_ENDPOINT" \
+            --dart-define=RENA_PUBLIC_WRITE_KEY="$RENA_PUBLIC_WRITE_KEY"
 
       # 重命名 APK
       - name: Rename APK

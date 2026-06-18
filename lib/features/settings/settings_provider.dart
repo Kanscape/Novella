@@ -615,7 +615,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setReaderViewMode(ReaderViewMode value) {
     state = state.copyWith(readerViewMode: value);
-    _trackPreferenceChanged(TelemetryProperties.readerViewMode, value.name);
     _save();
   }
 
@@ -695,7 +694,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setHomeRankType(String type) {
     state = state.copyWith(homeRankType: type);
-    _trackPreferenceChanged(TelemetryProperties.homeRankType, type);
     _save();
   }
 
@@ -725,41 +723,32 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setIgnoreJapanese(bool value) {
     state = state.copyWith(ignoreJapanese: value);
-    _trackPreferenceChanged(TelemetryProperties.ignoreJapanese, value);
     _save();
   }
 
   void setIgnoreAI(bool value) {
     state = state.copyWith(ignoreAI: value);
-    _trackPreferenceChanged(TelemetryProperties.ignoreAI, value);
     _save();
   }
 
   void setIgnoreLevel6(bool value) {
     state = state.copyWith(ignoreLevel6: value);
-    _trackPreferenceChanged(TelemetryProperties.ignoreLevel6, value);
     _save();
   }
 
   void setStartupTabIndex(int index) {
     final normalizedIndex = _normalizeStartupTabIndex(index);
     state = state.copyWith(startupTabIndex: normalizedIndex);
-    _trackPreferenceChanged(
-      TelemetryProperties.startupTab,
-      TelemetryTabs.fromIndex(normalizedIndex),
-    );
     _save();
   }
 
   void setHomeModuleOrder(List<String> order) {
     state = state.copyWith(homeModuleOrder: order);
-    _trackPreferenceChanged(TelemetryProperties.homeModuleOrder, order);
     _save();
   }
 
   void setEnabledHomeModules(List<String> modules) {
     state = state.copyWith(enabledHomeModules: modules);
-    _trackPreferenceChanged(TelemetryProperties.enabledHomeModules, modules);
     _save();
   }
 
@@ -774,8 +763,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
     required List<String> enabled,
   }) {
     state = state.copyWith(homeModuleOrder: order, enabledHomeModules: enabled);
-    _trackPreferenceChanged(TelemetryProperties.homeModuleOrder, order);
-    _trackPreferenceChanged(TelemetryProperties.enabledHomeModules, enabled);
     _save();
   }
 
@@ -786,7 +773,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setSeriesSearchMode(SeriesSearchMode mode) {
     state = state.copyWith(seriesSearchMode: mode);
-    _trackPreferenceChanged(TelemetryProperties.seriesSearchMode, mode.name);
     _save();
   }
 
@@ -920,13 +906,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
     TelemetryService.instance.track(
       TelemetryEvents.settingsSnapshot,
       properties: _telemetrySettingsProperties(settings),
-    );
-  }
-
-  void _trackPreferenceChanged(String preference, Object? value) {
-    TelemetryService.instance.track(
-      TelemetryEvents.settingPreferenceChanged,
-      properties: {preference: value},
     );
   }
 }
