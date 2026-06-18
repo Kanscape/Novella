@@ -132,6 +132,17 @@ jobs:
           RENA_ENDPOINT: ${{ secrets.RENA_ENDPOINT }}
           RENA_PUBLIC_WRITE_KEY: ${{ secrets.RENA_PUBLIC_WRITE_KEY }}
         run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
+            if [ -z "${RENA_ENDPOINT:-}" ]; then
+              echo "::error::Missing RENA_ENDPOINT secret."
+              exit 1
+            fi
+            if [ -z "${RENA_PUBLIC_WRITE_KEY:-}" ]; then
+              echo "::error::Missing RENA_PUBLIC_WRITE_KEY secret."
+              exit 1
+            fi
+          fi
           flutter build ios --release --no-codesign --verbose \
             --build-number="$BUILD_NUMBER" \
             --dart-define=BUILD_CHANNEL="$BUILD_CHANNEL" \
