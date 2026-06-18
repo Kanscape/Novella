@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/telemetry/telemetry_config.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:rena_rtk/rena_rtk.dart';
 
 void main() {
   test('builds RTK config from endpoint, write key, and package info', () {
@@ -9,6 +11,7 @@ void main() {
       publicWriteKeyValue: ' public-write-key ',
       packageInfo: _packageInfo(buildNumber: '128'),
       buildChannel: 'main',
+      buildLabel: 'Build 128',
       debug: false,
     );
 
@@ -29,10 +32,34 @@ void main() {
       publicWriteKeyValue: 'public-write-key',
       packageInfo: _packageInfo(buildNumber: '128'),
       buildChannel: 'pr',
+      buildLabel: 'PR #12',
       debug: true,
     );
 
     expect(config.toRTKConfig().buildNumber, isNull);
+  });
+
+  test('adds build metadata to RTK items before they are queued', () {
+    final config = TelemetryConfig.fromValues(
+      endpointValue: 'https://rena.example.com',
+      publicWriteKeyValue: 'public-write-key',
+      packageInfo: _packageInfo(buildNumber: '128'),
+      buildChannel: 'main',
+      buildLabel: 'Build 128',
+      debug: false,
+    );
+
+    final rtkConfig = config.toRTKConfig();
+    final item =
+        rtkConfig.beforeSend!(
+              RTKEvent(name: 'app_launch', timestamp: DateTime(2026, 6, 18)),
+            )
+            as RTKEvent;
+
+    expect(item.properties, {
+      TelemetryProperties.buildChannel: 'main',
+      TelemetryProperties.buildLabel: 'Build 128',
+    });
   });
 
   test('is unconfigured when endpoint or write key is missing or invalid', () {
@@ -41,6 +68,7 @@ void main() {
       publicWriteKeyValue: 'public-write-key',
       packageInfo: _packageInfo(),
       buildChannel: 'main',
+      buildLabel: 'Build 1',
       debug: true,
     );
     final invalidEndpoint = TelemetryConfig.fromValues(
@@ -48,6 +76,7 @@ void main() {
       publicWriteKeyValue: 'public-write-key',
       packageInfo: _packageInfo(),
       buildChannel: 'main',
+      buildLabel: 'Build 1',
       debug: true,
     );
     final missingKey = TelemetryConfig.fromValues(
@@ -55,6 +84,7 @@ void main() {
       publicWriteKeyValue: '   ',
       packageInfo: _packageInfo(),
       buildChannel: 'main',
+      buildLabel: 'Build 1',
       debug: true,
     );
 
