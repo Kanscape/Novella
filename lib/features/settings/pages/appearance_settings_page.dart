@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/utils/app_ui_font_manager.dart';
+import 'package:novella/features/settings/display_mode_settings.dart';
 import 'package:novella/features/settings/settings_provider.dart';
 import 'package:novella/features/settings/theme_selection_page.dart';
 import 'package:novella/features/settings/widgets/settings_header_card.dart';
@@ -185,6 +188,113 @@ class AppearanceSettingsPage extends ConsumerWidget {
     );
   }
 
+  String _androidDisplayModeSummary(AppSettings settings) {
+    return displayModeLabel(
+      settings.androidDisplayMode,
+      autoValue: appDisplayModeAutoValue,
+    );
+  }
+
+  Future<void> _showAndroidDisplayModeSheet(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    try {
+      final modes = await FlutterDisplayMode.supported;
+      String? activeValue;
+      try {
+        activeValue = (await FlutterDisplayMode.active).toString();
+      } on Object {
+        activeValue = null;
+      }
+
+      if (!context.mounted) {
+        return;
+      }
+
+      if (modes.isEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('当前设备没有可选显示模式')));
+        return;
+      }
+
+      final autoValue = DisplayMode.auto.toString();
+      final modeValues = modes.map((mode) => mode.toString()).toList();
+      final selectedValue = resolveDisplayModePreference(
+        ref.read(settingsProvider).androidDisplayMode,
+        supportedValues: modeValues,
+        autoValue: autoValue,
+      );
+      final currentValue =
+          modeValues.contains(selectedValue) ? selectedValue : modeValues.first;
+      final options = <String, String>{
+        for (final mode in modes)
+          mode.toString(): displayModeLabel(
+            mode.toString(),
+            autoValue: autoValue,
+            activeValue: activeValue,
+          ),
+      };
+      final icons = <String, IconData>{
+        for (final mode in modes)
+          mode.toString():
+              mode == DisplayMode.auto
+                  ? Icons.auto_mode_rounded
+                  : Icons.autofps_select_outlined,
+      };
+
+      SettingsUIHelper.showSelectionSheet<String>(
+        context: context,
+        title: '屏幕帧率',
+        subtitle: '仅显示当前设备上报支持的模式\n可能需要重新启动应用',
+        currentValue: currentValue,
+        options: options,
+        icons: icons,
+        onSelected:
+            (value) =>
+                unawaited(_setAndroidDisplayMode(context, ref, modes, value)),
+      );
+    } on Object {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('读取显示模式失败')));
+    }
+  }
+
+  Future<void> _setAndroidDisplayMode(
+    BuildContext context,
+    WidgetRef ref,
+    List<DisplayMode> modes,
+    String value,
+  ) async {
+    try {
+      final selectedMode = modes.firstWhere(
+        (mode) => mode.toString() == value,
+        orElse: () => DisplayMode.auto,
+      );
+      await FlutterDisplayMode.setPreferredMode(selectedMode);
+      await ref.read(settingsProvider.notifier).setAndroidDisplayMode(value);
+
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('屏幕帧率已更新')));
+    } on Object {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('设置屏幕帧率失败')));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
@@ -254,6 +364,31 @@ class AppearanceSettingsPage extends ConsumerWidget {
                 ),
                 onTap: () => _showAppFontSheet(context, ref),
               ),
+              if (Platform.isAndroid)
+                ListTile(
+                  leading: const Icon(Icons.autofps_select_outlined),
+                  title: const Text('屏幕帧率'),
+                  subtitle: const Text('当前设备支持的显示模式'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 132),
+                        child: Text(
+                          _androidDisplayModeSummary(settings),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.chevron_right, size: 20),
+                    ],
+                  ),
+                  onTap: () => _showAndroidDisplayModeSheet(context, ref),
+                ),
               SwitchListTile(
                 secondary: const Icon(Icons.colorize),
                 title: const Text('封面取色'),

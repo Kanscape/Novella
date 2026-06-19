@@ -12,6 +12,7 @@ import 'package:novella/core/utils/app_ui_font_manager.dart';
 import 'package:novella/features/book/book_detail_page.dart'
     show BookDetailPageState;
 import 'package:novella/data/services/book_info_cache_service.dart';
+import 'package:novella/features/settings/display_mode_settings.dart';
 
 enum ReaderViewMode { scroll, paged }
 
@@ -73,10 +74,12 @@ class AppSettings {
   // iOS 显示样式（仅 iOS 平台有效）
   // 'md3' = Material Design 3（默认）, 'ios26' = Liquid Glass
   final String iosDisplayStyle;
+  final String androidDisplayMode;
   final bool autoCheckUpdate;
   final String ignoredUpdateVersion; // 忽略的更新版本号
   final bool telemetryDiagnosticsEnabled;
 
+  static const androidDisplayModePrefsKey = 'setting_androidDisplayMode';
   static const telemetryDiagnosticsEnabledPrefsKey =
       'setting_telemetryDiagnosticsEnabled';
   static const defaultModuleOrder = [
@@ -149,6 +152,7 @@ class AppSettings {
     this.readerPresetIndex = 0, // 默认第一个预设（白纸）
     this.readerUseCustomColor = false, // 默认使用预设
     this.iosDisplayStyle = 'md3', // 默认使用 MD3 样式
+    this.androidDisplayMode = appDisplayModeAutoValue,
     this.autoCheckUpdate = true, // 默认开启自动检查
     this.ignoredUpdateVersion = '',
     this.telemetryDiagnosticsEnabled = true,
@@ -218,6 +222,7 @@ class AppSettings {
     int? readerPresetIndex,
     bool? readerUseCustomColor,
     String? iosDisplayStyle,
+    String? androidDisplayMode,
     bool? autoCheckUpdate,
     String? ignoredUpdateVersion,
     bool? telemetryDiagnosticsEnabled,
@@ -282,6 +287,7 @@ class AppSettings {
       readerPresetIndex: readerPresetIndex ?? this.readerPresetIndex,
       readerUseCustomColor: readerUseCustomColor ?? this.readerUseCustomColor,
       iosDisplayStyle: iosDisplayStyle ?? this.iosDisplayStyle,
+      androidDisplayMode: androidDisplayMode ?? this.androidDisplayMode,
       autoCheckUpdate: autoCheckUpdate ?? this.autoCheckUpdate,
       ignoredUpdateVersion: ignoredUpdateVersion ?? this.ignoredUpdateVersion,
       telemetryDiagnosticsEnabled:
@@ -414,6 +420,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       readerUseCustomColor:
           prefs.getBool('setting_readerUseCustomColor') ?? false,
       iosDisplayStyle: normalizedIOSDisplayStyle,
+      androidDisplayMode:
+          prefs.getString(AppSettings.androidDisplayModePrefsKey) ??
+          appDisplayModeAutoValue,
       autoCheckUpdate: prefs.getBool('setting_autoCheckUpdate') ?? true,
       ignoredUpdateVersion:
           prefs.getString('setting_ignoredUpdateVersion') ?? '',
@@ -560,6 +569,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
       state.readerUseCustomColor,
     );
     await prefs.setString('setting_iosDisplayStyle', state.iosDisplayStyle);
+    await prefs.setString(
+      AppSettings.androidDisplayModePrefsKey,
+      state.androidDisplayMode,
+    );
     await prefs.setBool('setting_autoCheckUpdate', state.autoCheckUpdate);
     await prefs.setString(
       'setting_ignoredUpdateVersion',
@@ -880,6 +893,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     if (Platform.isIOS) {
       PlatformInfo.styleOverride = normalizedValue;
     }
+  }
+
+  Future<void> setAndroidDisplayMode(String value) async {
+    state = state.copyWith(androidDisplayMode: value);
+    await _save();
   }
 
   void setAutoCheckUpdate(bool value) {

@@ -3,6 +3,7 @@ import 'dart:io' show File, Platform;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,7 @@ import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/auth/login_page.dart';
+import 'package:novella/features/settings/display_mode_settings.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/rust/frb_generated.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -103,6 +105,32 @@ void _installTelemetryErrorHooks() {
     );
     return false;
   };
+}
+
+Future<void> _applyAndroidDisplayModePreference(SharedPreferences prefs) async {
+  if (!Platform.isAndroid) {
+    return;
+  }
+
+  try {
+    final modes = await FlutterDisplayMode.supported;
+    final modeByValue = {for (final mode in modes) mode.toString(): mode};
+    final autoValue = DisplayMode.auto.toString();
+    final selectedValue = resolveDisplayModePreference(
+      prefs.getString(AppSettings.androidDisplayModePrefsKey),
+      supportedValues: modeByValue.keys,
+      autoValue: autoValue,
+    );
+    await FlutterDisplayMode.setPreferredMode(
+      modeByValue[selectedValue] ?? DisplayMode.auto,
+    );
+  } on Object catch (e, stack) {
+    _flutterLogger.warning(
+      'Failed to apply Android display mode: $e',
+      e,
+      stack,
+    );
+  }
 }
 
 int? _parseAppleMajorVersion(String version) {
@@ -410,6 +438,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _lastSettingsSyncRevision = _syncManager.settingsRevision;
     _syncManager.addListener(_handleSyncUpdate);
+    unawaited(
+      SharedPreferences.getInstance().then(_applyAndroidDisplayModePreference),
+    );
     _checkDisclaimer();
   }
 
