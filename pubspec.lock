@@ -1159,7 +1159,7 @@ packages:
     description:
       path: "."
       ref: "v0.3.0"
-      resolved-ref: "36fd04208f18fb474d7c656dc07f1da63eb9a0c7"
+      resolved-ref: "03086886464a5cb8d9698476328c9af88d7fe0a7"
       url: "https://github.com/Kanscape/RTK-Flutter.git"
     source: git
     version: "0.3.0"

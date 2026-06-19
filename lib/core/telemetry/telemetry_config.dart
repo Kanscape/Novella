@@ -85,7 +85,7 @@ class TelemetryConfig {
     return uri;
   }
 
-  RTKConfig toRTKConfig() {
+  RTKConfig toRTKConfig({required bool diagnosticsEnabled}) {
     if (!isConfigured) {
       throw StateError('Rena telemetry is not configured.');
     }
@@ -95,6 +95,7 @@ class TelemetryConfig {
       appVersion: appVersion,
       buildNumber: buildNumber,
       debug: debug,
+      diagnosticsEnabled: diagnosticsEnabled,
       beforeSend: _addBuildMetadata,
     );
   }

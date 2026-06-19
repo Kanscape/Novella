@@ -19,7 +19,7 @@ class RenaTelemetryBootstrap {
       return;
     }
 
-    await RTK.init(config.toRTKConfig());
+    await RTK.init(config.toRTKConfig(diagnosticsEnabled: diagnosticsEnabled));
     final sink = RenaTelemetrySink();
     sink.setBuildMetadata(
       buildChannel: AppBuildInfo.buildChannel,

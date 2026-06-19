@@ -17,13 +17,30 @@ void main() {
 
     expect(config.isConfigured, isTrue);
 
-    final rtkConfig = config.toRTKConfig();
+    final rtkConfig = config.toRTKConfig(diagnosticsEnabled: true);
     expect(rtkConfig.endpoint, Uri.parse('https://rena.example.com/ingest'));
     expect(rtkConfig.publicWriteKey, 'public-write-key');
     expect(rtkConfig.appVersion, '1.9.0');
     expect(rtkConfig.buildNumber, '128');
     expect(rtkConfig.debug, isFalse);
+    expect(rtkConfig.diagnosticsEnabled, isTrue);
     expect(rtkConfig.trackForegroundDuration, isTrue);
+  });
+
+  test('passes diagnostics state into RTK config', () {
+    final config = TelemetryConfig.fromValues(
+      endpointValue: 'https://rena.example.com',
+      publicWriteKeyValue: 'public-write-key',
+      packageInfo: _packageInfo(buildNumber: '128'),
+      buildChannel: 'main',
+      buildLabel: 'Build 128',
+      debug: false,
+    );
+
+    expect(
+      config.toRTKConfig(diagnosticsEnabled: false).diagnosticsEnabled,
+      isFalse,
+    );
   });
 
   test('ignores build number outside official main builds', () {
@@ -36,7 +53,7 @@ void main() {
       debug: true,
     );
 
-    expect(config.toRTKConfig().buildNumber, isNull);
+    expect(config.toRTKConfig(diagnosticsEnabled: true).buildNumber, isNull);
   });
 
   test('adds build metadata to RTK items before they are queued', () {
@@ -49,7 +66,7 @@ void main() {
       debug: false,
     );
 
-    final rtkConfig = config.toRTKConfig();
+    final rtkConfig = config.toRTKConfig(diagnosticsEnabled: true);
     final item =
         rtkConfig.beforeSend!(
               RTKEvent(name: 'app_launch', timestamp: DateTime(2026, 6, 18)),

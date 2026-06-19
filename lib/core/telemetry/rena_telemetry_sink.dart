@@ -1,10 +1,7 @@
-import 'dart:convert';
-
 import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/telemetry/telemetry_sink.dart';
 import 'package:rena_rtk/rena_rtk.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 abstract interface class RenaTelemetryClient {
   void track(String name, {Map<String, Object?> properties = const {}});
@@ -21,7 +18,7 @@ abstract interface class RenaTelemetryClient {
 
   void setSuperProperties(Map<String, Object?> properties);
 
-  Future<void> clearQueuedTelemetry();
+  Future<void> setDiagnosticsEnabled(bool enabled);
 }
 
 class RenaRtkTelemetryAdapter implements RenaTelemetryClient {
@@ -58,27 +55,20 @@ class RenaRtkTelemetryAdapter implements RenaTelemetryClient {
   }
 
   @override
-  Future<void> clearQueuedTelemetry() async {
-    // RTK v0.3.0 exposes queue clearing only through opt-out.
-    await RTK.setOptOut(true);
-    await RTK.setOptOut(false);
+  Future<void> setDiagnosticsEnabled(bool enabled) {
+    return RTK.setDiagnosticsEnabled(enabled);
   }
 }
 
 class RenaTelemetrySink
     implements TelemetrySink, TelemetryCollectionConfigurable {
-  RenaTelemetrySink({
-    this.client = const RenaRtkTelemetryAdapter(),
-    RenaRtkDiagnosticsQueue? diagnosticsQueue,
-  }) : _diagnosticsQueue = diagnosticsQueue ?? RenaRtkDiagnosticsQueue();
+  RenaTelemetrySink({this.client = const RenaRtkTelemetryAdapter()});
 
   static const _screenViewEventName = 'screen_view';
   static const _screenClassProperty = 'screen_class';
 
   final RenaTelemetryClient client;
-  final RenaRtkDiagnosticsQueue _diagnosticsQueue;
   bool _diagnosticsEnabled = true;
-  bool _queuedDiagnosticErrorInMemory = false;
 
   @override
   void track(String name, {Map<String, Object?> properties = const {}}) {
@@ -121,7 +111,6 @@ class RenaTelemetrySink
     if (!_diagnosticsEnabled) {
       return;
     }
-    _queuedDiagnosticErrorInMemory = true;
     client.captureError(error, stackTrace: stackTrace, properties: properties);
   }
 
@@ -144,58 +133,6 @@ class RenaTelemetrySink
     required bool diagnosticsEnabled,
   }) async {
     _diagnosticsEnabled = diagnosticsEnabled;
-    if (!diagnosticsEnabled) {
-      await _diagnosticsQueue.removePersistedErrors();
-      if (_queuedDiagnosticErrorInMemory) {
-        await client.clearQueuedTelemetry();
-        _queuedDiagnosticErrorInMemory = false;
-      }
-    }
-  }
-}
-
-class RenaRtkDiagnosticsQueue {
-  static const _queueKey = 'rena_rtk.queue';
-
-  Future<void> removePersistedErrors() async {
-    final preferences = await SharedPreferences.getInstance();
-    final rows = preferences.getStringList(_queueKey);
-    if (rows == null || rows.isEmpty) {
-      return;
-    }
-
-    var changed = false;
-    final keptRows = <String>[];
-    for (final row in rows) {
-      if (_isQueuedError(row)) {
-        changed = true;
-        continue;
-      }
-      keptRows.add(row);
-    }
-    if (!changed) {
-      return;
-    }
-    if (keptRows.isEmpty) {
-      await preferences.remove(_queueKey);
-      return;
-    }
-    await preferences.setStringList(_queueKey, keptRows);
-  }
-
-  bool _isQueuedError(String row) {
-    try {
-      final decoded = jsonDecode(row);
-      if (decoded is! Map) {
-        return false;
-      }
-      final item = decoded['item'];
-      if (item is! Map) {
-        return false;
-      }
-      return item['type'] == 'error';
-    } on FormatException {
-      return false;
-    }
+    await client.setDiagnosticsEnabled(diagnosticsEnabled);
   }
 }
