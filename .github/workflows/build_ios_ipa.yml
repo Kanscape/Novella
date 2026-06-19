@@ -11,7 +11,6 @@ on:
       - 'rust/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
-      - 'firebase.json'
       - '.github/workflows/build_ios_ipa.yml'
   push:
     branches: ["main"]
@@ -22,7 +21,6 @@ on:
       - 'rust/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
-      - 'firebase.json'
       - '.github/workflows/build_ios_ipa.yml'
 
 jobs:
@@ -95,29 +93,6 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
-      # 写入 iOS Firebase API key
-      - name: Inject iOS Firebase API Key
-        env:
-          FIREBASE_IOS_API_KEY: ${{ secrets.FIREBASE_IOS_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${FIREBASE_IOS_API_KEY:-}" ]; then
-            if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
-              echo "Firebase iOS API key secret is unavailable for this PR; keeping placeholder key for build-only validation."
-              exit 0
-            fi
-            echo "::error::Missing FIREBASE_IOS_API_KEY secret."
-            exit 1
-          fi
-          perl -0pi -e 's/__FIREBASE_IOS_API_KEY__/$ENV{FIREBASE_IOS_API_KEY}/g' \
-            lib/firebase_options.dart \
-            ios/Runner/GoogleService-Info.plist
-
-      # FlutterFire Crashlytics dSYM 上传脚本需要 flutterfire 命令
-      - name: Install FlutterFire CLI
-        if: github.event_name != 'pull_request'
-        run: dart pub global activate flutterfire_cli
-
       # 安装 Pods 生成项目文件
       - name: Install CocoaPods Dependencies
         run: |
@@ -153,11 +128,27 @@ jobs:
 
       # 构建免签 Release
       - name: Build iOS Release (No Codesign)
+        env:
+          RENA_ENDPOINT: ${{ secrets.RENA_ENDPOINT }}
+          RENA_PUBLIC_WRITE_KEY: ${{ secrets.RENA_PUBLIC_WRITE_KEY }}
         run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
+            if [ -z "${RENA_ENDPOINT:-}" ]; then
+              echo "::error::Missing RENA_ENDPOINT secret."
+              exit 1
+            fi
+            if [ -z "${RENA_PUBLIC_WRITE_KEY:-}" ]; then
+              echo "::error::Missing RENA_PUBLIC_WRITE_KEY secret."
+              exit 1
+            fi
+          fi
           flutter build ios --release --no-codesign --verbose \
             --build-number="$BUILD_NUMBER" \
             --dart-define=BUILD_CHANNEL="$BUILD_CHANNEL" \
-            --dart-define=BUILD_LABEL="$BUILD_LABEL"
+            --dart-define=BUILD_LABEL="$BUILD_LABEL" \
+            --dart-define=RENA_ENDPOINT="$RENA_ENDPOINT" \
+            --dart-define=RENA_PUBLIC_WRITE_KEY="$RENA_PUBLIC_WRITE_KEY"
 
       # 打包 IPA
       - name: Package IPA

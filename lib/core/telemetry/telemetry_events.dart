@@ -2,9 +2,7 @@ class TelemetryEvents {
   const TelemetryEvents._();
 
   static const appDayType = 'app_day_type';
-  static const appSession = 'app_session';
   static const settingsSnapshot = 'settings_snapshot';
-  static const settingPreferenceChanged = 'setting_preference_changed';
   static const tabClicked = 'tab_clicked';
   static const bookDetailOpened = 'book_detail_opened';
   static const tagFeatureUsed = 'tag_feature_used';
@@ -23,21 +21,17 @@ class TelemetryProperties {
   static const buildNumber = 'build_number';
   static const dayType = 'day_type';
   static const enabledHomeModules = 'enabled_home_modules';
-  static const endedBy = 'ended_by';
   static const homeModuleOrder = 'home_module_order';
   static const homeRankType = 'home_rank_type';
   static const ignoreAI = 'ignore_ai';
   static const ignoreJapanese = 'ignore_japanese';
   static const ignoreLevel6 = 'ignore_level6';
   static const item = 'item';
-  static const localDate = 'local_date';
-  static const localHourBucket = 'local_hour_bucket';
   static const module = 'module';
   static const platform = 'platform';
   static const readerViewMode = 'reader_view_mode';
   static const seriesSearchMode = 'series_search_mode';
   static const screenName = 'screen_name';
-  static const sessionDurationBucket = 'session_duration_bucket';
   static const source = 'source';
   static const startupTab = 'startup_tab';
   static const tab = 'tab';

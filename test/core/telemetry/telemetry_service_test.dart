@@ -298,54 +298,20 @@ void main() {
     );
   });
 
-  test(
-    'records foreground session duration bucket and drops tiny sessions',
-    () {
-      final sink = _FakeTelemetrySink();
-      var now = DateTime(2026, 6, 11, 9);
-      final service = TelemetryService(sink: sink, now: () => now);
-
-      service.startForeground(startupTab: TelemetryTabs.home);
-      now = now.add(const Duration(seconds: 2));
-      service.endForeground(endedBy: 'background');
-
-      service.startForeground(startupTab: TelemetryTabs.shelf);
-      now = now.add(const Duration(minutes: 5));
-      service.endForeground(endedBy: 'background');
-
-      expect(sink.events, hasLength(1));
-      expect(sink.events.single.name, TelemetryEvents.appSession);
-      expect(sink.events.single.properties, {
-        TelemetryProperties.sessionDurationBucket: '2-10m',
-        TelemetryProperties.localDate: '2026-06-11',
-        TelemetryProperties.dayType: TelemetryDayTypes.weekday,
-        TelemetryProperties.localHourBucket: '6-11',
-        TelemetryProperties.startupTab: TelemetryTabs.shelf,
-        TelemetryProperties.endedBy: 'background',
-      });
-    },
-  );
-
-  test('does not restart an active foreground session', () {
+  test('foreground lifecycle no longer records an app session event', () {
     final sink = _FakeTelemetrySink();
-    var now = DateTime(2026, 6, 11, 9);
-    final service = TelemetryService(sink: sink, now: () => now);
+    final service = TelemetryService(sink: sink);
 
     service.startForeground(startupTab: TelemetryTabs.home);
     service.setCurrentTab(TelemetryTabs.shelf);
-    now = now.add(const Duration(minutes: 1));
     service.startForeground();
-    now = now.add(const Duration(minutes: 1));
-    service.endForeground(endedBy: 'background');
+    service.endForeground();
 
-    expect(sink.events, hasLength(1));
-    expect(sink.events.single.properties, {
-      TelemetryProperties.sessionDurationBucket: '2-10m',
-      TelemetryProperties.localDate: '2026-06-11',
-      TelemetryProperties.dayType: TelemetryDayTypes.weekday,
-      TelemetryProperties.localHourBucket: '6-11',
-      TelemetryProperties.startupTab: TelemetryTabs.home,
-      TelemetryProperties.endedBy: 'background',
+    expect(sink.events, isEmpty);
+    expect(sink.breadcrumbs, hasLength(1));
+    expect(sink.breadcrumbs.single.name, 'foreground_started');
+    expect(sink.breadcrumbs.single.properties, {
+      TelemetryProperties.tab: TelemetryTabs.home,
     });
   });
 
@@ -435,21 +401,19 @@ void main() {
     expect(message, isNot(contains('stu.vwx')));
   });
 
-  test('preserves foreground session startup tab after tab changes', () {
+  test('foreground breadcrumb can be recorded again after foreground ends', () {
     final sink = _FakeTelemetrySink();
-    var now = DateTime(2026, 6, 11, 9);
-    final service = TelemetryService(sink: sink, now: () => now);
+    final service = TelemetryService(sink: sink);
 
     service.startForeground(startupTab: TelemetryTabs.home);
-    service.setCurrentTab(TelemetryTabs.shelf);
-    now = now.add(const Duration(minutes: 5));
-    service.endForeground(endedBy: 'background');
+    service.endForeground();
+    service.startForeground(startupTab: TelemetryTabs.shelf);
 
-    expect(sink.events, hasLength(1));
-    expect(
-      sink.events.single.properties[TelemetryProperties.startupTab],
-      TelemetryTabs.home,
-    );
+    expect(sink.events, isEmpty);
+    expect(sink.breadcrumbs.map((breadcrumb) => breadcrumb.properties), [
+      {TelemetryProperties.tab: TelemetryTabs.home},
+      {TelemetryProperties.tab: TelemetryTabs.shelf},
+    ]);
   });
 }
 
@@ -508,10 +472,10 @@ class _ConfigurableTelemetrySink
   final collectionSettings = <_CollectionSettings>[];
 
   @override
-  void setCollectionEnabled({
+  Future<void> setCollectionEnabled({
     required bool analyticsEnabled,
     required bool diagnosticsEnabled,
-  }) {
+  }) async {
     collectionSettings.add(
       _CollectionSettings(
         analyticsEnabled: analyticsEnabled,

@@ -28,8 +28,7 @@ class TelemetryService {
   DateTime Function() _now;
   double Function() _diagnosticSample;
   final _pendingUsageCalls = <void Function(TelemetrySink sink)>[];
-  DateTime? _foregroundStartedAt;
-  String? _foregroundStartupTab;
+  bool _foregroundActive = false;
   String _currentTab = TelemetryTabs.home;
   bool _dayTypeRecorded = false;
 
@@ -87,46 +86,23 @@ class TelemetryService {
   }
 
   void startForeground({String? startupTab}) {
-    if (_foregroundStartedAt != null) {
+    if (_foregroundActive) {
       return;
     }
     final tab = startupTab ?? _currentTab;
     _currentTab = tab;
-    _foregroundStartupTab = tab;
-    _foregroundStartedAt = _now();
+    _foregroundActive = true;
     addDiagnosticBreadcrumb(
       'foreground_started',
       properties: {TelemetryProperties.tab: tab},
     );
   }
 
-  void endForeground({required String endedBy}) {
-    final startedAt = _foregroundStartedAt;
-    if (startedAt == null) {
+  void endForeground() {
+    if (!_foregroundActive) {
       return;
     }
-    _foregroundStartedAt = null;
-    final startupTab = _foregroundStartupTab ?? _currentTab;
-    _foregroundStartupTab = null;
-
-    final endedAt = _now();
-    var duration = endedAt.difference(startedAt);
-    if (duration < const Duration(seconds: 3)) {
-      return;
-    }
-    if (duration > const Duration(hours: 12)) {
-      duration = const Duration(hours: 12);
-    }
-
-    track(
-      TelemetryEvents.appSession,
-      properties: {
-        TelemetryProperties.sessionDurationBucket: durationBucket(duration),
-        ..._timeProperties(endedAt),
-        TelemetryProperties.startupTab: startupTab,
-        TelemetryProperties.endedBy: endedBy,
-      },
-    );
+    _foregroundActive = false;
   }
 
   void track(String name, {Map<String, Object?> properties = const {}}) {
@@ -203,13 +179,6 @@ class TelemetryService {
     return _sink.flush();
   }
 
-  static String localDate(DateTime time) {
-    final local = time.toLocal();
-    final month = local.month.toString().padLeft(2, '0');
-    final day = local.day.toString().padLeft(2, '0');
-    return '${local.year}-$month-$day';
-  }
-
   static String dayType(DateTime time) {
     final local = time.toLocal();
     return local.weekday == DateTime.saturday ||
@@ -218,53 +187,17 @@ class TelemetryService {
         : TelemetryDayTypes.weekday;
   }
 
-  static String hourBucket(DateTime time) {
-    final hour = time.toLocal().hour;
-    if (hour < 6) {
-      return '0-5';
-    }
-    if (hour < 12) {
-      return '6-11';
-    }
-    if (hour < 18) {
-      return '12-17';
-    }
-    return '18-23';
-  }
-
-  static String durationBucket(Duration duration) {
-    if (duration < const Duration(seconds: 30)) {
-      return '3-30s';
-    }
-    if (duration < const Duration(minutes: 2)) {
-      return '30s-2m';
-    }
-    if (duration < const Duration(minutes: 10)) {
-      return '2-10m';
-    }
-    if (duration < const Duration(minutes: 30)) {
-      return '10-30m';
-    }
-    return '30m+';
-  }
-
-  Map<String, Object?> _timeProperties(DateTime time) {
-    return {
-      TelemetryProperties.localDate: localDate(time),
-      TelemetryProperties.dayType: dayType(time),
-      TelemetryProperties.localHourBucket: hourBucket(time),
-    };
-  }
-
   void _applyCollectionSettings() {
     final sink = _sink;
     if (sink is! TelemetryCollectionConfigurable) {
       return;
     }
     final configurableSink = sink as TelemetryCollectionConfigurable;
-    configurableSink.setCollectionEnabled(
-      analyticsEnabled: _remotePolicy.analyticsEnabled,
-      diagnosticsEnabled: _effectiveDiagnosticsEnabled,
+    unawaited(
+      configurableSink.setCollectionEnabled(
+        analyticsEnabled: _remotePolicy.analyticsEnabled,
+        diagnosticsEnabled: _effectiveDiagnosticsEnabled,
+      ),
     );
   }
 
@@ -303,7 +236,7 @@ class TelemetryService {
 }
 
 abstract interface class TelemetryCollectionConfigurable {
-  void setCollectionEnabled({
+  Future<void> setCollectionEnabled({
     required bool analyticsEnabled,
     required bool diagnosticsEnabled,
   });

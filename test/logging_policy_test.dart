@@ -47,4 +47,22 @@ void main() {
 
     expect(violations, isEmpty);
   });
+
+  test('settings preference changes are not usage telemetry', () {
+    final dartFiles = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'));
+
+    final violations = <String>[];
+    for (final file in dartFiles) {
+      final source = file.readAsStringSync();
+      if (source.contains('setting_preference_changed') ||
+          source.contains('settingPreferenceChanged')) {
+        violations.add(file.path);
+      }
+    }
+
+    expect(violations, isEmpty);
+  });
 }
