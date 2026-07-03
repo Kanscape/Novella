@@ -731,6 +731,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
         heroTag: 'shelf_cover_$bookId',
         telemetrySource: TelemetryBookDetailSources.shelf,
       ),
+      heroTransition: true,
     );
 
     await _refreshGrid(silentIfPossible: true);

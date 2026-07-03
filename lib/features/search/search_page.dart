@@ -759,6 +759,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             heroTag: heroTag,
             telemetrySource: TelemetryBookDetailSources.search,
           ),
+          heroTransition: true,
         );
       },
       child: Column(

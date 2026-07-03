@@ -248,6 +248,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
             heroTag: heroTag,
             telemetrySource: TelemetryBookDetailSources.ranking,
           ),
+          heroTransition: true,
         );
       },
       child: Column(

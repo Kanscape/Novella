@@ -256,6 +256,7 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
             heroTag: heroTag,
             telemetrySource: TelemetryBookDetailSources.homeRecentlyUpdated,
           ),
+          heroTransition: true,
         );
       },
       child: Column(

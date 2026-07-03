@@ -4,6 +4,47 @@ import 'package:novella/core/layout/app_window_class.dart';
 
 typedef AppPageBuilder = Widget Function(BuildContext context);
 
+/// On Android, forces [ZoomPageTransitionsBuilder] for Hero-bearing detail
+/// pages: the predictive-back preview conflicts with Hero flight and can leave
+/// the list cover blank, so back falls back to a normal pop. Other platforms
+/// keep the theme default.
+class _HeroSafePageRoute<T> extends MaterialPageRoute<T> {
+  _HeroSafePageRoute({
+    required super.builder,
+    super.settings,
+    super.maintainState,
+    super.fullscreenDialog,
+  });
+
+  static const PageTransitionsBuilder _transitions =
+      ZoomPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    // Only Android has the predictive-back conflict; keep the theme default elsewhere (e.g. iOS swipe-back)
+    if (Theme.of(context).platform != TargetPlatform.android) {
+      return super.buildTransitions(
+        context,
+        animation,
+        secondaryAnimation,
+        child,
+      );
+    }
+    return _transitions.buildTransitions<T>(
+      this,
+      context,
+      animation,
+      secondaryAnimation,
+      child,
+    );
+  }
+}
+
 class AppPaneCoordinator {
   AppPaneCoordinator({required int tabCount})
     : _navigatorKeys = List<GlobalKey<NavigatorState>>.generate(
@@ -119,13 +160,23 @@ class AppRouteLauncher {
     RouteSettings? settings,
     bool maintainState = true,
     bool fullscreenDialog = false,
+    bool heroTransition = false,
   }) {
-    final route = MaterialPageRoute<T>(
-      builder: builder,
-      settings: settings,
-      maintainState: maintainState,
-      fullscreenDialog: fullscreenDialog,
-    );
+    // Hero pages need the Zoom transition to avoid the predictive-back conflict; see _HeroSafePageRoute
+    final route =
+        heroTransition
+            ? _HeroSafePageRoute<T>(
+              builder: builder,
+              settings: settings,
+              maintainState: maintainState,
+              fullscreenDialog: fullscreenDialog,
+            )
+            : MaterialPageRoute<T>(
+              builder: builder,
+              settings: settings,
+              maintainState: maintainState,
+              fullscreenDialog: fullscreenDialog,
+            );
 
     final windowScope = AppWindowScope.maybeOf(context);
     final tabScope = AppPaneTabScope.maybeOf(context);

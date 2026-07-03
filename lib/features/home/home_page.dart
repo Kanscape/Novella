@@ -801,6 +801,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                         telemetrySource:
                             TelemetryBookDetailSources.homeContinueReading,
                       ),
+                      heroTransition: true,
                     ).then((_) {
                       _loadReadingStats();
                       _fetchContinueReading(internalLoading: false);
@@ -1206,6 +1207,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
             heroTag: heroTag,
             telemetrySource: telemetrySource,
           ),
+          heroTransition: true,
         ).then((_) {
           _loadReadingStats();
           _fetchContinueReading(internalLoading: false);
