@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/telemetry/telemetry_service.dart';
@@ -20,6 +21,7 @@ import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/data/services/local_cover_service.dart';
+import 'package:novella/features/book/book_detail_loading_policy.dart';
 import 'package:novella/features/reader/reader_page.dart';
 import 'package:novella/features/reader/shared/reader_title_utils.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
@@ -860,6 +862,11 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       if (mounted) {
         // 加载本地标记
         final mark = await _bookMarkService.getBookMark(widget.bookId);
+        await _waitForContentApplyWindow(
+          forceRefresh: forceRefresh,
+          usedCache: false,
+        );
+        if (!mounted) return;
         setState(() {
           _bookInfo = info;
           _readPosition = position;
@@ -889,6 +896,55 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           _loading = false;
         });
       }
+    }
+  }
+
+  Future<void> _waitForContentApplyWindow({
+    required bool forceRefresh,
+    required bool usedCache,
+  }) async {
+    final route = ModalRoute.of(context);
+    final animation = route?.animation;
+    if (!shouldDeferBookDetailContentApply(
+      forceRefresh: forceRefresh,
+      usedCache: usedCache,
+      routeTransitionActive: isRouteTransitionActive(animation),
+    )) {
+      return;
+    }
+
+    final completer = Completer<void>();
+    late final AnimationStatusListener listener;
+    listener = (status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      }
+    };
+
+    animation!.addStatusListener(listener);
+    try {
+      if (!isRouteTransitionActive(animation)) {
+        return;
+      }
+      final currentRoute = route;
+      final transitionDuration =
+          (currentRoute is TransitionRoute ? currentRoute : null)
+              ?.transitionDuration ??
+          bookDetailRouteSettleFallbackDelay;
+      await Future.any([
+        completer.future,
+        Future<void>.delayed(
+          transitionDuration + const Duration(milliseconds: 80),
+        ),
+      ]);
+      if (mounted) {
+        await SchedulerBinding.instance.endOfFrame;
+      }
+    } finally {
+      animation.removeStatusListener(listener);
     }
   }
 

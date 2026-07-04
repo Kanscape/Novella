@@ -32,6 +32,7 @@ import 'package:novella/features/reader/shared/reader_battery_indicator.dart';
 import 'package:novella/features/reader/shared/reader_chapter_sheet.dart';
 import 'package:novella/features/reader/shared/reader_footnote_processor.dart';
 import 'package:novella/features/reader/shared/reader_image_view.dart';
+import 'package:novella/features/reader/shared/reader_preload_policy.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
 import 'package:novella/features/reader/shared/reader_title_sheet.dart';
 import 'package:novella/features/reader/shared/reader_title_utils.dart';
@@ -620,16 +621,37 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
   }
 
   Future<void> _preloadAdjacentChapters(int sortNum, int version) async {
-    final settings = ref.read(settingsProvider);
+    var settings = ref.read(settingsProvider);
     _ensureChapterCacheForSettings(settings);
-    final targets = <int>[
-      if (sortNum > 1) sortNum - 1,
-      if (sortNum < widget.totalChapters) sortNum + 1,
-    ];
+    final targets =
+        readerAdjacentPreloadTargets(
+              sortNum: sortNum,
+              totalChapters: widget.totalChapters,
+            )
+            .where(
+              (target) =>
+                  !_chapterDataCache.containsKey(target) &&
+                  _preloadingSortNums.add(target),
+            )
+            .toList(growable: false);
+
+    if (targets.isEmpty) {
+      return;
+    }
+
+    await SchedulerBinding.instance.endOfFrame;
+    await Future<void>.delayed(readerAdjacentPreloadDelay);
+    if (!mounted || version != _loadVersion) {
+      _preloadingSortNums.removeAll(targets);
+      return;
+    }
+
+    settings = ref.read(settingsProvider);
+    _ensureChapterCacheForSettings(settings);
 
     for (final target in targets) {
-      if (_chapterDataCache.containsKey(target) ||
-          !_preloadingSortNums.add(target)) {
+      if (_chapterDataCache.containsKey(target)) {
+        _preloadingSortNums.remove(target);
         continue;
       }
 
@@ -710,21 +732,10 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
     await SchedulerBinding.instance.endOfFrame;
     if (!mounted || version != _loadVersion) return;
     try {
-      final currentData = await _fetchAndPrepareChapterData(sortNum, settings);
-      if (version != _loadVersion) return;
-
-      final adjacentSortNums = <int>[
-        if (sortNum > 1) sortNum - 1,
-        if (sortNum < widget.totalChapters) sortNum + 1,
-      ];
-      final adjacentResults = await Future.wait(
-        adjacentSortNums.map((target) async {
-          try {
-            return await _fetchAndPrepareChapterData(target, settings);
-          } catch (_) {
-            return null;
-          }
-        }),
+      final initialSortNums = readerInitialDisplaySortNums(sortNum: sortNum);
+      final currentData = await _fetchAndPrepareChapterData(
+        initialSortNums.single,
+        settings,
       );
 
       if (version != _loadVersion) return;
@@ -741,11 +752,6 @@ class _ReaderPagedPageState extends ConsumerState<ReaderPagedPage>
       );
       setState(() {
         _chapterDataCache[sortNum] = currentData;
-        for (final data in adjacentResults) {
-          if (data != null) {
-            _chapterDataCache[data.chapter.sortNum] = data;
-          }
-        }
         _activateChapterData(currentData);
         _indentedBlockHtmlCache.clear();
         _loading = false;

@@ -11,6 +11,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:logging/logging.dart';
@@ -1897,6 +1898,9 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       _readProgressNotifier.value = 0.0;
     });
 
+    await SchedulerBinding.instance.endOfFrame;
+    if (!mounted || currentVersion != _loadVersion) return;
+
     try {
       final settings = ref.read(settingsProvider);
 
@@ -2016,6 +2020,9 @@ class _ReaderScrollPageState extends ConsumerState<ReaderScrollPage>
       }
 
       if (mounted && currentVersion == _loadVersion) {
+        await SchedulerBinding.instance.endOfFrame;
+        if (!mounted || currentVersion != _loadVersion) return;
+
         // 3. 预处理脚注/注释（对标 Web：隐藏原注释节点 + 记录内容 + 禁用默认跳转）
         final invisibleCodepoints = _fontManager.getInvisibleCodepoints(family);
         final sanitizedContent = _stripInvisiblePlaceholderCodepoints(
