@@ -30,7 +30,10 @@ class M3ELoadingIndicator extends StatelessWidget {
   /// Component box size. Defaults to the Material 3 48dp container.
   final double? size;
 
-  /// Active indicator color. Defaults to `colorScheme.primary`.
+  /// Active indicator color.
+  ///
+  /// Defaults to `colorScheme.primary`, or `colorScheme.onPrimaryContainer`
+  /// for the contained variant.
   final Color? color;
 
   /// Container color for the contained variant.
@@ -46,14 +49,15 @@ class M3ELoadingIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     final dimension = size ?? _packageContainerSize;
     final packageDimension = dimension / _packageActiveIndicatorScale;
-    final activeColor = color ?? Theme.of(context).colorScheme.primary;
+    final colorScheme = Theme.of(context).colorScheme;
+    final activeColor =
+        color ??
+        (contained ? colorScheme.onPrimaryContainer : colorScheme.primary);
 
     final indicator = contained
         ? LoadingIndicator.contained(
             activeIndicatorColor: activeColor,
-            containerColor:
-                containerColor ??
-                Theme.of(context).colorScheme.primaryContainer,
+            containerColor: containerColor ?? colorScheme.primaryContainer,
             semanticsLabel: semanticsLabel ?? 'Loading',
           )
         : LoadingIndicator(
