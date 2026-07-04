@@ -37,6 +37,7 @@ class M3ERefreshIndicator extends StatefulWidget {
 
 class _M3ERefreshIndicatorState extends State<M3ERefreshIndicator> {
   RefreshIndicatorStatus? _status;
+  AxisDirection? _axisDirection;
 
   bool get _showIndicator {
     return switch (_status) {
@@ -50,28 +51,63 @@ class _M3ERefreshIndicatorState extends State<M3ERefreshIndicator> {
     };
   }
 
+  bool get _indicatorAtTop => _axisDirection != AxisDirection.up;
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (!widget.notificationPredicate(notification)) {
+      return false;
+    }
+
+    final axisDirection = notification.metrics.axisDirection;
+    if (axisDirection != AxisDirection.down &&
+        axisDirection != AxisDirection.up) {
+      return false;
+    }
+
+    if (_axisDirection == axisDirection) {
+      return false;
+    }
+
+    setState(() => _axisDirection = axisDirection);
+    return false;
+  }
+
+  void _handleStatusChange(RefreshIndicatorStatus? status) {
+    if (_status == status) return;
+
+    setState(() {
+      _status = status;
+      if (status == null) {
+        _axisDirection = null;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final top = widget.edgeOffset + widget.displacement - widget.size / 2;
+    final edgePosition =
+        widget.edgeOffset + widget.displacement - widget.size / 2;
+    final indicatorAtTop = _indicatorAtTop;
 
     return Stack(
       fit: StackFit.passthrough,
       children: [
         RefreshIndicator.noSpinner(
           onRefresh: widget.onRefresh,
-          onStatusChange: (status) {
-            if (_status == status) return;
-            setState(() => _status = status);
-          },
+          onStatusChange: _handleStatusChange,
           notificationPredicate: widget.notificationPredicate,
           semanticsLabel: widget.semanticsLabel,
           semanticsValue: widget.semanticsValue,
           triggerMode: widget.triggerMode,
           elevation: widget.elevation,
-          child: widget.child,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _handleScrollNotification,
+            child: widget.child,
+          ),
         ),
         Positioned(
-          top: top,
+          top: indicatorAtTop ? edgePosition : null,
+          bottom: indicatorAtTop ? null : edgePosition,
           left: 0,
           right: 0,
           child: IgnorePointer(

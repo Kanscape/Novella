@@ -60,6 +60,35 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets(
+    'positions the indicator above the bottom edge for reversed lists',
+    (tester) async {
+      final refreshCompleter = Completer<void>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: M3ERefreshIndicator(
+            onRefresh: () => refreshCompleter.future,
+            child: ListView(
+              reverse: true,
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [SizedBox(height: 400)],
+            ),
+          ),
+        ),
+      );
+
+      await tester.drag(find.byType(ListView), const Offset(0, 300));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+
+      expect(tester.getBottomLeft(find.byType(M3ELoadingIndicator)).dy, 580);
+
+      refreshCompleter.complete();
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets('shows a contained M3E indicator while refreshing', (
     tester,
   ) async {
