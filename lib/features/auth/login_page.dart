@@ -9,7 +9,7 @@ import 'package:novella/core/sync/gist_sync_service.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/features/auth/login_turnstile_page.dart';
-import 'package:novella/features/main_page.dart';
+import 'package:novella/features/main_page_reveal_route.dart';
 import 'package:novella/features/settings/log_viewer_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -61,9 +61,7 @@ class _LoginPageState extends State<LoginPage> {
     if (mounted) {
       if (isLoggedIn) {
         // 自动登录成功
-        Navigator.of(
-          context,
-        ).pushReplacement(MaterialPageRoute(builder: (_) => const MainPage()));
+        _replaceWithMainPage(context);
       } else {
         // 显示登录页
         setState(() {
@@ -71,6 +69,10 @@ class _LoginPageState extends State<LoginPage> {
         });
       }
     }
+  }
+
+  void _replaceWithMainPage(BuildContext context) {
+    Navigator.of(context).pushReplacement(createMainPageRevealRoute());
   }
 
   @override
@@ -235,9 +237,7 @@ class _LoginPageState extends State<LoginPage> {
 
     if (result != null && context.mounted) {
       // 登录成功，跳转主页
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const MainPage()));
+      _replaceWithMainPage(context);
     }
   }
 
@@ -302,9 +302,7 @@ class _LoginPageState extends State<LoginPage> {
 
         if (isValid) {
           // 凭据有效，跳转到主页
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const MainPage()),
-          );
+          _replaceWithMainPage(context);
         } else {
           await _secretStorage.delete(SecretStorageKeys.authToken);
           _authService.invalidateSessionTokenCache();

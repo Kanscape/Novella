@@ -8,7 +8,7 @@ import 'package:novella/core/storage/secret_storage_service.dart';
 import 'package:novella/core/storage/secret_storage_warning_sheet.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/auth/refresh_token_login_page.dart';
-import 'package:novella/features/main_page.dart';
+import 'package:novella/features/main_page_reveal_route.dart';
 
 /// 原生登录/注册/找回密码页面（MD3 Outlined），使用 Cloudflare Turnstile 获取 token。
 class LoginTurnstilePage extends StatefulWidget {
@@ -160,9 +160,7 @@ class _LoginTurnstilePageState extends State<LoginTurnstilePage>
     );
 
     if (ok == true && context.mounted) {
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const MainPage()));
+      Navigator.of(context).pushReplacement(createMainPageRevealRoute());
     }
   }
 
