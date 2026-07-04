@@ -9,6 +9,7 @@ import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_mark_service.dart';
 import 'package:novella/data/services/book_cover_hint_service.dart';
@@ -93,11 +94,10 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     super.initState();
     unawaited(_bookCoverHintService.ensureInitialized());
     _detailQueue = ShelfBookDetailQueue(
-      hasBook:
-          (id) =>
-              (_bookDetails.containsKey(id) &&
-                  !_detailRevalidationIds.contains(id)) ||
-              _invalidBookIds.contains(id),
+      hasBook: (id) =>
+          (_bookDetails.containsKey(id) &&
+              !_detailRevalidationIds.contains(id)) ||
+          _invalidBookIds.contains(id),
       onBooksLoaded: _handleBooksLoaded,
       onError: _handleBookDetailError,
     );
@@ -331,8 +331,9 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
     final rootItems = _userService.getShelfItemsByParents(const []);
     final allShelfBookItems = _userService.getAllBookItemsInDisplayOrder();
-    final allShelfBookIds =
-        allShelfBookItems.map((item) => item.id as int).toSet();
+    final allShelfBookIds = allShelfBookItems
+        .map((item) => item.id as int)
+        .toSet();
     _detailRevalidationIds.removeWhere(
       (bookId) => !allShelfBookIds.contains(bookId),
     );
@@ -347,27 +348,24 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       );
     }
     _bookDetails.removeWhere((bookId, _) => !allShelfBookIds.contains(bookId));
-    final filteredItems =
-        _selectedFilter == 0
-            ? rootItems
-            : allShelfBookItems
-                .where((item) => _markedBookIds.contains(item.id as int))
-                .toList(growable: false);
+    final filteredItems = _selectedFilter == 0
+        ? rootItems
+        : allShelfBookItems
+              .where((item) => _markedBookIds.contains(item.id as int))
+              .toList(growable: false);
     final initialDetailIds = _collectInitialDetailIds(filteredItems);
     final needsVisibleDetails = initialDetailIds.isNotEmpty;
     final shouldBlockForDetails = !canSilentRefresh && needsVisibleDetails;
-    final visibleBookIds =
-        (_selectedFilter == 0 ? rootItems : filteredItems)
-            .where((item) => item.type == ShelfItemType.book)
-            .map((item) => item.id as int)
-            .toSet();
-    final visibleFolderIds =
-        _selectedFilter == 0
-            ? rootItems
-                .where((item) => item.type == ShelfItemType.folder)
-                .map((item) => item.id as String)
-                .toSet()
-            : <String>{};
+    final visibleBookIds = (_selectedFilter == 0 ? rootItems : filteredItems)
+        .where((item) => item.type == ShelfItemType.book)
+        .map((item) => item.id as int)
+        .toSet();
+    final visibleFolderIds = _selectedFilter == 0
+        ? rootItems
+              .where((item) => item.type == ShelfItemType.folder)
+              .map((item) => item.id as String)
+              .toSet()
+        : <String>{};
 
     if (!_canApplyRequest(requestEpoch)) {
       return;
@@ -549,15 +547,13 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       enabled: !showSortHandle,
       child: ShelfBookGridItem(
         book: _bookDetails[bookId],
-        coverUrlHint:
-            _bookDetails[bookId] == null && !isInvalid
-                ? _bookCoverHintService.getCoverUrl(bookId)
-                : null,
+        coverUrlHint: _bookDetails[bookId] == null && !isInvalid
+            ? _bookCoverHintService.getCoverUrl(bookId)
+            : null,
         shelfTitle: item.title,
-        titleHint:
-            _bookDetails[bookId] == null && !isInvalid
-                ? _bookTitleHint(bookId, shelfTitle: item.title)
-                : null,
+        titleHint: _bookDetails[bookId] == null && !isInvalid
+            ? _bookTitleHint(bookId, shelfTitle: item.title)
+            : null,
         bookId: bookId,
         heroTag: 'shelf_cover_$bookId',
         isInvalid: isInvalid,
@@ -826,12 +822,11 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
           destinations.isNotEmpty,
       showRenameOption: _selectedFilter == 0,
       canRename: _canRenameSelectedFolder,
-      moveDisabledReason:
-          hasSelectedFolders
-              ? '选中文件夹时暂不支持移动'
-              : destinations.isEmpty
-              ? '当前没有可移动的目标'
-              : null,
+      moveDisabledReason: hasSelectedFolders
+          ? '选中文件夹时暂不支持移动'
+          : destinations.isEmpty
+          ? '当前没有可移动的目标'
+          : null,
       renameDisabledReason: '仅支持单选文件夹重命名',
     );
 
@@ -882,12 +877,11 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
       return;
     }
 
-    final snackBarText =
-        folderCount > 0
-            ? impactedBookCount > 0
-                ? '已删除 $impactedBookCount 本书和 $folderCount 个文件夹'
-                : '已删除 $folderCount 个文件夹'
-            : '已从书架移出 ${selectedBookIds.length} 本书';
+    final snackBarText = folderCount > 0
+        ? impactedBookCount > 0
+              ? '已删除 $impactedBookCount 本书和 $folderCount 个文件夹'
+              : '已删除 $folderCount 个文件夹'
+        : '已从书架移出 ${selectedBookIds.length} 本书';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(snackBarText),
@@ -1055,14 +1049,13 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     TextTheme textTheme,
   ) {
     final selectedImpactCount = _selectedImpactBookCount;
-    final title =
-        _isEditMode
-            ? (_isSortMode
-                ? '拖拽排序'
-                : !_hasSelection
-                ? '编辑书架'
-                : '已选 $selectedImpactCount 本')
-            : '书架';
+    final title = _isEditMode
+        ? (_isSortMode
+              ? '拖拽排序'
+              : !_hasSelection
+              ? '编辑书架'
+              : '已选 $selectedImpactCount 本')
+        : '书架';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 16, 8),
@@ -1081,8 +1074,9 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
             if (_selectedFilter == 0)
               IconButton(
                 icon: const Icon(Icons.add),
-                onPressed:
-                    (_hasSelection || _isSortMode) ? null : _createFolder,
+                onPressed: (_hasSelection || _isSortMode)
+                    ? null
+                    : _createFolder,
                 tooltip: '新建文件夹',
               ),
             if (_selectedFilter == 0)
@@ -1101,8 +1095,9 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
             ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed:
-                  _hasSelection && !_isSortMode ? _handleEditConfirm : null,
+              onPressed: _hasSelection && !_isSortMode
+                  ? _handleEditConfirm
+                  : null,
               tooltip: '确认',
             ),
           ] else ...[
@@ -1149,12 +1144,12 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                 child: Text(
                   labels[index],
                   style: TextStyle(
-                    color:
-                        isSelected
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
-                    fontWeight:
-                        isSelected ? FontWeight.w600 : FontWeight.normal,
+                    color: isSelected
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
                   ),
                 ),
               ),
@@ -1212,7 +1207,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     required List<ShelfItem> displayItems,
     required AppSettings settings,
   }) {
-    return RefreshIndicator(
+    return M3ERefreshIndicator(
       onRefresh: () => _fetchShelf(force: true, silentIfPossible: true),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -1251,7 +1246,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     required List<ShelfItem> displayItems,
     required AppSettings settings,
   }) {
-    return RefreshIndicator(
+    return M3ERefreshIndicator(
       onRefresh: () => _fetchShelf(force: true, silentIfPossible: true),
       child: ReorderableBuilder<ShelfItem>.builder(
         itemCount: displayItems.length,
@@ -1337,13 +1332,13 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
 
                   return _usesDefaultGrid
                       ? _buildEditableGrid(
-                        displayItems: allFilteredItems,
-                        settings: settings,
-                      )
+                          displayItems: allFilteredItems,
+                          settings: settings,
+                        )
                       : _buildStandardGrid(
-                        displayItems: allFilteredItems,
-                        settings: settings,
-                      );
+                          displayItems: allFilteredItems,
+                          settings: settings,
+                        );
                 },
               ),
             ),

@@ -8,6 +8,7 @@ import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/telemetry/telemetry_service.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/src/widgets/book_cover_card.dart';
@@ -266,10 +267,10 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     }
   }
 
-  Future<void> _fetchData() async {
+  Future<void> _fetchData({bool showLoading = true}) async {
     final requestEpoch = _requestEpoch;
     final settings = ref.read(settingsProvider);
-    if (_canApplyRequest(requestEpoch)) {
+    if (showLoading && _canApplyRequest(requestEpoch)) {
       setState(() => _loading = true);
     }
 
@@ -287,7 +288,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
 
     await Future.wait(futures);
 
-    if (_canApplyRequest(requestEpoch)) {
+    if (showLoading && _canApplyRequest(requestEpoch)) {
       setState(() {
         _loading = false;
       });
@@ -408,8 +409,9 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     // 补全逻辑：如果本地记录缺失章节标题，尝试从最新的网络详情中补全
     ReadPosition effectivePos = pos;
     if (pos.chapterTitle == null || pos.chapterTitle!.isEmpty) {
-      final matchingChapter =
-          info.chapters.where((c) => c.id == pos.chapterId).firstOrNull;
+      final matchingChapter = info.chapters
+          .where((c) => c.id == pos.chapterId)
+          .firstOrNull;
       if (matchingChapter != null) {
         effectivePos = ReadPosition(
           bookId: pos.bookId,
@@ -435,8 +437,9 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
 
     // 性能优化：如果数据未变（含章节名），则不触发更新，防止图片重载闪烁
     final currentCover = _lastReadBookInfo?.cover;
-    final nextCoverRaw =
-        (pos.cover?.isNotEmpty == true) ? pos.cover! : info.cover;
+    final nextCoverRaw = (pos.cover?.isNotEmpty == true)
+        ? pos.cover!
+        : info.cover;
     final currentCoverKey = _canonicalCoverUrl(currentCover);
     final nextCoverKey = _canonicalCoverUrl(nextCoverRaw);
 
@@ -451,8 +454,8 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     // 如果“同图不同 URL”，则保持 cover 字符串稳定，避免 ImageProvider 重建导致闪一下。
     final stableCover =
         (currentCover?.isNotEmpty == true && currentCoverKey == nextCoverKey)
-            ? currentCover!
-            : nextCoverRaw;
+        ? currentCover!
+        : nextCoverRaw;
 
     // 构建 Book 对象用于 UI 显示
     final book = Book(
@@ -568,7 +571,7 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   }
 
   Future<void> _onRefresh() async {
-    await _fetchData();
+    await _fetchData(showLoading: false);
   }
 
   /// 获取指定类型榜单（设置变更时）
@@ -642,7 +645,8 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
     final previewBooks = _rankBooks.take(6).toList();
 
     return Scaffold(
-      body: RefreshIndicator(
+      body: M3ERefreshIndicator(
+        edgeOffset: MediaQuery.paddingOf(context).top,
         onRefresh: _onRefresh,
         child: CustomScrollView(
           slivers: [
@@ -817,21 +821,22 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                           // 冷启动首次点击时，详情页封面可能仍在占位阶段。
                           // 这里 push 阶段强制使用来源 Hero（首页侧）作为飞行物，
                           // 避免 Hero 飞行过程中从“真实封面”变成“灰色占位”造成观感退化。
-                          flightShuttleBuilder: (
-                            _,
-                            __,
-                            direction,
-                            fromHeroContext,
-                            toHeroContext,
-                          ) {
-                            final fromHero = fromHeroContext.widget as Hero;
-                            final toHero = toHeroContext.widget as Hero;
-                            return direction == HeroFlightDirection.push
-                                ? _ContinueReadingCoverFlight(
-                                  child: fromHero.child,
-                                )
-                                : toHero.child;
-                          },
+                          flightShuttleBuilder:
+                              (
+                                _,
+                                __,
+                                direction,
+                                fromHeroContext,
+                                toHeroContext,
+                              ) {
+                                final fromHero = fromHeroContext.widget as Hero;
+                                final toHero = toHeroContext.widget as Hero;
+                                return direction == HeroFlightDirection.push
+                                    ? _ContinueReadingCoverFlight(
+                                        child: fromHero.child,
+                                      )
+                                    : toHero.child;
+                              },
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: LocalShelfCover(
@@ -986,46 +991,47 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
       // Grid content
       _loading
           ? const SliverToBoxAdapter(
-            child: SizedBox(
-              height: 200,
-              child: Center(child: M3ELoadingIndicator()),
-            ),
-          )
+              child: SizedBox(
+                height: 200,
+                child: Center(child: M3ELoadingIndicator()),
+              ),
+            )
           : _latestBooks.isEmpty
           ? SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Center(
-                child: Text(
-                  '暂无更新',
-                  style: textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Center(
+                  child: Text(
+                    '暂无更新',
+                    style: textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
-            ),
-          )
+            )
           : SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            sliver: SliverLayoutBuilder(
-              builder: (context, constraints) {
-                return SliverGrid(
-                  gridDelegate: appBookGridDelegateForWidth(
-                    constraints.crossAxisExtent,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final book = _latestBooks[index];
-                      if (index >= 6) return null;
-                      return _buildBookCard(context, book, 0, 'recent');
-                    },
-                    childCount:
-                        _latestBooks.length > 6 ? 6 : _latestBooks.length,
-                  ),
-                );
-              },
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  return SliverGrid(
+                    gridDelegate: appBookGridDelegateForWidth(
+                      constraints.crossAxisExtent,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final book = _latestBooks[index];
+                        if (index >= 6) return null;
+                        return _buildBookCard(context, book, 0, 'recent');
+                      },
+                      childCount: _latestBooks.length > 6
+                          ? 6
+                          : _latestBooks.length,
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
       const SliverToBoxAdapter(child: SizedBox(height: 16)),
     ];
   }
@@ -1098,41 +1104,41 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
       // Grid content
       _loading
           ? const SliverToBoxAdapter(
-            child: SizedBox(
-              height: 200,
-              child: Center(child: M3ELoadingIndicator()),
-            ),
-          )
+              child: SizedBox(
+                height: 200,
+                child: Center(child: M3ELoadingIndicator()),
+              ),
+            )
           : previewBooks.isEmpty
           ? SliverToBoxAdapter(
-            child: SizedBox(
-              height: 200,
-              child: Center(
-                child: Text(
-                  '暂无数据',
-                  style: textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+              child: SizedBox(
+                height: 200,
+                child: Center(
+                  child: Text(
+                    '暂无数据',
+                    style: textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
-            ),
-          )
+            )
           : SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            sliver: SliverLayoutBuilder(
-              builder: (context, constraints) {
-                return SliverGrid(
-                  gridDelegate: appBookGridDelegateForWidth(
-                    constraints.crossAxisExtent,
-                  ),
-                  delegate: SliverChildBuilderDelegate((context, index) {
-                    final book = previewBooks[index];
-                    return _buildBookCard(context, book, index + 1, 'rank');
-                  }, childCount: previewBooks.length),
-                );
-              },
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  return SliverGrid(
+                    gridDelegate: appBookGridDelegateForWidth(
+                      constraints.crossAxisExtent,
+                    ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final book = previewBooks[index];
+                      return _buildBookCard(context, book, index + 1, 'rank');
+                    }, childCount: previewBooks.length),
+                  );
+                },
+              ),
             ),
-          ),
       const SliverToBoxAdapter(child: SizedBox(height: 16)),
     ];
   }
@@ -1183,14 +1189,12 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
   ) {
     final textTheme = Theme.of(context).textTheme;
     final heroTag = 'home_${source}_cover_${book.id}';
-    final telemetryModule =
-        source == 'rank'
-            ? TelemetryModules.ranking
-            : TelemetryModules.recentlyUpdated;
-    final telemetrySource =
-        source == 'rank'
-            ? TelemetryBookDetailSources.homeRanking
-            : TelemetryBookDetailSources.homeRecentlyUpdated;
+    final telemetryModule = source == 'rank'
+        ? TelemetryModules.ranking
+        : TelemetryModules.recentlyUpdated;
+    final telemetrySource = source == 'rank'
+        ? TelemetryBookDetailSources.homeRanking
+        : TelemetryBookDetailSources.homeRecentlyUpdated;
 
     return GestureDetector(
       onTap: () {
@@ -1232,14 +1236,11 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color:
-                              rank == 1
-                                  ? const Color(0xFFFFD700) // Gold
-                                  : rank == 2
-                                  ? const Color(
-                                    0xFF78909C,
-                                  ) // Silver (blue-tinted)
-                                  : const Color(0xFFCD7F32), // Bronze
+                          color: rank == 1
+                              ? const Color(0xFFFFD700) // Gold
+                              : rank == 2
+                              ? const Color(0xFF78909C) // Silver (blue-tinted)
+                              : const Color(0xFFCD7F32), // Bronze
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(

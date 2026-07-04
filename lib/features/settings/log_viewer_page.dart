@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/core/logging/log_buffer_service.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/features/settings/widgets/log_card.dart';
 
 /// 调试日志查看页面
@@ -73,44 +74,41 @@ class _LogViewerPageState extends State<LogViewerPage> {
 
     // 按模块过滤
     if (_includedLoggers.isNotEmpty || _excludedLoggers.isNotEmpty) {
-      logs =
-          logs.where((log) {
-            // 如果在排除列表中，过滤掉
-            if (_excludedLoggers.contains(log.loggerName)) return false;
-            // 如果有包含列表，只保留包含的
-            if (_includedLoggers.isNotEmpty) {
-              return _includedLoggers.contains(log.loggerName);
-            }
-            return true;
-          }).toList();
+      logs = logs.where((log) {
+        // 如果在排除列表中，过滤掉
+        if (_excludedLoggers.contains(log.loggerName)) return false;
+        // 如果有包含列表，只保留包含的
+        if (_includedLoggers.isNotEmpty) {
+          return _includedLoggers.contains(log.loggerName);
+        }
+        return true;
+      }).toList();
     }
 
     // 搜索过滤
     if (_searchQuery.isNotEmpty) {
-      logs =
-          logs.where((log) {
-            final query = _searchQuery.toLowerCase();
-            return log.message.toLowerCase().contains(query) ||
-                log.loggerName.toLowerCase().contains(query);
-          }).toList();
+      logs = logs.where((log) {
+        final query = _searchQuery.toLowerCase();
+        return log.message.toLowerCase().contains(query) ||
+            log.loggerName.toLowerCase().contains(query);
+      }).toList();
     }
 
     return Scaffold(
       appBar: AppBar(
-        title:
-            _isSearching
-                ? TextField(
-                  controller: _searchController,
-                  autofocus: true,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    hintText: '搜索日志...',
-                    hintStyle: TextStyle(color: Colors.white70),
-                    border: InputBorder.none,
-                  ),
-                  onChanged: (value) => setState(() => _searchQuery = value),
-                )
-                : const Text('调试日志'),
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: '搜索日志...',
+                  hintStyle: TextStyle(color: Colors.white70),
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value),
+              )
+            : const Text('调试日志'),
         actions: [
           // 搜索按钮
           if (_isSearching)
@@ -154,27 +152,23 @@ class _LogViewerPageState extends State<LogViewerPage> {
 
           // 日志列表
           Expanded(
-            child:
-                logs.isEmpty
-                    ? _buildEmptyState()
-                    : RefreshIndicator(
-                      onRefresh: () async {
-                        setState(() {});
+            child: logs.isEmpty
+                ? _buildEmptyState()
+                : M3ERefreshIndicator(
+                    onRefresh: () async {
+                      setState(() {});
+                    },
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: logs.length,
+                      reverse: true, // 最新日志在下方
+                      itemBuilder: (context, index) {
+                        final entry = logs[logs.length - 1 - index];
+                        return LogCard(key: ValueKey(entry.time), entry: entry);
                       },
-                      child: ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: logs.length,
-                        reverse: true, // 最新日志在下方
-                        itemBuilder: (context, index) {
-                          final entry = logs[logs.length - 1 - index];
-                          return LogCard(
-                            key: ValueKey(entry.time),
-                            entry: entry,
-                          );
-                        },
-                      ),
                     ),
+                  ),
           ),
         ],
       ),
@@ -208,43 +202,39 @@ class _LogViewerPageState extends State<LogViewerPage> {
                 FilterChip(
                   label: const Text('错误'),
                   selected: _filterLevel == Level.SEVERE,
-                  onSelected:
-                      (_) => setState(() => _filterLevel = Level.SEVERE),
+                  onSelected: (_) =>
+                      setState(() => _filterLevel = Level.SEVERE),
                   avatar: Icon(
                     Icons.error,
                     size: 18,
-                    color:
-                        _filterLevel == Level.SEVERE
-                            ? Colors.white
-                            : const Color(0xFFD32F2F),
+                    color: _filterLevel == Level.SEVERE
+                        ? Colors.white
+                        : const Color(0xFFD32F2F),
                   ),
                   showCheckmark: false,
                   selectedColor: const Color(0xFFD32F2F),
-                  labelStyle:
-                      _filterLevel == Level.SEVERE
-                          ? const TextStyle(color: Colors.white)
-                          : null,
+                  labelStyle: _filterLevel == Level.SEVERE
+                      ? const TextStyle(color: Colors.white)
+                      : null,
                 ),
                 const SizedBox(width: 8),
                 FilterChip(
                   label: const Text('警告'),
                   selected: _filterLevel == Level.WARNING,
-                  onSelected:
-                      (_) => setState(() => _filterLevel = Level.WARNING),
+                  onSelected: (_) =>
+                      setState(() => _filterLevel = Level.WARNING),
                   avatar: Icon(
                     Icons.warning_amber,
                     size: 18,
-                    color:
-                        _filterLevel == Level.WARNING
-                            ? Colors.white
-                            : const Color(0xFFF57C00),
+                    color: _filterLevel == Level.WARNING
+                        ? Colors.white
+                        : const Color(0xFFF57C00),
                   ),
                   showCheckmark: false,
                   selectedColor: const Color(0xFFF57C00),
-                  labelStyle:
-                      _filterLevel == Level.WARNING
-                          ? const TextStyle(color: Colors.white)
-                          : null,
+                  labelStyle: _filterLevel == Level.WARNING
+                      ? const TextStyle(color: Colors.white)
+                      : null,
                 ),
                 const SizedBox(width: 8),
                 FilterChip(
@@ -254,17 +244,15 @@ class _LogViewerPageState extends State<LogViewerPage> {
                   avatar: Icon(
                     Icons.info,
                     size: 18,
-                    color:
-                        _filterLevel == Level.INFO
-                            ? Colors.white
-                            : const Color(0xFF1976D2),
+                    color: _filterLevel == Level.INFO
+                        ? Colors.white
+                        : const Color(0xFF1976D2),
                   ),
                   showCheckmark: false,
                   selectedColor: const Color(0xFF1976D2),
-                  labelStyle:
-                      _filterLevel == Level.INFO
-                          ? const TextStyle(color: Colors.white)
-                          : null,
+                  labelStyle: _filterLevel == Level.INFO
+                      ? const TextStyle(color: Colors.white)
+                      : null,
                 ),
               ],
             ),
@@ -289,8 +277,8 @@ class _LogViewerPageState extends State<LogViewerPage> {
               const Spacer(),
               // 展开/折叠按钮
               TextButton.icon(
-                onPressed:
-                    () => setState(() => _moduleExpanded = !_moduleExpanded),
+                onPressed: () =>
+                    setState(() => _moduleExpanded = !_moduleExpanded),
                 icon: Icon(
                   _moduleExpanded ? Icons.expand_less : Icons.expand_more,
                   size: 18,
@@ -310,55 +298,52 @@ class _LogViewerPageState extends State<LogViewerPage> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children:
-                  LogBufferService.getLoggerNames().map((logger) {
-                    final isIncluded = _includedLoggers.contains(logger);
-                    final isExcluded = _excludedLoggers.contains(logger);
+              children: LogBufferService.getLoggerNames().map((logger) {
+                final isIncluded = _includedLoggers.contains(logger);
+                final isExcluded = _excludedLoggers.contains(logger);
 
-                    return GestureDetector(
-                      onLongPress: () {
-                        // 长按：反向选择（排除）
-                        setState(() {
-                          if (isExcluded) {
-                            // 如果已是排除状态，取消排除（回到未选中）
-                            _excludedLoggers.remove(logger);
-                          } else {
-                            // 否则，添加到排除（同时移除包含状态）
-                            _includedLoggers.remove(logger);
-                            _excludedLoggers.add(logger);
-                          }
-                        });
-                      },
-                      child: FilterChip(
-                        label: Text(logger),
-                        selected: isIncluded || isExcluded,
-                        onSelected: (_) {
-                          // 点击：包含选择
-                          setState(() {
-                            if (isIncluded) {
-                              // 如果已是包含状态，取消包含
-                              _includedLoggers.remove(logger);
-                            } else {
-                              // 否则，添加到包含（同时移除排除状态）
-                              _excludedLoggers.remove(logger);
-                              _includedLoggers.add(logger);
-                            }
-                          });
-                        },
-                        showCheckmark: false,
-                        selectedColor:
-                            isExcluded
-                                ? Colors
-                                    .red
-                                    .shade700 // 排除状态：红色
-                                : null, // 包含状态：默认主题色
-                        labelStyle:
-                            (isIncluded || isExcluded)
-                                ? const TextStyle(color: Colors.white)
-                                : null,
-                      ),
-                    );
-                  }).toList(),
+                return GestureDetector(
+                  onLongPress: () {
+                    // 长按：反向选择（排除）
+                    setState(() {
+                      if (isExcluded) {
+                        // 如果已是排除状态，取消排除（回到未选中）
+                        _excludedLoggers.remove(logger);
+                      } else {
+                        // 否则，添加到排除（同时移除包含状态）
+                        _includedLoggers.remove(logger);
+                        _excludedLoggers.add(logger);
+                      }
+                    });
+                  },
+                  child: FilterChip(
+                    label: Text(logger),
+                    selected: isIncluded || isExcluded,
+                    onSelected: (_) {
+                      // 点击：包含选择
+                      setState(() {
+                        if (isIncluded) {
+                          // 如果已是包含状态，取消包含
+                          _includedLoggers.remove(logger);
+                        } else {
+                          // 否则，添加到包含（同时移除排除状态）
+                          _excludedLoggers.remove(logger);
+                          _includedLoggers.add(logger);
+                        }
+                      });
+                    },
+                    showCheckmark: false,
+                    selectedColor: isExcluded
+                        ? Colors
+                              .red
+                              .shade700 // 排除状态：红色
+                        : null, // 包含状态：默认主题色
+                    labelStyle: (isIncluded || isExcluded)
+                        ? const TextStyle(color: Colors.white)
+                        : null,
+                  ),
+                );
+              }).toList(),
             ),
           ],
 
@@ -411,33 +396,32 @@ class _LogViewerPageState extends State<LogViewerPage> {
   void _showClearDialog() {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            icon: Icon(
-              Icons.delete_forever,
-              color: Theme.of(context).colorScheme.error,
-              size: 48,
-            ),
-            title: const Text('清空日志'),
-            content: const Text('确认清空所有日志记录？'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  LogBufferService.clear();
-                  Navigator.pop(context);
-                  setState(() {});
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('已清空所有日志')));
-                },
-                child: const Text('确定'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          Icons.delete_forever,
+          color: Theme.of(context).colorScheme.error,
+          size: 48,
+        ),
+        title: const Text('清空日志'),
+        content: const Text('确认清空所有日志记录？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
           ),
+          FilledButton(
+            onPressed: () {
+              LogBufferService.clear();
+              Navigator.pop(context);
+              setState(() {});
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('已清空所有日志')));
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
     );
   }
 }

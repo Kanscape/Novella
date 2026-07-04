@@ -10,6 +10,7 @@ import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_cover_hint_service.dart';
 import 'package:novella/data/services/user_service.dart';
@@ -78,11 +79,10 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
     _folderTitle = widget.folderTitle;
     unawaited(_bookCoverHintService.ensureInitialized());
     _detailQueue = ShelfBookDetailQueue(
-      hasBook:
-          (id) =>
-              (_bookDetails.containsKey(id) &&
-                  !_detailRevalidationIds.contains(id)) ||
-              _invalidBookIds.contains(id),
+      hasBook: (id) =>
+          (_bookDetails.containsKey(id) &&
+              !_detailRevalidationIds.contains(id)) ||
+          _invalidBookIds.contains(id),
       onBooksLoaded: _handleBooksLoaded,
       onError: _handleBookDetailError,
     );
@@ -203,11 +203,10 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
 
       final folder = _userService.getFolderById(widget.folderId);
       final items = _userService.getShelfItemsByParents(widget.folderPath);
-      final folderBookIds =
-          items
-              .where((item) => item.type == ShelfItemType.book)
-              .map((item) => item.id as int)
-              .toSet();
+      final folderBookIds = items
+          .where((item) => item.type == ShelfItemType.book)
+          .map((item) => item.id as int)
+          .toSet();
       final activeDetailIds = collectShelfActiveDetailIds(
         items: items,
         folderPreviewBookIds: _folderPreviewBookIds,
@@ -234,10 +233,9 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
       if (mounted) {
         setState(() {
           _items = items;
-          _folderTitle =
-              folder?.title.isNotEmpty == true
-                  ? folder!.title
-                  : widget.folderTitle;
+          _folderTitle = folder?.title.isNotEmpty == true
+              ? folder!.title
+              : widget.folderTitle;
           _breadcrumbTitles = _userService.getFolderTitles(widget.folderPath);
           _selectedBookIds.removeWhere((id) => !folderBookIds.contains(id));
           _dragStartIndex = null;
@@ -248,8 +246,9 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
         });
       }
 
-      final scrollController =
-          items.isNotEmpty ? _sortScrollController : _browseScrollController;
+      final scrollController = items.isNotEmpty
+          ? _sortScrollController
+          : _browseScrollController;
       if (scrollController.hasClients) {
         scrollController.jumpTo(0);
       }
@@ -437,15 +436,13 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
       enabled: !showSortHandle,
       child: ShelfBookGridItem(
         book: _bookDetails[bookId],
-        coverUrlHint:
-            _bookDetails[bookId] == null && !isInvalid
-                ? _bookCoverHintService.getCoverUrl(bookId)
-                : null,
+        coverUrlHint: _bookDetails[bookId] == null && !isInvalid
+            ? _bookCoverHintService.getCoverUrl(bookId)
+            : null,
         shelfTitle: item.title,
-        titleHint:
-            _bookDetails[bookId] == null && !isInvalid
-                ? _bookTitleHint(bookId, shelfTitle: item.title)
-                : null,
+        titleHint: _bookDetails[bookId] == null && !isInvalid
+            ? _bookTitleHint(bookId, shelfTitle: item.title)
+            : null,
         bookId: bookId,
         heroTag: 'shelf_folder_${widget.folderId}_$bookId',
         isInvalid: isInvalid,
@@ -729,92 +726,83 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
     ColorScheme colorScheme,
     TextTheme textTheme,
   ) {
-    return RefreshIndicator(
+    return M3ERefreshIndicator(
       onRefresh: () => _loadFolder(forceRefresh: true),
-      child:
-          _loading
-              ? const Center(child: M3ELoadingIndicator())
-              : displayItems.isEmpty
-              ? LayoutBuilder(
-                builder:
-                    (context, constraints) => SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight,
-                        ),
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.folder_open,
-                                size: 64,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                '当前文件夹为空',
-                                textAlign: TextAlign.center,
-                                style: textTheme.bodyLarge?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-              )
-              : CustomScrollView(
-                controller: _browseScrollController,
+      child: _loading
+          ? const Center(child: M3ELoadingIndicator())
+          : displayItems.isEmpty
+          ? LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  if (_breadcrumbTitles.length > 1)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                        child: Text(
-                          _breadcrumbTitles.join(' / '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.bodySmall?.copyWith(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.folder_open,
+                          size: 64,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '当前文件夹为空',
+                          textAlign: TextAlign.center,
+                          style: textTheme.bodyLarge?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : CustomScrollView(
+              controller: _browseScrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                if (_breadcrumbTitles.length > 1)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: Text(
+                        _breadcrumbTitles.join(' / '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                    sliver: SliverLayoutBuilder(
-                      builder: (context, constraints) {
-                        return SliverGrid(
-                          gridDelegate: appBookGridDelegateForWidth(
-                            constraints.crossAxisExtent,
-                          ),
-                          delegate: SliverChildBuilderDelegate((
+                  ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                  sliver: SliverLayoutBuilder(
+                    builder: (context, constraints) {
+                      return SliverGrid(
+                        gridDelegate: appBookGridDelegateForWidth(
+                          constraints.crossAxisExtent,
+                        ),
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          return _buildGridItem(
                             context,
-                            index,
-                          ) {
-                            return _buildGridItem(
-                              context,
-                              displayItems[index],
-                              items: displayItems,
-                              index: index,
-                              showSortHandle: false,
-                            );
-                          }, childCount: displayItems.length),
-                        );
-                      },
-                    ),
+                            displayItems[index],
+                            items: displayItems,
+                            index: index,
+                            showSortHandle: false,
+                          );
+                        }, childCount: displayItems.length),
+                      );
+                    },
                   ),
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: MediaQuery.paddingOf(context).bottom,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: MediaQuery.paddingOf(context).bottom),
+                ),
+              ],
+            ),
     );
   }
 
@@ -824,7 +812,7 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
     ColorScheme colorScheme,
     TextTheme textTheme,
   ) {
-    return RefreshIndicator(
+    return M3ERefreshIndicator(
       onRefresh: () => _loadFolder(forceRefresh: true),
       child: Column(
         children: [
@@ -901,18 +889,16 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final displayItems = _items;
-    final body =
-        !_loading && displayItems.isNotEmpty
-            ? _buildSortableBody(context, displayItems, colorScheme, textTheme)
-            : _buildStandardBody(context, displayItems, colorScheme, textTheme);
-    final appBarTitle =
-        _isEditMode
-            ? (_isSortMode
-                ? '拖拽排序'
-                : _selectedBookIds.isEmpty
-                ? '编辑文件夹'
-                : '已选 ${_selectedBookIds.length} 本')
-            : (_folderTitle.isEmpty ? '文件夹' : _folderTitle);
+    final body = !_loading && displayItems.isNotEmpty
+        ? _buildSortableBody(context, displayItems, colorScheme, textTheme)
+        : _buildStandardBody(context, displayItems, colorScheme, textTheme);
+    final appBarTitle = _isEditMode
+        ? (_isSortMode
+              ? '拖拽排序'
+              : _selectedBookIds.isEmpty
+              ? '编辑文件夹'
+              : '已选 ${_selectedBookIds.length} 本')
+        : (_folderTitle.isEmpty ? '文件夹' : _folderTitle);
 
     return Scaffold(
       appBar: AppBar(
@@ -934,10 +920,9 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
             ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed:
-                  _selectedBookIds.isEmpty || _isSortMode
-                      ? null
-                      : _handleEditConfirm,
+              onPressed: _selectedBookIds.isEmpty || _isSortMode
+                  ? null
+                  : _handleEditConfirm,
               tooltip: '确认',
             ),
           ] else ...[
@@ -954,10 +939,9 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
           ],
         ],
       ),
-      body:
-          _waitingForVisibleDetails
-              ? const Center(child: M3ELoadingIndicator())
-              : body,
+      body: _waitingForVisibleDetails
+          ? const Center(child: M3ELoadingIndicator())
+          : body,
     );
   }
 }

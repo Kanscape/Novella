@@ -8,8 +8,9 @@ import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_content_filter.dart';
 import 'package:novella/data/services/book_service.dart';
-import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
+import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_cover_card.dart';
 import 'package:novella/src/widgets/book_grid_title.dart';
@@ -179,7 +180,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
           tabs: _tabs.map((t) => Tab(text: t.$2)).toList(),
         ),
       ),
-      body: RefreshIndicator(
+      body: M3ERefreshIndicator(
         onRefresh: () => _fetchRanking(refresh: true),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -192,41 +193,41 @@ class _RankingPageState extends ConsumerState<RankingPage>
                 ? const Center(child: M3ELoadingIndicator())
                 : allBooks.isEmpty
                 ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.leaderboard_outlined,
-                        size: 64,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '暂无数据',
-                        style: textTheme.bodyLarge?.copyWith(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.leaderboard_outlined,
+                          size: 64,
                           color: colorScheme.onSurfaceVariant,
                         ),
-                      ),
-                    ],
-                  ),
-                )
+                        const SizedBox(height: 16),
+                        Text(
+                          '暂无数据',
+                          style: textTheme.bodyLarge?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
                 : GridView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: appBookGridDelegateForWidth(
-                    gridWidth,
-                    minTileWidth: 156,
-                  ),
-                  itemCount:
-                      displayBooks.length + (hasMore && _loadingMore ? 3 : 0),
-                  itemBuilder: (context, index) {
-                    if (index >= displayBooks.length) {
-                      return const Center(child: M3ELoadingIndicator());
-                    }
-                    final book = displayBooks[index];
-                    return _buildBookCard(context, book, index + 1);
-                  },
-                );
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(12),
+                    gridDelegate: appBookGridDelegateForWidth(
+                      gridWidth,
+                      minTileWidth: 156,
+                    ),
+                    itemCount:
+                        displayBooks.length + (hasMore && _loadingMore ? 3 : 0),
+                    itemBuilder: (context, index) {
+                      if (index >= displayBooks.length) {
+                        return const Center(child: M3ELoadingIndicator());
+                      }
+                      final book = displayBooks[index];
+                      return _buildBookCard(context, book, index + 1);
+                    },
+                  );
           },
         ),
       ),
@@ -270,14 +271,11 @@ class _RankingPageState extends ConsumerState<RankingPage>
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color:
-                              rank == 1
-                                  ? const Color(0xFFFFD700) // Gold
-                                  : rank == 2
-                                  ? const Color(
-                                    0xFF78909C,
-                                  ) // Silver (blue-tinted)
-                                  : const Color(0xFFCD7F32), // Bronze
+                          color: rank == 1
+                              ? const Color(0xFFFFD700) // Gold
+                              : rank == 2
+                              ? const Color(0xFF78909C) // Silver (blue-tinted)
+                              : const Color(0xFFCD7F32), // Bronze
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(

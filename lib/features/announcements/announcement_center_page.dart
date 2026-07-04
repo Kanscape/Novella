@@ -4,6 +4,7 @@ import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/features/announcements/announcement_detail_page.dart';
 import 'package:novella/features/announcements/announcement_models.dart';
 import 'package:novella/features/announcements/announcement_provider.dart';
@@ -65,52 +66,43 @@ class _AnnouncementCenterPageState
           IconButton(
             tooltip: '刷新',
             icon: const Icon(Icons.refresh),
-            onPressed:
-                () => ref
-                    .read(announcementProvider.notifier)
-                    .refresh(silent: false),
+            onPressed: () =>
+                ref.read(announcementProvider.notifier).refresh(silent: false),
           ),
         ],
       ),
       body: announcements.when(
         loading: () => const Center(child: M3ELoadingIndicator()),
-        error:
-            (error, _) => _AnnouncementStateView(
-              message: _formatError(error),
-              actionLabel: '重试',
-              onAction:
-                  () => ref
-                      .read(announcementProvider.notifier)
-                      .refresh(silent: false),
-            ),
-        data:
-            (state) => RefreshIndicator(
-              onRefresh:
-                  () => ref
-                      .read(announcementProvider.notifier)
-                      .refresh(silent: true),
-              child:
-                  state.items.isEmpty
-                      ? const _AnnouncementStateView(message: '暂无公告')
-                      : ListView.separated(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                        itemCount: state.items.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final item = state.items[index];
-                          return _AnnouncementTile(
-                            item: item,
-                            onTap: () {
-                              AppRouteLauncher.pushDetail(
-                                context,
-                                (_) => AnnouncementDetailPage(item: item),
-                              );
-                            },
-                          );
-                        },
-                      ),
-            ),
+        error: (error, _) => _AnnouncementStateView(
+          message: _formatError(error),
+          actionLabel: '重试',
+          onAction: () =>
+              ref.read(announcementProvider.notifier).refresh(silent: false),
+        ),
+        data: (state) => M3ERefreshIndicator(
+          onRefresh: () =>
+              ref.read(announcementProvider.notifier).refresh(silent: true),
+          child: state.items.isEmpty
+              ? const _AnnouncementStateView(message: '暂无公告')
+              : ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+                  itemCount: state.items.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = state.items[index];
+                    return _AnnouncementTile(
+                      item: item,
+                      onTap: () {
+                        AppRouteLauncher.pushDetail(
+                          context,
+                          (_) => AnnouncementDetailPage(item: item),
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }

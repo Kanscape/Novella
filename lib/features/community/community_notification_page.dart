@@ -7,6 +7,7 @@ import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/data/models/app_notification.dart';
 import 'package:novella/data/services/notification_service.dart';
 import 'package:novella/features/announcements/announcement_detail_page.dart';
@@ -92,8 +93,9 @@ class _CommunityNotificationPageState
   }
 
   Future<void> _openNotification(AppNotificationItem item) async {
-    final objectId =
-        item.extra.objectId > 0 ? item.extra.objectId : item.objectId;
+    final objectId = item.extra.objectId > 0
+        ? item.extra.objectId
+        : item.objectId;
     if (!item.isRead) {
       try {
         await _notificationService.markNotifications([item.id]);
@@ -207,125 +209,121 @@ class _CommunityNotificationPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('通知中心')),
-      body: RefreshIndicator(
+      body: M3ERefreshIndicator(
         onRefresh: _loadNotifications,
-        child:
-            _loading && _items.isEmpty
-                ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(height: 120),
-                    Center(child: M3ELoadingIndicator()),
-                  ],
-                )
-                : ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    if (_errorMessage != null && _items.isEmpty)
+        child: _loading && _items.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 120),
+                  Center(child: M3ELoadingIndicator()),
+                ],
+              )
+            : ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (_errorMessage != null && _items.isEmpty)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_errorMessage!),
+                            const SizedBox(height: 12),
+                            FilledButton.tonal(
+                              onPressed: _loadNotifications,
+                              child: const Text('重试'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else if (_items.isEmpty)
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text('当前没有通知。'),
+                      ),
+                    )
+                  else ...[
+                    for (final item in _items) ...[
                       Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_errorMessage!),
-                              const SizedBox(height: 12),
-                              FilledButton.tonal(
-                                onPressed: _loadNotifications,
-                                child: const Text('重试'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else if (_items.isEmpty)
-                      const Card(
-                        child: Padding(
-                          padding: EdgeInsets.all(20),
-                          child: Text('当前没有通知。'),
-                        ),
-                      )
-                    else ...[
-                      for (final item in _items) ...[
-                        Card(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.all(16),
-                            title: Text(
-                              item.extra.objectTitle.isEmpty
-                                  ? '未命名通知对象'
-                                  : item.extra.objectTitle,
-                              style: TextStyle(
-                                fontWeight:
-                                    item.isRead
-                                        ? FontWeight.w500
-                                        : FontWeight.w700,
-                              ),
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      _NotificationPill(
-                                        label: _typeLabel(item),
-                                      ),
-                                      _NotificationPill(
-                                        label: _objectLabel(item.objectType),
-                                      ),
-                                      _NotificationPill(
-                                        label: item.isRead ? '已读' : '未读',
-                                        accent: !item.isRead,
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    item.extra.replyPreview.isNotEmpty
-                                        ? item.extra.replyPreview
-                                        : item.extra.preview,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    '${item.actor?.userName ?? '系统'} · ${_formatDate(item.createdAt)}',
-                                  ),
-                                ],
-                              ),
-                            ),
-                            onTap: () => _openNotification(item),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      if (_errorMessage != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            _errorMessage!,
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(16),
+                          title: Text(
+                            item.extra.objectTitle.isEmpty
+                                ? '未命名通知对象'
+                                : item.extra.objectTitle,
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
+                              fontWeight: item.isRead
+                                  ? FontWeight.w500
+                                  : FontWeight.w700,
                             ),
                           ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _NotificationPill(label: _typeLabel(item)),
+                                    _NotificationPill(
+                                      label: _objectLabel(item.objectType),
+                                    ),
+                                    _NotificationPill(
+                                      label: item.isRead ? '已读' : '未读',
+                                      accent: !item.isRead,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  item.extra.replyPreview.isNotEmpty
+                                      ? item.extra.replyPreview
+                                      : item.extra.preview,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  '${item.actor?.userName ?? '系统'} · ${_formatDate(item.createdAt)}',
+                                ),
+                              ],
+                            ),
+                          ),
+                          onTap: () => _openNotification(item),
                         ),
-                      if (_loadingMore)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(child: M3ELoadingIndicator(size: 28)),
-                        )
-                      else if (_currentPage < _totalPages)
-                        FilledButton.tonal(
-                          onPressed: _loadMore,
-                          child: const Text('加载更多'),
-                        ),
+                      ),
+                      const SizedBox(height: 12),
                     ],
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          _errorMessage!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    if (_loadingMore)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(child: M3ELoadingIndicator(size: 28)),
+                      )
+                    else if (_currentPage < _totalPages)
+                      FilledButton.tonal(
+                        onPressed: _loadMore,
+                        child: const Text('加载更多'),
+                      ),
                   ],
-                ),
+                ],
+              ),
       ),
     );
   }
@@ -343,10 +341,9 @@ class _NotificationPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color:
-            accent
-                ? colorScheme.primaryContainer
-                : colorScheme.surfaceContainerHighest,
+        color: accent
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(label),

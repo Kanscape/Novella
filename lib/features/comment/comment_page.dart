@@ -4,6 +4,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/theme/app_color_profiles.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/data/models/comment.dart';
 import 'package:novella/data/services/comment_service.dart';
 import 'package:novella/features/comment/widgets/comment_input_sheet.dart';
@@ -227,19 +228,14 @@ class _CommentPageState extends ConsumerState<CommentPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true, // 允许全屏高度以便键盘顶起
-      builder:
-          (context) => Theme(
-            data: theme,
-            child: CommentInputSheet(
-              hintText: hintText,
-              onSubmit:
-                  (content) => _postComment(
-                    content,
-                    replyId: replyId,
-                    parentId: parentId,
-                  ),
-            ),
-          ),
+      builder: (context) => Theme(
+        data: theme,
+        child: CommentInputSheet(
+          hintText: hintText,
+          onSubmit: (content) =>
+              _postComment(content, replyId: replyId, parentId: parentId),
+        ),
+      ),
     );
   }
 
@@ -299,65 +295,64 @@ class _CommentPageState extends ConsumerState<CommentPage> {
       context: context,
       useSafeArea: true,
       showDragHandle: true,
-      builder:
-          (context) => Theme(
-            data: theme,
-            child: Builder(
-              builder: (context) {
-                final colorScheme = Theme.of(context).colorScheme;
-                final textTheme = Theme.of(context).textTheme;
-                return SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        child: Text(
-                          '删除评论',
-                          style: textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+      builder: (context) => Theme(
+        data: theme,
+        child: Builder(
+          builder: (context) {
+            final colorScheme = Theme.of(context).colorScheme;
+            final textTheme = Theme.of(context).textTheme;
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      '删除评论',
+                      style: textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        child: Text(
-                          '确定要删除这条评论吗？此操作无法撤销。',
-                          style: textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                      ListTile(
-                        leading: Icon(Icons.delete, color: colorScheme.error),
-                        title: Text(
-                          '确认删除',
-                          style: TextStyle(
-                            color: colorScheme.error,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        onTap: () => Navigator.pop(context, true),
-                      ),
-                      ListTile(
-                        leading: Icon(
-                          Icons.close,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                        title: const Text('取消'),
-                        onTap: () => Navigator.pop(context, false),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
+                    ),
                   ),
-                );
-              },
-            ),
-          ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text(
+                      '确定要删除这条评论吗？此操作无法撤销。',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.delete, color: colorScheme.error),
+                    title: Text(
+                      '确认删除',
+                      style: TextStyle(
+                        color: colorScheme.error,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onTap: () => Navigator.pop(context, true),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.close,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    title: const Text('取消'),
+                    onTap: () => Navigator.pop(context, false),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
     );
 
     if (confirm == true) {
@@ -400,72 +395,69 @@ class _CommentPageState extends ConsumerState<CommentPage> {
       child: Scaffold(
         resizeToAvoidBottomInset: false, // Prevent FAB jumping
         appBar: AppBar(title: const Text('评论')),
-        body:
-            _loading
-                ? const Center(child: M3ELoadingIndicator())
-                : _error != null
-                ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('加载失败: $_error'),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () => _loadData(refresh: true),
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                )
-                : _items.isEmpty
-                ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.chat_bubble_outline,
-                        size: 64,
-                        color: pageTheme.disabledColor,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text('暂无评论，快来抢沙发吧~'),
-                    ],
-                  ),
-                )
-                : RefreshIndicator(
-                  onRefresh: () async => _loadData(refresh: true),
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: _items.length + (_loadingMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index == _items.length) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16.0), // Simplified padding
-                          child: Center(child: M3ELoadingIndicator()),
-                        );
-                      }
-
-                      final item = _items[index];
-                      return CommentItemWidget(
-                        item: item,
-                        onReply:
-                            () => _showReplySheet(
-                              hintText: '回复 ${item.user.userName}',
-                              parentId: item.id, // 一级 ID 即为 ParentId
-                            ),
-                        onDelete: () => _deleteComment(item.id),
-                        onReplyToReply:
-                            (reply) => _showReplySheet(
-                              hintText: '回复 ${reply.user.userName}',
-                              parentId: item.id, // ParentId 始终是一级评论 ID
-                              replyId: reply.id, // 指向具体的回复 ID
-                            ),
-                        onDeleteReply: (replyId) => _deleteComment(replyId),
-                      );
-                    },
-                  ),
+        body: _loading
+            ? const Center(child: M3ELoadingIndicator())
+            : _error != null
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('加载失败: $_error'),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => _loadData(refresh: true),
+                      child: const Text('重试'),
+                    ),
+                  ],
                 ),
+              )
+            : _items.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.chat_bubble_outline,
+                      size: 64,
+                      color: pageTheme.disabledColor,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('暂无评论，快来抢沙发吧~'),
+                  ],
+                ),
+              )
+            : M3ERefreshIndicator(
+                onRefresh: () async => _loadData(refresh: true),
+                child: ListView.builder(
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: _items.length + (_loadingMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == _items.length) {
+                      return const Padding(
+                        padding: EdgeInsets.all(16.0), // Simplified padding
+                        child: Center(child: M3ELoadingIndicator()),
+                      );
+                    }
+
+                    final item = _items[index];
+                    return CommentItemWidget(
+                      item: item,
+                      onReply: () => _showReplySheet(
+                        hintText: '回复 ${item.user.userName}',
+                        parentId: item.id, // 一级 ID 即为 ParentId
+                      ),
+                      onDelete: () => _deleteComment(item.id),
+                      onReplyToReply: (reply) => _showReplySheet(
+                        hintText: '回复 ${reply.user.userName}',
+                        parentId: item.id, // ParentId 始终是一级评论 ID
+                        replyId: reply.id, // 指向具体的回复 ID
+                      ),
+                      onDeleteReply: (replyId) => _deleteComment(replyId),
+                    );
+                  },
+                ),
+              ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => _showReplySheet(hintText: '发表评论...'),
           label: const Text('写评论'),

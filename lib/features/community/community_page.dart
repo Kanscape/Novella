@@ -8,6 +8,7 @@ import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/utils/time_utils.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/data/models/community.dart';
 import 'package:novella/data/services/community_service.dart';
 import 'package:novella/features/community/community_board_icon.dart';
@@ -387,10 +388,9 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final title = selectedBoard?.title ?? payload?.title ?? '社区讨论中心';
-    final subtitle =
-        selectedBoard?.description.isNotEmpty == true
-            ? selectedBoard!.description
-            : (payload?.subtitle ?? '');
+    final subtitle = selectedBoard?.description.isNotEmpty == true
+        ? selectedBoard!.description
+        : (payload?.subtitle ?? '');
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
@@ -461,10 +461,9 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                   _SummaryStatChip(
                     icon: Icons.local_fire_department_outlined,
                     label: '热度',
-                    value:
-                        selectedBoard.heatLabel
-                            .replaceFirst(RegExp(r'^热度\s*'), '')
-                            .trim(),
+                    value: selectedBoard.heatLabel
+                        .replaceFirst(RegExp(r'^热度\s*'), '')
+                        .trim(),
                   ),
               ],
             ),
@@ -890,11 +889,10 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                       subtitle:
                           '${hotThreads[index].boardName} · 热度 ${hotThreads[index].heat} · ${_formatTimeLabel(hotThreads[index].publishedAt)}',
                       leading: _RankBadge(rank: index + 1),
-                      onTap:
-                          () => _openThread(
-                            hotThreads[index].id,
-                            hotThreads[index].title,
-                          ),
+                      onTap: () => _openThread(
+                        hotThreads[index].id,
+                        hotThreads[index].title,
+                      ),
                     ),
                 ],
               ),
@@ -910,8 +908,9 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
                   for (final item in activeUsers)
                     _MiniListRow(
                       title: item.name,
-                      subtitle:
-                          item.summary.isNotEmpty ? item.summary : item.badge,
+                      subtitle: item.summary.isNotEmpty
+                          ? item.summary
+                          : item.badge,
                       leading: _CommunityAvatar(
                         imageUrl: item.avatar,
                         fallbackText: item.name,
@@ -946,7 +945,7 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
         color: Theme.of(context).scaffoldBackgroundColor,
         child: SafeArea(
           bottom: false,
-          child: RefreshIndicator(
+          child: M3ERefreshIndicator(
             onRefresh: _loadCommunityHome,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -1184,14 +1183,12 @@ class _BoardFilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final backgroundColor =
-        selected
-            ? accent.withValues(alpha: 0.14)
-            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.42);
-    final borderColor =
-        selected
-            ? accent.withValues(alpha: 0.28)
-            : colorScheme.outlineVariant.withValues(alpha: 0.24);
+    final backgroundColor = selected
+        ? accent.withValues(alpha: 0.14)
+        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.42);
+    final borderColor = selected
+        ? accent.withValues(alpha: 0.28)
+        : colorScheme.outlineVariant.withValues(alpha: 0.24);
 
     return Material(
       color: backgroundColor,
@@ -1274,10 +1271,9 @@ class _ToolbarPill extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Material(
-      color:
-          selected
-              ? colorScheme.primary.withValues(alpha: 0.14)
-              : colorScheme.surfaceContainerLow,
+      color: selected
+          ? colorScheme.primary.withValues(alpha: 0.14)
+          : colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -1286,18 +1282,18 @@ class _ToolbarPill extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
-              color:
-                  selected
-                      ? colorScheme.primary.withValues(alpha: 0.28)
-                      : colorScheme.outlineVariant.withValues(alpha: 0.2),
+              color: selected
+                  ? colorScheme.primary.withValues(alpha: 0.28)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.2),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           child: Text(
             label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color:
-                  selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              color: selected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             ),
           ),
@@ -1521,9 +1517,8 @@ class _CommunityAvatar extends StatelessWidget {
       child: CachedNetworkImage(
         imageUrl: imageUrl,
         memCacheWidth: 120,
-        imageBuilder:
-            (context, provider) =>
-                CircleAvatar(radius: radius, backgroundImage: provider),
+        imageBuilder: (context, provider) =>
+            CircleAvatar(radius: radius, backgroundImage: provider),
         placeholder: (context, url) => fallback,
         errorWidget: (context, url, error) => fallback,
       ),

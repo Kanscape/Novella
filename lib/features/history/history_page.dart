@@ -8,6 +8,7 @@ import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/navigation/app_route_launcher.dart';
 import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_cover_hint_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
@@ -58,10 +59,8 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     super.initState();
     unawaited(_bookCoverHintService.ensureInitialized());
     _detailQueue = ShelfBookDetailQueue(
-      hasBook:
-          (id) =>
-              _bookDetails.containsKey(id) &&
-              !_detailRevalidationIds.contains(id),
+      hasBook: (id) =>
+          _bookDetails.containsKey(id) && !_detailRevalidationIds.contains(id),
       onBooksLoaded: _handleBooksLoaded,
       onError: _handleBookDetailError,
       requestScope: RequestScopes.history,
@@ -205,14 +204,13 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
     final startIndex = (index - _prefetchBehindCount).clamp(0, bookIds.length);
     final endIndex = (index + _prefetchAheadCount + 1).clamp(0, bookIds.length);
     final detailIds = bookIds.sublist(startIndex, endIndex);
-    final unconfirmedIds =
-        detailIds
-            .where(
-              (bookId) =>
-                  !_bookDetails.containsKey(bookId) ||
-                  _detailRevalidationIds.contains(bookId),
-            )
-            .toSet();
+    final unconfirmedIds = detailIds
+        .where(
+          (bookId) =>
+              !_bookDetails.containsKey(bookId) ||
+              _detailRevalidationIds.contains(bookId),
+        )
+        .toSet();
     if (unconfirmedIds.isNotEmpty) {
       setState(() {
         _unconfirmedBookIds.addAll(unconfirmedIds);
@@ -497,9 +495,9 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
           children: [
             _buildHeader(context, colorScheme, textTheme),
             Expanded(
-              child: RefreshIndicator(
-                onRefresh:
-                    () => _fetchHistory(force: true, silentIfPossible: true),
+              child: M3ERefreshIndicator(
+                onRefresh: () =>
+                    _fetchHistory(force: true, silentIfPossible: true),
                 child: _buildContent(context, colorScheme),
               ),
             ),
@@ -534,8 +532,8 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
                   tooltip: '清空历史',
                 ),
               IconButton(
-                onPressed:
-                    () => _fetchHistory(force: true, silentIfPossible: true),
+                onPressed: () =>
+                    _fetchHistory(force: true, silentIfPossible: true),
                 icon: const Icon(Icons.refresh),
                 tooltip: '刷新',
               ),
@@ -589,33 +587,32 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
 
     if (visibleBookIds.isEmpty) {
       return LayoutBuilder(
-        builder:
-            (context, constraints) => SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.history,
-                        size: 64,
-                        color: colorScheme.onSurfaceVariant.withAlpha(100),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '暂无阅读记录',
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.history,
+                    size: 64,
+                    color: colorScheme.onSurfaceVariant.withAlpha(100),
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '暂无阅读记录',
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
               ),
             ),
+          ),
+        ),
       );
     }
 

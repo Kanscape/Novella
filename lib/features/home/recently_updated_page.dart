@@ -10,8 +10,9 @@ import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_content_filter.dart';
 import 'package:novella/data/services/book_service.dart';
-import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
+import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_cover_card.dart';
 import 'package:novella/src/widgets/book_grid_title.dart';
@@ -136,10 +137,9 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           FilledButton.tonalIcon(
-            onPressed:
-                _currentFrontendPage > 1 && !_loading
-                    ? () => _fetchPage(_currentFrontendPage - 1)
-                    : null,
+            onPressed: _currentFrontendPage > 1 && !_loading
+                ? () => _fetchPage(_currentFrontendPage - 1)
+                : null,
             icon: const Icon(Icons.navigate_before),
             label: const Text('上一页'),
           ),
@@ -153,10 +153,9 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
           ),
           const SizedBox(width: 16),
           FilledButton.tonalIcon(
-            onPressed:
-                _canGoNext && !_loading
-                    ? () => _fetchPage(_currentFrontendPage + 1)
-                    : null,
+            onPressed: _canGoNext && !_loading
+                ? () => _fetchPage(_currentFrontendPage + 1)
+                : null,
             icon: const Icon(Icons.navigate_next),
             label: const Text('下一页'),
           ),
@@ -172,72 +171,67 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
 
     final startIndex = (_currentFrontendPage - 1) * _pageSize;
     final endIndex = math.min(startIndex + _pageSize, _allValidBooks.length);
-    final displayBooks =
-        startIndex < _allValidBooks.length
-            ? _allValidBooks.sublist(startIndex, endIndex)
-            : <Book>[];
+    final displayBooks = startIndex < _allValidBooks.length
+        ? _allValidBooks.sublist(startIndex, endIndex)
+        : <Book>[];
 
     return Scaffold(
       appBar: AppBar(title: const Text('最近更新')),
-      body: RefreshIndicator(
+      body: M3ERefreshIndicator(
         onRefresh: () => _fetchPage(1, isRefresh: true),
-        child:
-            _loading
-                ? const Center(child: M3ELoadingIndicator())
-                : displayBooks.isEmpty
-                ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.update_disabled,
-                        size: 64,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '暂无数据',
-                        style: textTheme.bodyLarge?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-                : CustomScrollView(
-                  controller: _scrollController,
-                  slivers: [
-                    SliverPadding(
-                      padding: const EdgeInsets.all(12),
-                      sliver: SliverLayoutBuilder(
-                        builder: (context, constraints) {
-                          return SliverGrid(
-                            gridDelegate: appBookGridDelegateForWidth(
-                              constraints.crossAxisExtent,
-                            ),
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
-                              return _buildBookCard(
-                                context,
-                                displayBooks[index],
-                              );
-                            }, childCount: displayBooks.length),
-                          );
-                        },
-                      ),
+        child: _loading
+            ? const Center(child: M3ELoadingIndicator())
+            : displayBooks.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.update_disabled,
+                      size: 64,
+                      color: colorScheme.onSurfaceVariant,
                     ),
-                    if (_shouldShowPagination)
-                      SliverToBoxAdapter(child: _buildPagination()),
-                    // 给底部留点安全边距
-                    SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: MediaQuery.paddingOf(context).bottom,
+                    const SizedBox(height: 16),
+                    Text(
+                      '暂无数据',
+                      style: textTheme.bodyLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
+              )
+            : CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.all(12),
+                    sliver: SliverLayoutBuilder(
+                      builder: (context, constraints) {
+                        return SliverGrid(
+                          gridDelegate: appBookGridDelegateForWidth(
+                            constraints.crossAxisExtent,
+                          ),
+                          delegate: SliverChildBuilderDelegate((
+                            context,
+                            index,
+                          ) {
+                            return _buildBookCard(context, displayBooks[index]);
+                          }, childCount: displayBooks.length),
+                        );
+                      },
+                    ),
+                  ),
+                  if (_shouldShowPagination)
+                    SliverToBoxAdapter(child: _buildPagination()),
+                  // 给底部留点安全边距
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: MediaQuery.paddingOf(context).bottom,
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }

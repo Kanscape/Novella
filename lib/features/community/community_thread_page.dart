@@ -9,6 +9,7 @@ import 'package:novella/core/telemetry/telemetry_events.dart';
 import 'package:novella/core/telemetry/telemetry_service.dart';
 import 'package:novella/core/utils/time_utils.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/data/models/community.dart';
 import 'package:novella/data/services/community_service.dart';
 import 'package:novella/features/comment/widgets/comment_input_sheet.dart';
@@ -283,8 +284,9 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
           threadId: widget.threadId,
           parentReplyId: parentReply.id,
           page: parentReply.childPage.page + 1,
-          size:
-              parentReply.childPage.size == 0 ? 3 : parentReply.childPage.size,
+          size: parentReply.childPage.size == 0
+              ? 3
+              : parentReply.childPage.size,
         ),
       );
       if (!mounted || _thread == null) {
@@ -462,16 +464,14 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder:
-          (context) => CommentInputSheet(
-            hintText:
-                reply == null
-                    ? '回复帖子...'
-                    : '回复 ${_communityAuthorText(reply.authorName, reply.authorIsDeleted)}',
-            onSubmit: (content) {
-              unawaited(_postReply(content, replyTo: reply));
-            },
-          ),
+      builder: (context) => CommentInputSheet(
+        hintText: reply == null
+            ? '回复帖子...'
+            : '回复 ${_communityAuthorText(reply.authorName, reply.authorIsDeleted)}',
+        onSubmit: (content) {
+          unawaited(_postReply(content, replyTo: reply));
+        },
+      ),
     );
   }
 
@@ -661,10 +661,9 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
   Widget build(BuildContext context) {
     final thread = _thread;
     final colorScheme = Theme.of(context).colorScheme;
-    final appBarTitle =
-        thread?.boardName.isNotEmpty == true
-            ? thread!.boardName
-            : (widget.initialTitle ?? '帖子详情');
+    final appBarTitle = thread?.boardName.isNotEmpty == true
+        ? thread!.boardName
+        : (widget.initialTitle ?? '帖子详情');
 
     return Scaffold(
       appBar: AppBar(
@@ -672,109 +671,101 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
         surfaceTintColor: Colors.transparent,
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed:
-            _postingReply || (thread?.locked ?? false)
-                ? null
-                : () => _openReplySheet(),
+        onPressed: _postingReply || (thread?.locked ?? false)
+            ? null
+            : () => _openReplySheet(),
         backgroundColor: colorScheme.primaryContainer.withValues(alpha: 0.9),
         foregroundColor: colorScheme.primary,
         icon: const Icon(Icons.reply_rounded),
         label: Text(_postingReply ? '发送中' : '回复'),
       ),
-      body:
-          _loading && thread == null
-              ? const Center(child: M3ELoadingIndicator())
-              : _errorMessage != null && thread == null
-              ? _ThreadStateCard(
-                message: _errorMessage!,
-                actionLabel: '重试',
-                onAction: _loadThread,
-              )
-              : RefreshIndicator(
-                onRefresh: _loadThread,
-                child: ListView(
-                  controller: _scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
-                  children: [
-                    _ThreadMainPost(
-                      thread: thread!,
-                      html: thread.bodyHtml,
-                      onLike: _toggleLike,
-                      onFavorite: _toggleFavorite,
-                      liking: _togglingLike,
-                      favoriting: _togglingFavorite,
+      body: _loading && thread == null
+          ? const Center(child: M3ELoadingIndicator())
+          : _errorMessage != null && thread == null
+          ? _ThreadStateCard(
+              message: _errorMessage!,
+              actionLabel: '重试',
+              onAction: _loadThread,
+            )
+          : M3ERefreshIndicator(
+              onRefresh: _loadThread,
+              child: ListView(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
+                children: [
+                  _ThreadMainPost(
+                    thread: thread!,
+                    html: thread.bodyHtml,
+                    onLike: _toggleLike,
+                    onFavorite: _toggleFavorite,
+                    liking: _togglingLike,
+                    favoriting: _togglingFavorite,
+                  ),
+                  const SizedBox(height: 18),
+                  _SectionHeader(
+                    title: '回复',
+                    subtitle: '${thread.repliesPage.total} 条讨论',
+                  ),
+                  const SizedBox(height: 8),
+                  if (thread.replyItems.isEmpty)
+                    const _EmptyRepliesCard()
+                  else
+                    for (final reply in thread.replyItems) ...[
+                      _ReplyCard(
+                        anchorKey: _replyAnchorKey(reply.id),
+                        reply: reply,
+                        highlightedReplyId: _highlightedReplyId,
+                        onReply: (targetReply) {
+                          unawaited(_openReplySheet(reply: targetReply));
+                        },
+                        onLike: () => _toggleReplyLike(reply),
+                        childReplyKeyBuilder: _replyAnchorKey,
+                        onLoadMoreChildren: reply.childPage.hasMore
+                            ? () => _loadMoreChildReplies(reply)
+                            : null,
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  if (_loadingMoreReplies)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 18),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (thread.repliesPage.hasMore)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: FilledButton.tonalIcon(
+                        onPressed: () => _loadThread(
+                          replyPage: thread.repliesPage.page + 1,
+                          append: true,
+                        ),
+                        icon: const Icon(Icons.expand_more_rounded),
+                        label: const Text('加载更多回复'),
+                      ),
                     ),
-                    const SizedBox(height: 18),
-                    _SectionHeader(
-                      title: '回复',
-                      subtitle: '${thread.repliesPage.total} 条讨论',
-                    ),
+                  if (thread.relatedThreads.isNotEmpty) ...[
+                    const SizedBox(height: 22),
+                    const _SectionHeader(title: '相关讨论', subtitle: '继续从这个话题往下读'),
                     const SizedBox(height: 8),
-                    if (thread.replyItems.isEmpty)
-                      const _EmptyRepliesCard()
-                    else
-                      for (final reply in thread.replyItems) ...[
-                        _ReplyCard(
-                          anchorKey: _replyAnchorKey(reply.id),
-                          reply: reply,
-                          highlightedReplyId: _highlightedReplyId,
-                          onReply: (targetReply) {
-                            unawaited(_openReplySheet(reply: targetReply));
-                          },
-                          onLike: () => _toggleReplyLike(reply),
-                          childReplyKeyBuilder: _replyAnchorKey,
-                          onLoadMoreChildren:
-                              reply.childPage.hasMore
-                                  ? () => _loadMoreChildReplies(reply)
-                                  : null,
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                    if (_loadingMoreReplies)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 18),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else if (thread.repliesPage.hasMore)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: FilledButton.tonalIcon(
-                          onPressed:
-                              () => _loadThread(
-                                replyPage: thread.repliesPage.page + 1,
-                                append: true,
-                              ),
-                          icon: const Icon(Icons.expand_more_rounded),
-                          label: const Text('加载更多回复'),
+                    for (final related in thread.relatedThreads) ...[
+                      _RelatedThreadCard(
+                        item: related,
+                        onTap: () => AppRouteLauncher.pushReplacementDetail(
+                          context,
+                          (_) => CommunityThreadPage(
+                            threadId: related.id,
+                            initialTitle: related.title,
+                          ),
                         ),
                       ),
-                    if (thread.relatedThreads.isNotEmpty) ...[
-                      const SizedBox(height: 22),
-                      const _SectionHeader(
-                        title: '相关讨论',
-                        subtitle: '继续从这个话题往下读',
-                      ),
-                      const SizedBox(height: 8),
-                      for (final related in thread.relatedThreads) ...[
-                        _RelatedThreadCard(
-                          item: related,
-                          onTap:
-                              () => AppRouteLauncher.pushReplacementDetail(
-                                context,
-                                (_) => CommunityThreadPage(
-                                  threadId: related.id,
-                                  initialTitle: related.title,
-                                ),
-                              ),
-                        ),
-                        if (related != thread.relatedThreads.last)
-                          const SizedBox(height: 8),
-                      ],
+                      if (related != thread.relatedThreads.last)
+                        const SizedBox(height: 8),
                     ],
                   ],
-                ),
+                ],
               ),
+            ),
     );
   }
 }
@@ -966,10 +957,9 @@ class _ThreadMainPost extends StatelessWidget {
                     Expanded(
                       child: _ActionPill(
                         label: thread.liked ? '已点赞' : '点赞',
-                        icon:
-                            thread.liked
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
+                        icon: thread.liked
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
                         selected: thread.liked,
                         busy: liking,
                         onTap: onLike,
@@ -979,10 +969,9 @@ class _ThreadMainPost extends StatelessWidget {
                     Expanded(
                       child: _ActionPill(
                         label: thread.favorited ? '已收藏' : '收藏',
-                        icon:
-                            thread.favorited
-                                ? Icons.bookmark_rounded
-                                : Icons.bookmark_border_rounded,
+                        icon: thread.favorited
+                            ? Icons.bookmark_rounded
+                            : Icons.bookmark_border_rounded,
                         selected: thread.favorited,
                         busy: favoriting,
                         onTap: onFavorite,
@@ -1002,8 +991,8 @@ class _ThreadMainPost extends StatelessWidget {
             child: HtmlWidget(
               sanitizeReaderHtmlTextNodes(html, const {}),
               textStyle: theme.textTheme.bodyLarge?.copyWith(height: 1.72),
-              customWidgetBuilder:
-                  (element) => _buildThreadBodyCustomBlock(context, element),
+              customWidgetBuilder: (element) =>
+                  _buildThreadBodyCustomBlock(context, element),
               customStylesBuilder: (element) {
                 switch (element.localName) {
                   case 'body':
@@ -1189,16 +1178,14 @@ class _ReplyCard extends StatelessWidget {
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
       decoration: BoxDecoration(
-        color:
-            isHighlighted
-                ? colorScheme.primaryContainer.withValues(alpha: 0.18)
-                : colorScheme.surfaceContainerLow,
+        color: isHighlighted
+            ? colorScheme.primaryContainer.withValues(alpha: 0.18)
+            : colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color:
-              isHighlighted
-                  ? colorScheme.primary
-                  : colorScheme.outlineVariant.withValues(alpha: 0.3),
+          color: isHighlighted
+              ? colorScheme.primary
+              : colorScheme.outlineVariant.withValues(alpha: 0.3),
           width: isHighlighted ? 1.2 : 1,
         ),
       ),
@@ -1244,28 +1231,25 @@ class _ReplyCard extends StatelessWidget {
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
-                          children:
-                              reply.replyTo != null
-                                  ? [
-                                    const TextSpan(text: '回复 '),
-                                    _communityAuthorSpan(
-                                      context,
-                                      authorName: reply.replyTo!.authorName,
-                                      authorIsDeleted:
-                                          reply.replyTo!.authorIsDeleted,
-                                    ),
-                                    TextSpan(
-                                      text:
-                                          ' · ${_formatThreadTime(reply.publishedAt)}',
-                                    ),
-                                  ]
-                                  : [
-                                    TextSpan(
-                                      text: _formatThreadTime(
-                                        reply.publishedAt,
-                                      ),
-                                    ),
-                                  ],
+                          children: reply.replyTo != null
+                              ? [
+                                  const TextSpan(text: '回复 '),
+                                  _communityAuthorSpan(
+                                    context,
+                                    authorName: reply.replyTo!.authorName,
+                                    authorIsDeleted:
+                                        reply.replyTo!.authorIsDeleted,
+                                  ),
+                                  TextSpan(
+                                    text:
+                                        ' · ${_formatThreadTime(reply.publishedAt)}',
+                                  ),
+                                ]
+                              : [
+                                  TextSpan(
+                                    text: _formatThreadTime(reply.publishedAt),
+                                  ),
+                                ],
                         ),
                       ),
                     ],
@@ -1282,10 +1266,9 @@ class _ReplyCard extends StatelessWidget {
             Row(
               children: [
                 _ReplyActionChip(
-                  icon:
-                      reply.liked
-                          ? Icons.favorite_rounded
-                          : Icons.favorite_border_rounded,
+                  icon: reply.liked
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
                   label: _formatCount(reply.likes),
                   active: reply.liked,
                   onTap: onLike,
@@ -1375,15 +1358,13 @@ class _ChildReplyCard extends StatelessWidget {
       curve: Curves.easeOut,
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
       decoration: BoxDecoration(
-        color:
-            highlighted
-                ? colorScheme.primaryContainer.withValues(alpha: 0.28)
-                : Colors.transparent,
+        color: highlighted
+            ? colorScheme.primaryContainer.withValues(alpha: 0.28)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
-        border:
-            highlighted
-                ? Border.all(color: colorScheme.primary, width: 1.1)
-                : null,
+        border: highlighted
+            ? Border.all(color: colorScheme.primary, width: 1.1)
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1393,28 +1374,27 @@ class _ChildReplyCard extends StatelessWidget {
               style: theme.textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
-              children:
-                  reply.replyTo != null
-                      ? [
-                        _communityAuthorSpan(
-                          context,
-                          authorName: reply.authorName,
-                          authorIsDeleted: reply.authorIsDeleted,
-                        ),
-                        const TextSpan(text: ' 回复 '),
-                        _communityAuthorSpan(
-                          context,
-                          authorName: reply.replyTo!.authorName,
-                          authorIsDeleted: reply.replyTo!.authorIsDeleted,
-                        ),
-                      ]
-                      : [
-                        _communityAuthorSpan(
-                          context,
-                          authorName: reply.authorName,
-                          authorIsDeleted: reply.authorIsDeleted,
-                        ),
-                      ],
+              children: reply.replyTo != null
+                  ? [
+                      _communityAuthorSpan(
+                        context,
+                        authorName: reply.authorName,
+                        authorIsDeleted: reply.authorIsDeleted,
+                      ),
+                      const TextSpan(text: ' 回复 '),
+                      _communityAuthorSpan(
+                        context,
+                        authorName: reply.replyTo!.authorName,
+                        authorIsDeleted: reply.replyTo!.authorIsDeleted,
+                      ),
+                    ]
+                  : [
+                      _communityAuthorSpan(
+                        context,
+                        authorName: reply.authorName,
+                        authorIsDeleted: reply.authorIsDeleted,
+                      ),
+                    ],
             ),
             style: theme.textTheme.labelLarge?.copyWith(
               fontWeight: FontWeight.w700,
@@ -1602,12 +1582,12 @@ class _ThreadTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final background =
-        accent
-            ? colorScheme.primaryContainer.withValues(alpha: 0.76)
-            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.75);
-    final foreground =
-        accent ? colorScheme.primary : colorScheme.onSurfaceVariant;
+    final background = accent
+        ? colorScheme.primaryContainer.withValues(alpha: 0.76)
+        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.75);
+    final foreground = accent
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1690,12 +1670,12 @@ class _ActionPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final background =
-        selected
-            ? colorScheme.primaryContainer.withValues(alpha: 0.68)
-            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.62);
-    final foreground =
-        selected ? colorScheme.primary : colorScheme.onSurfaceVariant;
+    final background = selected
+        ? colorScheme.primaryContainer.withValues(alpha: 0.68)
+        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.62);
+    final foreground = selected
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
 
     return Material(
       color: background,
@@ -1751,12 +1731,12 @@ class _ReplyActionChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final background =
-        active
-            ? colorScheme.primaryContainer.withValues(alpha: 0.76)
-            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.75);
-    final foreground =
-        active ? colorScheme.primary : colorScheme.onSurfaceVariant;
+    final background = active
+        ? colorScheme.primaryContainer.withValues(alpha: 0.76)
+        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.75);
+    final foreground = active
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
 
     return Material(
       color: background,
@@ -1823,9 +1803,8 @@ class _ForumAvatar extends StatelessWidget {
       child: CachedNetworkImage(
         imageUrl: imageUrl,
         memCacheWidth: 120,
-        imageBuilder:
-            (context, provider) =>
-                CircleAvatar(radius: radius, backgroundImage: provider),
+        imageBuilder: (context, provider) =>
+            CircleAvatar(radius: radius, backgroundImage: provider),
         placeholder: (context, url) => fallback,
         errorWidget: (context, url, error) => fallback,
       ),
