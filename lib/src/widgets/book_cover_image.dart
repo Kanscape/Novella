@@ -159,12 +159,11 @@ class _BookCoverImageState extends State<BookCoverImage> {
 
   Widget _buildBasePlaceholder(ColorScheme colorScheme, String? blurHash) {
     if (blurHash != null) {
-      return BlurHash(
-        hash: blurHash,
-        imageFit: widget.fit,
-        decodingWidth: 32,
-        decodingHeight: 48,
-        color: Colors.transparent,
+      return Image(
+        image: BlurHashImage(blurHash, decodingWidth: 32, decodingHeight: 48),
+        fit: widget.fit,
+        excludeFromSemantics: true,
+        gaplessPlayback: true,
       );
     }
 

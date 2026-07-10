@@ -52,11 +52,15 @@ class BlurHashImage extends ImageProvider<BlurHashImage> {
       ? false
       : other is BlurHashImage &&
           other.blurHash == blurHash &&
+          other.decodingWidth == decodingWidth &&
+          other.decodingHeight == decodingHeight &&
           other.scale == scale;
 
   @override
-  int get hashCode => Object.hash(blurHash.hashCode, scale);
+  int get hashCode =>
+      Object.hash(blurHash, decodingWidth, decodingHeight, scale);
 
   @override
-  String toString() => '$runtimeType($blurHash, scale: $scale)';
+  String toString() =>
+      '$runtimeType($blurHash, ${decodingWidth}x$decodingHeight, scale: $scale)';
 }
