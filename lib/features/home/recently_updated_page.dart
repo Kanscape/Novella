@@ -256,9 +256,8 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Hero(
+            child: BookCoverHero(
               tag: heroTag,
-              placeholderBuilder: bookCoverHeroPlaceholderBuilder,
               child: BookCoverCard(
                 coverUrl: book.cover,
                 overlays: [

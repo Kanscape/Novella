@@ -255,9 +255,8 @@ class _RankingPageState extends ConsumerState<RankingPage>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Hero(
+            child: BookCoverHero(
               tag: heroTag,
-              placeholderBuilder: bookCoverHeroPlaceholderBuilder,
               child: BookCoverCard(
                 coverUrl: book.cover,
                 overlays: [

@@ -815,9 +815,8 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
                     child: Row(
                       children: [
                         // 封面
-                        Hero(
+                        BookCoverHero(
                           tag: 'continue_reading_${book.id}',
-                          placeholderBuilder: bookCoverHeroPlaceholderBuilder,
                           // 冷启动首次点击时，详情页封面可能仍在占位阶段。
                           // 这里 push 阶段强制使用来源 Hero（首页侧）作为飞行物，
                           // 避免 Hero 飞行过程中从“真实封面”变成“灰色占位”造成观感退化。
@@ -1220,9 +1219,8 @@ class HomePageState extends ConsumerState<HomePage> with RouteAware {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Hero(
+            child: BookCoverHero(
               tag: heroTag,
-              placeholderBuilder: bookCoverHeroPlaceholderBuilder,
               child: BookCoverCard(
                 coverUrl: book.cover,
                 overlays: [

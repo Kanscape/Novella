@@ -47,13 +47,12 @@ class ShelfBookGridItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final displayTitle =
-        isInvalid
-            ? '无效书籍'
-            : book?.title ??
-                (shelfTitle?.isNotEmpty == true
-                    ? shelfTitle!
-                    : titleHint ?? '加载中');
+    final displayTitle = isInvalid
+        ? '无效书籍'
+        : book?.title ??
+              (shelfTitle?.isNotEmpty == true
+                  ? shelfTitle!
+                  : titleHint ?? '加载中');
 
     return GestureDetector(
       onTap: onTap,
@@ -61,14 +60,12 @@ class ShelfBookGridItem extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child:
-                enableHero
-                    ? Hero(
-                      tag: heroTag,
-                      placeholderBuilder: bookCoverHeroPlaceholderBuilder,
-                      child: _buildCardContent(context, ref),
-                    )
-                    : _buildCardContent(context, ref),
+            child: enableHero
+                ? BookCoverHero(
+                    tag: heroTag,
+                    child: _buildCardContent(context, ref),
+                  )
+                : _buildCardContent(context, ref),
           ),
           BookGridTitle(title: displayTitle, animated: true),
         ],
@@ -87,10 +84,9 @@ class ShelfBookGridItem extends ConsumerWidget {
     return BookCoverCard(
       coverUrl: resolvedCoverUrl,
       elevation: sortMode ? 0 : 2,
-      shadowColor:
-          sortMode
-              ? Colors.transparent
-              : colorScheme.shadow.withValues(alpha: 0.3),
+      shadowColor: sortMode
+          ? Colors.transparent
+          : colorScheme.shadow.withValues(alpha: 0.3),
       showLoading: !isInvalid && (!canResolveNetworkImage || enablePreview),
       resolveNetworkImage: canResolveNetworkImage,
       revealedBefore: coverRevealed,
@@ -161,10 +157,9 @@ class ShelfFolderGridItem extends ConsumerWidget {
                 children: [
                   Card(
                     elevation: sortMode ? 0 : 2,
-                    shadowColor:
-                        sortMode
-                            ? Colors.transparent
-                            : colorScheme.shadow.withValues(alpha: 0.3),
+                    shadowColor: sortMode
+                        ? Colors.transparent
+                        : colorScheme.shadow.withValues(alpha: 0.3),
                     clipBehavior: Clip.antiAlias,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -174,27 +169,25 @@ class ShelfFolderGridItem extends ConsumerWidget {
                       children: [
                         DecoratedBox(
                           decoration: BoxDecoration(
-                            color:
-                                previewBookIds.isEmpty
-                                    ? colorScheme.secondaryContainer.withValues(
-                                      alpha: 0.6,
-                                    )
-                                    : colorScheme.surfaceContainerHighest,
+                            color: previewBookIds.isEmpty
+                                ? colorScheme.secondaryContainer.withValues(
+                                    alpha: 0.6,
+                                  )
+                                : colorScheme.surfaceContainerHighest,
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(10),
-                            child:
-                                previewBookIds.isEmpty
-                                    ? _EmptyFolderPreview(
-                                      color: colorScheme.primary,
-                                    )
-                                    : _FolderPreviewGrid(
-                                      previewBookIds: previewBookIds,
-                                      previewBookDetails: previewBookDetails,
-                                      previewBookHints: previewBookHints,
-                                      revealedPreviewKeys: revealedPreviewKeys,
-                                      onPreviewRevealed: onPreviewRevealed,
-                                    ),
+                            child: previewBookIds.isEmpty
+                                ? _EmptyFolderPreview(
+                                    color: colorScheme.primary,
+                                  )
+                                : _FolderPreviewGrid(
+                                    previewBookIds: previewBookIds,
+                                    previewBookDetails: previewBookDetails,
+                                    previewBookHints: previewBookHints,
+                                    revealedPreviewKeys: revealedPreviewKeys,
+                                    onPreviewRevealed: onPreviewRevealed,
+                                  ),
                           ),
                         ),
                         _ShelfCardOverlay(
@@ -354,27 +347,24 @@ class _FolderPreviewSlot extends StatelessWidget {
     return ClipRRect(
       key: ValueKey('folder_preview_${bookId ?? 'empty'}'),
       borderRadius: BorderRadius.circular(6),
-      child:
-          bookId == null
-              ? const _FolderPreviewEmptySlot()
-              : coverUrl?.isNotEmpty == true
-              ? BookCoverImage(
-                imageUrl: coverUrl!,
-                width: double.infinity,
-                height: double.infinity,
-                memCacheWidth: 180,
-                showLoading: true,
-                resolveNetworkImage: canResolveNetworkImage,
-                revealedBefore:
-                    revealKey != null &&
-                    revealedPreviewKeys.contains(revealKey),
-                onRevealed:
-                    revealKey == null || onPreviewRevealed == null
-                        ? null
-                        : () => onPreviewRevealed!(revealKey),
-                animateSynchronouslyLoadedImage: book != null,
-              )
-              : const _FolderPreviewPlaceholder(),
+      child: bookId == null
+          ? const _FolderPreviewEmptySlot()
+          : coverUrl?.isNotEmpty == true
+          ? BookCoverImage(
+              imageUrl: coverUrl!,
+              width: double.infinity,
+              height: double.infinity,
+              memCacheWidth: 180,
+              showLoading: true,
+              resolveNetworkImage: canResolveNetworkImage,
+              revealedBefore:
+                  revealKey != null && revealedPreviewKeys.contains(revealKey),
+              onRevealed: revealKey == null || onPreviewRevealed == null
+                  ? null
+                  : () => onPreviewRevealed!(revealKey),
+              animateSynchronouslyLoadedImage: book != null,
+            )
+          : const _FolderPreviewPlaceholder(),
     );
   }
 }

@@ -215,21 +215,20 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   Future<void> _clearHistory() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('清空搜索历史'),
-            content: const Text('确定要清空所有搜索记录吗？'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('清空'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: const Text('清空搜索历史'),
+        content: const Text('确定要清空所有搜索记录吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
           ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
     );
 
     if (confirmed == true) {
@@ -248,8 +247,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (keyword.isEmpty) return;
     final effectiveMode =
         mode == BookSearchMode.fuzzy && isQuotedBookSearchKeyword(keyword)
-            ? BookSearchMode.exact
-            : mode;
+        ? BookSearchMode.exact
+        : mode;
 
     // 收起键盘
     FocusScope.of(context).unfocus();
@@ -351,10 +350,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           FilledButton.tonalIcon(
-            onPressed:
-                _currentFrontendPage > 1 && !_loading
-                    ? () => _fetchPage(_currentFrontendPage - 1)
-                    : null,
+            onPressed: _currentFrontendPage > 1 && !_loading
+                ? () => _fetchPage(_currentFrontendPage - 1)
+                : null,
             icon: const Icon(Icons.navigate_before),
             label: const Text('上一页'),
           ),
@@ -368,10 +366,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           ),
           const SizedBox(width: 16),
           FilledButton.tonalIcon(
-            onPressed:
-                _canGoNext && !_loading
-                    ? () => _fetchPage(_currentFrontendPage + 1)
-                    : null,
+            onPressed: _canGoNext && !_loading
+                ? () => _fetchPage(_currentFrontendPage + 1)
+                : null,
             icon: const Icon(Icons.navigate_next),
             label: const Text('下一页'),
           ),
@@ -454,10 +451,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           IconButton(
             tooltip: _searchOptionsExpanded ? '收起搜索方式' : '搜索方式',
             icon: Icon(_searchOptionsExpanded ? Icons.expand_less : Icons.tune),
-            onPressed:
-                () => setState(() {
-                  _searchOptionsExpanded = !_searchOptionsExpanded;
-                }),
+            onPressed: () => setState(() {
+              _searchOptionsExpanded = !_searchOptionsExpanded;
+            }),
           ),
           IconButton(
             tooltip: '搜索',
@@ -495,13 +491,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 child: FadeTransition(opacity: animation, child: child),
               );
             },
-            child:
-                _searchOptionsExpanded
-                    ? _buildSearchModePanel(colorScheme, textTheme)
-                    : const SizedBox(
-                      key: ValueKey('search_mode_panel_empty'),
-                      width: double.infinity,
-                    ),
+            child: _searchOptionsExpanded
+                ? _buildSearchModePanel(colorScheme, textTheme)
+                : const SizedBox(
+                    key: ValueKey('search_mode_panel_empty'),
+                    width: double.infinity,
+                  ),
           ),
           Expanded(child: _buildSearchContent(colorScheme, textTheme)),
         ],
@@ -526,13 +521,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children:
-                  _searchModeOptions
-                      .map(
-                        (option) =>
-                            _buildSearchModeRow(option, colorScheme, textTheme),
-                      )
-                      .toList(),
+              children: _searchModeOptions
+                  .map(
+                    (option) =>
+                        _buildSearchModeRow(option, colorScheme, textTheme),
+                  )
+                  .toList(),
             ),
           ),
         ),
@@ -547,20 +541,18 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   ) {
     final selected = _lastSearchMode == option.mode;
     final enabled = _searchController.text.trim().isNotEmpty;
-    final foreground =
-        !enabled
-            ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
-            : selected
-            ? colorScheme.primary
-            : colorScheme.onSurfaceVariant;
+    final foreground = !enabled
+        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
+        : selected
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       child: Material(
-        color:
-            enabled && selected
-                ? colorScheme.primary.withValues(alpha: 0.12)
-                : Colors.transparent,
+        color: enabled && selected
+            ? colorScheme.primary.withValues(alpha: 0.12)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -579,8 +571,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: textTheme.bodyLarge?.copyWith(
-                        fontWeight:
-                            selected ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                       ),
                     ),
                   ),
@@ -651,36 +644,33 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children:
-                    _history.map((keyword) {
-                      final isPendingDelete = _pendingDeleteItem == keyword;
-                      return GestureDetector(
-                        onTap: () {
-                          if (isPendingDelete) {
-                            _removeFromHistory(keyword);
-                          } else {
-                            _onHistoryTap(keyword);
-                          }
-                        },
-                        onLongPress: () => _onHistoryLongPress(keyword),
-                        child: Chip(
-                          label: Text(
-                            isPendingDelete ? '删除?' : keyword,
-                            style: TextStyle(
-                              color:
-                                  isPendingDelete
-                                      ? colorScheme.error
-                                      : colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          backgroundColor:
-                              isPendingDelete
-                                  ? colorScheme.errorContainer
-                                  : colorScheme.surfaceContainerHighest,
-                          side: BorderSide.none,
+                children: _history.map((keyword) {
+                  final isPendingDelete = _pendingDeleteItem == keyword;
+                  return GestureDetector(
+                    onTap: () {
+                      if (isPendingDelete) {
+                        _removeFromHistory(keyword);
+                      } else {
+                        _onHistoryTap(keyword);
+                      }
+                    },
+                    onLongPress: () => _onHistoryLongPress(keyword),
+                    child: Chip(
+                      label: Text(
+                        isPendingDelete ? '删除?' : keyword,
+                        style: TextStyle(
+                          color: isPendingDelete
+                              ? colorScheme.error
+                              : colorScheme.onSurfaceVariant,
                         ),
-                      );
-                    }).toList(),
+                      ),
+                      backgroundColor: isPendingDelete
+                          ? colorScheme.errorContainer
+                          : colorScheme.surfaceContainerHighest,
+                      side: BorderSide.none,
+                    ),
+                  );
+                }).toList(),
               ),
           ],
         ),
@@ -713,10 +703,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     final startIndex = (_currentFrontendPage - 1) * _pageSize;
     final endIndex = math.min(startIndex + _pageSize, _allValidBooks.length);
-    final displayBooks =
-        startIndex < _allValidBooks.length
-            ? _allValidBooks.sublist(startIndex, endIndex)
-            : <Book>[];
+    final displayBooks = startIndex < _allValidBooks.length
+        ? _allValidBooks.sublist(startIndex, endIndex)
+        : <Book>[];
 
     return CustomScrollView(
       controller: _scrollController,
@@ -765,9 +754,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Hero(
+            child: BookCoverHero(
               tag: heroTag,
-              placeholderBuilder: bookCoverHeroPlaceholderBuilder,
               child: BookCoverCard(
                 coverUrl: book.cover,
                 overlays: [
