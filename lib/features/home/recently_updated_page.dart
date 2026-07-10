@@ -250,7 +250,6 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
             heroTag: heroTag,
             telemetrySource: TelemetryBookDetailSources.homeRecentlyUpdated,
           ),
-          heroTransition: true,
         );
       },
       child: Column(
@@ -259,6 +258,7 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
           Expanded(
             child: Hero(
               tag: heroTag,
+              placeholderBuilder: bookCoverHeroPlaceholderBuilder,
               child: BookCoverCard(
                 coverUrl: book.cover,
                 overlays: [

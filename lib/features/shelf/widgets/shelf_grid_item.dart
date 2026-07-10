@@ -63,7 +63,11 @@ class ShelfBookGridItem extends ConsumerWidget {
           Expanded(
             child:
                 enableHero
-                    ? Hero(tag: heroTag, child: _buildCardContent(context, ref))
+                    ? Hero(
+                      tag: heroTag,
+                      placeholderBuilder: bookCoverHeroPlaceholderBuilder,
+                      child: _buildCardContent(context, ref),
+                    )
                     : _buildCardContent(context, ref),
           ),
           BookGridTitle(title: displayTitle, animated: true),

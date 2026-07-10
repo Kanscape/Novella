@@ -759,7 +759,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             heroTag: heroTag,
             telemetrySource: TelemetryBookDetailSources.search,
           ),
-          heroTransition: true,
         );
       },
       child: Column(
@@ -768,6 +767,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           Expanded(
             child: Hero(
               tag: heroTag,
+              placeholderBuilder: bookCoverHeroPlaceholderBuilder,
               child: BookCoverCard(
                 coverUrl: book.cover,
                 overlays: [

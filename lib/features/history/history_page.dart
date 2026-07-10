@@ -679,7 +679,6 @@ class HistoryPageState extends ConsumerState<HistoryPage> {
             heroTag: heroTag,
             telemetrySource: TelemetryBookDetailSources.history,
           ),
-          heroTransition: true,
         ).then((_) {
           if (mounted) {
             _fetchHistory(force: true, silentIfPossible: true);

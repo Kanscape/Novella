@@ -249,7 +249,6 @@ class _RankingPageState extends ConsumerState<RankingPage>
             heroTag: heroTag,
             telemetrySource: TelemetryBookDetailSources.ranking,
           ),
-          heroTransition: true,
         );
       },
       child: Column(
@@ -258,6 +257,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
           Expanded(
             child: Hero(
               tag: heroTag,
+              placeholderBuilder: bookCoverHeroPlaceholderBuilder,
               child: BookCoverCard(
                 coverUrl: book.cover,
                 overlays: [

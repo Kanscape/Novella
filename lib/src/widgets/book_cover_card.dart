@@ -3,6 +3,22 @@ import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/src/widgets/book_cover_previewer.dart';
 
+/// Keeps a stranded source Hero visible once its route becomes current again.
+Widget bookCoverHeroPlaceholderBuilder(
+  BuildContext context,
+  Size heroSize,
+  Widget child,
+) {
+  final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? true;
+  return SizedBox.fromSize(
+    size: heroSize,
+    child: Offstage(
+      offstage: !isCurrentRoute,
+      child: TickerMode(enabled: isCurrentRoute, child: child),
+    ),
+  );
+}
+
 class BookCoverCard extends StatelessWidget {
   final String coverUrl;
   final double elevation;

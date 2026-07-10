@@ -554,7 +554,6 @@ class _ShelfFolderPageState extends ConsumerState<ShelfFolderPage> {
         heroTag: 'shelf_folder_${widget.folderId}_$bookId',
         telemetrySource: TelemetryBookDetailSources.shelfFolder,
       ),
-      heroTransition: true,
     );
   }
 
