@@ -1,9 +1,28 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_blurhash/flutter_blurhash.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novella/src/widgets/book_cover_image.dart';
 
 void main() {
+  // Dart 解码已从 flutter_blurhash 移除；生产由 Rust 注入。测试注入桩解码器。
+  setUpAll(() {
+    BlurHashImage.decoder = (blurHash, width, height) {
+      final completer = Completer<ui.Image>();
+      ui.decodeImageFromPixels(
+        Uint8List(width * height * 4),
+        width,
+        height,
+        ui.PixelFormat.rgba8888,
+        completer.complete,
+      );
+      return completer.future;
+    };
+  });
+
   testWidgets('uses the image cache for BlurHash placeholders', (tester) async {
     const blurHash = 'LEHV6nWB2yk8pyo0adR*.7kCMdnj';
     final imageUrl = Uri.https('example.com', '/cover.jpg', {

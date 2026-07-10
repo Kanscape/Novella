@@ -22,6 +22,10 @@ import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/auth/login_page.dart';
 import 'package:novella/features/settings/display_mode_settings.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'dart:ui' as ui;
+
+import 'package:flutter_blurhash/flutter_blurhash.dart';
+import 'package:novella/src/rust/api/blurhash.dart' as rust_blurhash;
 import 'package:novella/src/rust/frb_generated.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
@@ -355,6 +359,27 @@ void main() async {
 
     rustLibInitialized = true;
     _flutterLogger.info('RustLib Initialized Successfully!');
+
+    // 把 BlurHash 像素解码移交 Rust（在 FRB worker 线程执行，脱离 UI isolate）；
+    // 仅 decodeImageFromPixels 在 UI isolate 生成 ui.Image。
+    // flutter_blurhash 已移除 Dart 解码，此注入是占位图能解码的唯一来源。
+    BlurHashImage.decoder = (blurHash, width, height) async {
+      final pixels = await rust_blurhash.blurHashDecodeRgba(
+        blurHash: blurHash,
+        width: width,
+        height: height,
+        punch: 1.0,
+      );
+      final completer = Completer<ui.Image>();
+      ui.decodeImageFromPixels(
+        pixels,
+        width,
+        height,
+        ui.PixelFormat.rgba8888,
+        completer.complete,
+      );
+      return completer.future;
+    };
   } catch (e, stack) {
     rustLibInitialized = false;
     rustLibInitError = e.toString();

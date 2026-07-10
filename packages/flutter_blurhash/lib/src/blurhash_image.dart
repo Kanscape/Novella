@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
-import 'package:flutter_blurhash/flutter_blurhash.dart';
+
+/// BlurHash 解码器签名（宿主注入原生/isolate 实现）。
+typedef BlurHashImageDecoder =
+    Future<ui.Image> Function(String blurHash, int width, int height);
 
 const _defaultSize = 32;
 
@@ -20,6 +24,11 @@ class BlurHashImage extends ImageProvider<BlurHashImage> {
 
   /// The scale to place in the [ImageInfo] object of the image.
   final double scale;
+
+  /// 全局解码器。本库不再自带 Dart 解码实现，解码完全由宿主注入的原生
+  /// （Rust/FRB worker 线程）实现完成——把解码移出 Dart UI isolate。
+  /// 使用前必须由宿主设置（见 App 启动时的 RustLib 初始化）。
+  static BlurHashImageDecoder? decoder;
 
   /// Decoding definition
   final int decodingWidth;
@@ -39,11 +48,14 @@ class BlurHashImage extends ImageProvider<BlurHashImage> {
   Future<ImageInfo> _loadAsync(BlurHashImage key) async {
     assert(key == this);
 
-    final image = await blurHashDecodeImage(
-      blurHash: blurHash,
-      width: decodingWidth,
-      height: decodingHeight,
-    );
+    final decoder = BlurHashImage.decoder;
+    if (decoder == null) {
+      throw StateError(
+        'BlurHashImage.decoder is not set. The Dart decoder has been removed; '
+        'a native decoder must be injected at startup.',
+      );
+    }
+    final image = await decoder(blurHash, decodingWidth, decodingHeight);
     return ImageInfo(image: image, scale: key.scale);
   }
 

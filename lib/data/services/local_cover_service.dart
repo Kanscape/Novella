@@ -70,6 +70,26 @@ class LocalCoverService {
     }
   }
 
+  /// 清空本地封面缓存目录，返回删除的封面文件数。
+  Future<int> clearAll() async {
+    await _init();
+    var count = 0;
+    try {
+      if (await _coverDir!.exists()) {
+        for (final entity in _coverDir!.listSync()) {
+          if (entity is File) {
+            await entity.delete();
+            count++;
+          }
+        }
+      }
+      _logger.info('Cleared $count local covers');
+    } catch (e) {
+      _logger.warning('Error clearing local covers: $e');
+    }
+    return count;
+  }
+
   /// 安全获取封面文件路径（同步版本用于 Image.file）
   String getLocalCoverPathSync(int bid) {
     if (_coverDir == null) return '';

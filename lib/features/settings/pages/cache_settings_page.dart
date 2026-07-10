@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/utils/font_manager.dart';
+import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/settings/settings_provider.dart';
 
 import 'package:novella/features/settings/widgets/settings_header_card.dart';
@@ -72,7 +74,7 @@ class CacheSettingsPage extends ConsumerWidget {
                   color: Theme.of(context).colorScheme.error,
                 ),
                 title: Text(
-                  '清除所有字体缓存',
+                  '清除所有缓存',
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
                 onTap: () => _showClearCacheDialog(context),
@@ -83,6 +85,17 @@ class CacheSettingsPage extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// 清除图片缓存：本地封面文件 + cached_network_image 磁盘缓存 + 内存 imageCache
+  /// （后者含 BlurHash 占位图缓存）。返回删除的本地封面数。
+  Future<int> _clearImageCaches() async {
+    final count = await LocalCoverService().clearAll();
+    await DefaultCacheManager().emptyCache();
+    PaintingBinding.instance.imageCache
+      ..clear()
+      ..clearLiveImages();
+    return count;
   }
 
   void _showClearCacheDialog(BuildContext context) {
@@ -106,7 +119,7 @@ class CacheSettingsPage extends ConsumerWidget {
                   vertical: 12,
                 ),
                 child: Text(
-                  '清除字体缓存',
+                  '清除缓存',
                   style: textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -116,7 +129,7 @@ class CacheSettingsPage extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Text(
-                  '将删除所有缓存字体，下次阅读需重新加载',
+                  '将删除缓存的字体与封面图片，需要时重新加载',
                   style: textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -162,9 +175,10 @@ class CacheSettingsPage extends ConsumerWidget {
                             ),
                           );
 
-                          // 清除缓存
+                          // 清除缓存（字体 + 图片）
                           final deletedCount =
-                              await FontManager().clearAllCaches();
+                              await FontManager().clearAllCaches() +
+                              await _clearImageCaches();
 
                           // 显示结果
                           scaffold.hideCurrentSnackBar();
