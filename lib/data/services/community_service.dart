@@ -1,11 +1,30 @@
+import 'package:html/parser.dart' as html_parser;
 import 'package:logging/logging.dart';
 import 'package:novella/core/network/request_queue.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/data/models/community.dart';
+import 'package:novella/features/community/moderation/community_moderation_rules.dart';
+import 'package:novella/features/community/moderation/community_speech_guard.dart';
+
+typedef CommunitySignalRInvoker =
+    Future<T> Function<T>(
+      String methodName, {
+      List<Object>? args,
+      String? requestScope,
+      RequestPriority priority,
+      bool bypassQueue,
+    });
 
 class CommunityService {
+  CommunityService({
+    CommunitySpeechGuard? speechGuard,
+    CommunitySignalRInvoker? signalRInvoker,
+  }) : speechGuard = speechGuard ?? CommunitySpeechGuard(),
+       _signalRInvoker = signalRInvoker ?? SignalRService().invoke;
+
   static final Logger _logger = Logger('CommunityService');
-  final SignalRService _signalRService = SignalRService();
+  final CommunitySpeechGuard speechGuard;
+  final CommunitySignalRInvoker _signalRInvoker;
 
   Future<CommunityHomePayload> getCommunityHome({
     CommunityListQuery query = const CommunityListQuery(),
@@ -13,7 +32,7 @@ class CommunityService {
     RequestPriority priority = RequestPriority.normal,
   }) async {
     try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+      final result = await _signalRInvoker<Map<dynamic, dynamic>>(
         'GetCommunityHome',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -38,7 +57,7 @@ class CommunityService {
     RequestPriority priority = RequestPriority.normal,
   }) async {
     try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+      final result = await _signalRInvoker<Map<dynamic, dynamic>>(
         'GetCommunityFeed',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -66,7 +85,7 @@ class CommunityService {
     RequestPriority priority = RequestPriority.high,
   }) async {
     try {
-      final result = await _signalRService.invoke<dynamic>(
+      final result = await _signalRInvoker<dynamic>(
         'GetCommunityThread',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -109,7 +128,13 @@ class CommunityService {
     RequestPriority priority = RequestPriority.high,
   }) async {
     try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+      await _ensureSpeechAllowed([
+        CommunitySpeechField.threadTitle(request.title),
+        CommunitySpeechField.threadBody(
+          html_parser.parseFragment(request.contentHtml).text ?? '',
+        ),
+      ]);
+      final result = await _signalRInvoker<Map<dynamic, dynamic>>(
         'CreateCommunityThread',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -134,7 +159,8 @@ class CommunityService {
     RequestPriority priority = RequestPriority.high,
   }) async {
     try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+      await _ensureSpeechAllowed([CommunitySpeechField.reply(request.content)]);
+      final result = await _signalRInvoker<Map<dynamic, dynamic>>(
         'CreateCommunityReply',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -159,7 +185,7 @@ class CommunityService {
     RequestPriority priority = RequestPriority.high,
   }) async {
     try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+      final result = await _signalRInvoker<Map<dynamic, dynamic>>(
         'ToggleCommunityThreadLike',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -184,7 +210,7 @@ class CommunityService {
     RequestPriority priority = RequestPriority.high,
   }) async {
     try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+      final result = await _signalRInvoker<Map<dynamic, dynamic>>(
         'ToggleCommunityThreadFavorite',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -209,7 +235,7 @@ class CommunityService {
     RequestPriority priority = RequestPriority.high,
   }) async {
     try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+      final result = await _signalRInvoker<Map<dynamic, dynamic>>(
         'ToggleCommunityReplyLike',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -234,7 +260,7 @@ class CommunityService {
     RequestPriority priority = RequestPriority.normal,
   }) async {
     try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+      final result = await _signalRInvoker<Map<dynamic, dynamic>>(
         'GetCommunityReplyChildren',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -258,7 +284,7 @@ class CommunityService {
     RequestPriority priority = RequestPriority.normal,
   }) async {
     try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+      final result = await _signalRInvoker<Map<dynamic, dynamic>>(
         'GetMyCommunityOverview',
         requestScope: requestScope ?? RequestScopes.community,
         priority: priority,
@@ -276,4 +302,27 @@ class CommunityService {
       rethrow;
     }
   }
+
+  Future<void> _ensureSpeechAllowed(List<CommunitySpeechField> fields) async {
+    final decision = await speechGuard.check(fields: fields);
+    switch (decision.type) {
+      case CommunitySpeechDecisionType.allowed:
+        return;
+      case CommunitySpeechDecisionType.rulesUnavailable:
+        throw decision.error ??
+            const CommunitySpeechRulesUnavailableException(
+              'Unknown moderation rules error',
+            );
+      case CommunitySpeechDecisionType.blocked:
+      case CommunitySpeechDecisionType.alreadyDisabled:
+        throw const CommunitySpeechBlockedException();
+    }
+  }
+}
+
+class CommunitySpeechBlockedException implements Exception {
+  const CommunitySpeechBlockedException();
+
+  @override
+  String toString() => 'Community speech is disabled';
 }

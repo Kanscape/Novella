@@ -239,7 +239,7 @@ class _CommentPageState extends ConsumerState<CommentPage> {
     );
   }
 
-  Future<void> _postComment(
+  Future<bool> _postComment(
     String content, {
     int? replyId,
     int? parentId,
@@ -280,12 +280,14 @@ class _CommentPageState extends ConsumerState<CommentPage> {
         // 刷新列表
         _loadData(refresh: true);
       }
+      return true;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('发布失败: $e'), backgroundColor: Colors.red),
         );
       }
+      return false;
     }
   }
 

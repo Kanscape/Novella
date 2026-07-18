@@ -13,6 +13,7 @@ import 'package:novella/core/widgets/m3e_refresh_indicator.dart';
 import 'package:novella/data/models/community.dart';
 import 'package:novella/data/services/community_service.dart';
 import 'package:novella/features/comment/widgets/comment_input_sheet.dart';
+import 'package:novella/features/community/moderation/community_speech_guard.dart';
 import 'package:novella/features/reader/shared/reader_text_sanitizer.dart';
 
 class CommunityThreadPage extends StatefulWidget {
@@ -39,10 +40,12 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _replyAnchorKeys = <int, GlobalKey>{};
   late final CommunityService _communityService;
+  late final CommunitySpeechGuard _speechGuard;
 
   bool _loading = true;
   bool _loadingMoreReplies = false;
   bool _postingReply = false;
+  bool _speechStatusLoaded = false;
   bool _togglingLike = false;
   bool _togglingFavorite = false;
   bool _resolvingReplyTarget = false;
@@ -60,6 +63,9 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
       screenClass: 'CommunityThreadPage',
     );
     _communityService = widget._communityService ?? CommunityService();
+    _speechGuard = _communityService.speechGuard;
+    _speechGuard.addListener(_handleSpeechStateChanged);
+    unawaited(_loadSpeechState());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_loadThread());
@@ -79,9 +85,25 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
 
   @override
   void dispose() {
+    _speechGuard.removeListener(_handleSpeechStateChanged);
     _replyHighlightTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSpeechState() async {
+    try {
+      await _speechGuard.isSpeechDisabled();
+      if (mounted) {
+        setState(() => _speechStatusLoaded = true);
+      }
+    } catch (_) {}
+  }
+
+  void _handleSpeechStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadThread({int replyPage = 1, bool append = false}) async {
@@ -461,6 +483,9 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
   }
 
   Future<void> _openReplySheet({CommunityThreadReply? reply}) async {
+    if (!_speechStatusLoaded || _speechGuard.speechDisabled || _postingReply) {
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -468,19 +493,21 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
         hintText: reply == null
             ? '回复帖子...'
             : '回复 ${_communityAuthorText(reply.authorName, reply.authorIsDeleted)}',
-        onSubmit: (content) {
-          unawaited(_postReply(content, replyTo: reply));
-        },
+        onSubmit: (content) => _postReply(content, replyTo: reply),
       ),
     );
   }
 
-  Future<void> _postReply(
+  Future<bool> _postReply(
     String content, {
     CommunityThreadReply? replyTo,
   }) async {
-    if (_postingReply) {
-      return;
+    if (_postingReply || !_speechStatusLoaded) {
+      return false;
+    }
+    if (_speechGuard.speechDisabled) {
+      _returnToCommunityHome();
+      return false;
     }
     setState(() => _postingReply = true);
     try {
@@ -493,13 +520,28 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
       );
       await _loadThread();
       _showSnack('回复已发布。');
+      return true;
+    } on CommunitySpeechBlockedException {
+      _returnToCommunityHome();
+      return false;
+    } on CommunitySpeechRulesUnavailableException {
+      _showSnack('请稍后重试');
+      return false;
     } catch (error) {
       _showSnack(_formatError(error));
+      return false;
     } finally {
       if (mounted) {
         setState(() => _postingReply = false);
       }
     }
+  }
+
+  void _returnToCommunityHome() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Future<void> _toggleReplyLike(CommunityThreadReply reply) async {
@@ -664,6 +706,9 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
     final appBarTitle = thread?.boardName.isNotEmpty == true
         ? thread!.boardName
         : (widget.initialTitle ?? '帖子详情');
+    final speechDisabled = !_speechStatusLoaded || _speechGuard.speechDisabled;
+    final replyDisabled =
+        speechDisabled || _postingReply || (thread?.locked ?? false);
 
     return Scaffold(
       appBar: AppBar(
@@ -671,11 +716,14 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
         surfaceTintColor: Colors.transparent,
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _postingReply || (thread?.locked ?? false)
-            ? null
-            : () => _openReplySheet(),
-        backgroundColor: colorScheme.primaryContainer.withValues(alpha: 0.9),
-        foregroundColor: colorScheme.primary,
+        key: const ValueKey('community-thread-reply-fab'),
+        onPressed: replyDisabled ? null : () => _openReplySheet(),
+        backgroundColor: replyDisabled
+            ? colorScheme.surfaceContainerHighest
+            : colorScheme.primaryContainer.withValues(alpha: 0.9),
+        foregroundColor: replyDisabled
+            ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
+            : colorScheme.primary,
         icon: const Icon(Icons.reply_rounded),
         label: Text(_postingReply ? '发送中' : '回复'),
       ),
@@ -716,9 +764,11 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
                         anchorKey: _replyAnchorKey(reply.id),
                         reply: reply,
                         highlightedReplyId: _highlightedReplyId,
-                        onReply: (targetReply) {
-                          unawaited(_openReplySheet(reply: targetReply));
-                        },
+                        onReply: speechDisabled
+                            ? null
+                            : (targetReply) {
+                                unawaited(_openReplySheet(reply: targetReply));
+                              },
                         onLike: () => _toggleReplyLike(reply),
                         childReplyKeyBuilder: _replyAnchorKey,
                         onLoadMoreChildren: reply.childPage.hasMore
@@ -756,6 +806,7 @@ class _CommunityThreadPageState extends State<CommunityThreadPage> {
                           (_) => CommunityThreadPage(
                             threadId: related.id,
                             initialTitle: related.title,
+                            communityService: _communityService,
                           ),
                         ),
                       ),
@@ -1162,7 +1213,7 @@ class _ReplyCard extends StatelessWidget {
   final GlobalKey anchorKey;
   final CommunityThreadReply reply;
   final int? highlightedReplyId;
-  final ValueChanged<CommunityThreadReply> onReply;
+  final ValueChanged<CommunityThreadReply>? onReply;
   final VoidCallback onLike;
   final GlobalKey Function(int replyId) childReplyKeyBuilder;
   final VoidCallback? onLoadMoreChildren;
@@ -1275,9 +1326,10 @@ class _ReplyCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _ReplyActionChip(
+                  key: ValueKey('community-thread-reply-action-${reply.id}'),
                   icon: Icons.reply_rounded,
                   label: '回复',
-                  onTap: () => onReply(reply),
+                  onTap: onReply == null ? null : () => onReply!(reply),
                 ),
               ],
             ),
@@ -1300,7 +1352,7 @@ class _ReplyCard extends StatelessWidget {
                         anchorKey: childReplyKeyBuilder(child.id),
                         reply: child,
                         highlighted: highlightedReplyId == child.id,
-                        onReply: () => onReply(child),
+                        onReply: onReply == null ? null : () => onReply!(child),
                       ),
                       if (child != reply.childReplies.last)
                         Divider(
@@ -1345,7 +1397,7 @@ class _ChildReplyCard extends StatelessWidget {
   final GlobalKey anchorKey;
   final CommunityThreadReply reply;
   final bool highlighted;
-  final VoidCallback onReply;
+  final VoidCallback? onReply;
 
   @override
   Widget build(BuildContext context) {
@@ -1416,6 +1468,7 @@ class _ChildReplyCard extends StatelessWidget {
               ),
               const Spacer(),
               IconButton(
+                key: ValueKey('community-thread-child-reply-${reply.id}'),
                 onPressed: onReply,
                 icon: const Icon(Icons.reply_rounded, size: 18),
                 visualDensity: VisualDensity.compact,
@@ -1717,6 +1770,7 @@ class _ActionPill extends StatelessWidget {
 
 class _ReplyActionChip extends StatelessWidget {
   const _ReplyActionChip({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,
@@ -1725,7 +1779,7 @@ class _ReplyActionChip extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool active;
 
   @override
@@ -1736,6 +1790,8 @@ class _ReplyActionChip extends StatelessWidget {
         : colorScheme.surfaceContainerHighest.withValues(alpha: 0.75);
     final foreground = active
         ? colorScheme.primary
+        : onTap == null
+        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
         : colorScheme.onSurfaceVariant;
 
     return Material(

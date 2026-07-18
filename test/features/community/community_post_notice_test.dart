@@ -28,6 +28,23 @@ void main() {
     expect(find.text('使用须知'), findsOneWidget);
     expect(find.text('社区公告'), findsNothing);
     expect(find.text('应用相关问题请前往 GitHub 反馈'), findsOneWidget);
+    expect(find.text('在合适的版块发帖'), findsOneWidget);
+    expect(
+      find.textContaining('请勿求书', findRichText: true),
+      findsOneWidget,
+    );
+    final warningText = tester.widget<RichText>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is RichText && widget.text.toPlainText().contains('请勿求书'),
+      ),
+    );
+    final warningSpan = (warningText.text as TextSpan).children!
+        .whereType<TextSpan>()
+        .singleWhere((span) => span.text == '请勿求书');
+    expect(warningSpan.style?.fontWeight, FontWeight.w800);
+    expect(warningText.text.toPlainText(), contains('请勿求书。发帖前'));
+    expect(warningText.text.toPlainText(), isNot(contains('请勿求书。\n')));
     expect(find.text('发布帖子'), findsNothing);
     expect(await store.hasAccepted(), isFalse);
 

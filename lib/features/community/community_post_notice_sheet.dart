@@ -172,12 +172,19 @@ class _CommunityPostNoticeSheet extends StatelessWidget {
                           ),
                         ),
                         _NoticeBullet(
-                          title: '请在合适的版块发帖',
+                          title: '在合适的版块发帖',
                           body: TextSpan(
                             style: bodyStyle,
                             children: [
+                              TextSpan(
+                                text: '请勿求书',
+                                style: bodyStyle?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: colorScheme.onSurface,
+                                ),
+                              ),
                               const TextSpan(
-                                text: '发帖前请确认内容与版块主题相符。发布在不合适的版块可能导致',
+                                text: '。发帖前请确认内容与版块主题相符。发布在不合适的版块可能导致',
                               ),
                               TextSpan(
                                 text: '账号被封禁',

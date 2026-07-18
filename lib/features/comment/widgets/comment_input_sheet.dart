@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class CommentInputSheet extends StatefulWidget {
   final String hintText;
-  final Function(String content) onSubmit;
+  final Future<bool> Function(String content) onSubmit;
 
   const CommentInputSheet({
     super.key,
@@ -17,6 +17,7 @@ class CommentInputSheet extends StatefulWidget {
 class _CommentInputSheetState extends State<CommentInputSheet> {
   final TextEditingController _controller = TextEditingController();
   bool _canSubmit = false;
+  bool _submitting = false;
 
   @override
   void initState() {
@@ -34,10 +35,21 @@ class _CommentInputSheetState extends State<CommentInputSheet> {
     super.dispose();
   }
 
-  void _submit() {
-    if (!_canSubmit) return;
-    widget.onSubmit(_controller.text.trim());
-    Navigator.pop(context);
+  Future<void> _submit() async {
+    if (!_canSubmit || _submitting) return;
+    setState(() => _submitting = true);
+
+    try {
+      final shouldClose = await widget.onSubmit(_controller.text.trim());
+      if (!mounted) return;
+      if (shouldClose) {
+        Navigator.pop(context);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
   }
 
   @override
@@ -76,9 +88,14 @@ class _CommentInputSheetState extends State<CommentInputSheet> {
           ),
           const SizedBox(height: 12),
           FilledButton.icon(
-            onPressed: _canSubmit ? _submit : null,
-            icon: const Icon(Icons.send_rounded, size: 18),
-            label: const Text('发送'),
+            onPressed: _canSubmit && !_submitting ? _submit : null,
+            icon: _submitting
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.send_rounded, size: 18),
+            label: Text(_submitting ? '发送中' : '发送'),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),

@@ -6,6 +6,7 @@ import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/community.dart';
 import 'package:novella/data/services/community_service.dart';
 import 'package:novella/features/community/community_board_icon.dart';
+import 'package:novella/features/community/moderation/community_speech_guard.dart';
 import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
 class CommunityComposePage extends StatefulWidget {
@@ -20,6 +21,7 @@ class CommunityComposePage extends StatefulWidget {
 
 class _CommunityComposePageState extends State<CommunityComposePage> {
   late final CommunityService _communityService;
+  late final CommunitySpeechGuard _speechGuard;
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
   final QuillController _quillController = QuillController.basic();
@@ -27,6 +29,7 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
 
   bool _loadingCatalog = true;
   bool _submitting = false;
+  bool _speechStatusLoaded = false;
   String? _errorMessage;
   List<CommunityCatalogBoard> _catalogBoards = const <CommunityCatalogBoard>[];
   String? _selectedBoardKey;
@@ -36,7 +39,10 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
   void initState() {
     super.initState();
     _communityService = widget._communityService ?? CommunityService();
+    _speechGuard = _communityService.speechGuard;
+    _speechGuard.addListener(_refreshComposerState);
     _quillController.addListener(_refreshComposerState);
+    unawaited(_loadSpeechState());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_loadCatalogBoards());
@@ -46,11 +52,21 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
 
   @override
   void dispose() {
+    _speechGuard.removeListener(_refreshComposerState);
     _quillController.removeListener(_refreshComposerState);
     _titleController.dispose();
     _editorFocusNode.dispose();
     _quillController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSpeechState() async {
+    try {
+      await _speechGuard.isSpeechDisabled();
+      if (mounted) {
+        setState(() => _speechStatusLoaded = true);
+      }
+    } catch (_) {}
   }
 
   void _refreshComposerState() {
@@ -145,6 +161,13 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
     if (_submitting) {
       return;
     }
+    if (!_speechStatusLoaded) {
+      return;
+    }
+    if (_speechGuard.speechDisabled) {
+      _returnToCommunityHome();
+      return;
+    }
     if (_selectedBoardKey == null || _selectedBoardKey!.isEmpty) {
       _showSnack('请先选择板块。');
       return;
@@ -181,6 +204,10 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
         return;
       }
       Navigator.of(context).pop(createdThread);
+    } on CommunitySpeechBlockedException {
+      _returnToCommunityHome();
+    } on CommunitySpeechRulesUnavailableException {
+      _showSnack('请稍后重试');
     } catch (error) {
       _showSnack(_formatError(error));
     } finally {
@@ -190,6 +217,13 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
         });
       }
     }
+  }
+
+  void _returnToCommunityHome() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   String _convertDeltaToHtml() {
@@ -756,6 +790,8 @@ class _CommunityComposePageState extends State<CommunityComposePage> {
     final hasCatalog = _catalogBoards.isNotEmpty;
     final canSubmit =
         !_submitting &&
+        _speechStatusLoaded &&
+        !_speechGuard.speechDisabled &&
         !_loadingCatalog &&
         _selectedBoardKey != null &&
         _selectedBoardKey!.isNotEmpty &&

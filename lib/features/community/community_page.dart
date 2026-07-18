@@ -16,6 +16,7 @@ import 'package:novella/features/community/community_compose_page.dart';
 import 'package:novella/features/community/community_notification_page.dart';
 import 'package:novella/features/community/community_post_notice_sheet.dart';
 import 'package:novella/features/community/community_thread_page.dart';
+import 'package:novella/features/community/moderation/community_speech_guard.dart';
 import 'package:novella/features/community/notification_unread_provider.dart';
 import 'package:novella/features/settings/settings_page.dart';
 
@@ -38,8 +39,10 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   static const int _feedPreloadRemainingItems = 2;
   late final CommunityService _communityService;
   late final CommunityPostNoticeStore _communityPostNoticeStore;
+  late final CommunitySpeechGuard _speechGuard;
 
   bool _isTabActive = true;
+  bool _speechStatusLoaded = false;
   bool _loading = true;
   bool _loadingMore = false;
   String? _errorMessage;
@@ -58,14 +61,38 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   void initState() {
     super.initState();
     _communityService = widget._communityService ?? CommunityService();
+    _speechGuard = _communityService.speechGuard;
+    _speechGuard.addListener(_handleSpeechStateChanged);
     _communityPostNoticeStore =
         widget._communityPostNoticeStore ?? CommunityPostNoticeStore();
+    unawaited(_loadSpeechState());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
       }
       refresh();
     });
+  }
+
+  @override
+  void dispose() {
+    _speechGuard.removeListener(_handleSpeechStateChanged);
+    super.dispose();
+  }
+
+  Future<void> _loadSpeechState() async {
+    try {
+      await _speechGuard.isSpeechDisabled();
+      if (mounted) {
+        setState(() => _speechStatusLoaded = true);
+      }
+    } catch (_) {}
+  }
+
+  void _handleSpeechStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void refresh() {
@@ -88,11 +115,14 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   }
 
   Future<void> _openComposePage() async {
+    if (!_speechStatusLoaded || _speechGuard.speechDisabled) {
+      return;
+    }
     final accepted = await ensureCommunityPostNoticeAccepted(
       context,
       store: _communityPostNoticeStore,
     );
-    if (!mounted || !accepted) {
+    if (!mounted || !accepted || _speechGuard.speechDisabled) {
       return;
     }
 
@@ -125,7 +155,11 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
   Future<void> _openThread(int threadId, String title) {
     return AppRouteLauncher.pushDetail(
       context,
-      (_) => CommunityThreadPage(threadId: threadId, initialTitle: title),
+      (_) => CommunityThreadPage(
+        threadId: threadId,
+        initialTitle: title,
+        communityService: _communityService,
+      ),
     );
   }
 
@@ -370,7 +404,9 @@ class CommunityPageState extends ConsumerState<CommunityPage> {
           IconButton(
             tooltip: '发布帖子',
             icon: const Icon(Icons.edit_note_rounded),
-            onPressed: _openComposePage,
+            onPressed: _speechStatusLoaded && !_speechGuard.speechDisabled
+                ? _openComposePage
+                : null,
           ),
           _NotificationActionButton(
             unreadCount: unreadCount,
