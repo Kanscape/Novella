@@ -147,3 +147,8 @@ flutter:
 dependency_overrides:
   cloudflare_turnstile:
     path: packages/cloudflare_turnstile
+  flutter_inappwebview_macos:
+    git:
+      url: https://github.com/wangqiang1588/flutter_inappwebview.git
+      ref: fc33a449
+      path: flutter_inappwebview_macos
