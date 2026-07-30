@@ -85,7 +85,7 @@ docs/
 .trellis/
 .agents/
 .codex/
-/Web-master/
+/references/
 /.dart_tool/
 /.fvm/
 /.flutter-plugins-dependencies
