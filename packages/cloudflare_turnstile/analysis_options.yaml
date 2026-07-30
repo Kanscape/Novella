@@ -1,8 +1,0 @@
-analyzer:
-  errors:
-    unnecessary_library_directive: ignore
-    inference_failure_on_function_return_type: ignore
-
-linter:
-  rules:
-    lines_longer_than_80_chars: true
