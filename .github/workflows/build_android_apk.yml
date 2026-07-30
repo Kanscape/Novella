@@ -1,0 +1,73 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.base.json"
+      - ".github/workflows/build_android_apk.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.base.json"
+      - ".github/workflows/build_android_apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-unsigned-apk:
+    name: Build Unsigned APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Validate shared package boundaries
+        run: npm run check:boundaries
+
+      - name: Typecheck workspace
+        run: npm run typecheck
+
+      - name: Generate Android project
+        working-directory: apps/mobile
+        run: npx expo prebuild --non-interactive --platform android
+
+      - name: Build unsigned APK
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Collect APK
+        run: cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk novella-unsigned.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: novella-android-unsigned-apk
+          path: novella-unsigned.apk

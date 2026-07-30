@@ -1,0 +1,81 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.base.json"
+      - ".github/workflows/build_ios_ipa.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.base.json"
+      - ".github/workflows/build_ios_ipa.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-ipa:
+    name: Build Unsigned IPA
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Validate shared package boundaries
+        run: npm run check:boundaries
+
+      - name: Typecheck workspace
+        run: npm run typecheck
+
+      - name: Generate iOS project
+        working-directory: apps/mobile
+        run: npx expo prebuild --non-interactive --platform ios
+
+      - name: Install CocoaPods dependencies
+        run: npx pod-install ios
+
+      - name: Build unsigned iOS app
+        run: |
+          xcodebuild \
+            -workspace apps/mobile/ios/Novella.xcworkspace \
+            -scheme Novella \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath apps/mobile/ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir Payload
+          cp -R apps/mobile/ios/build/Build/Products/Release-iphoneos/Novella.app Payload/
+          zip -qry novella-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: novella-unsigned-ipa
+          path: novella-unsigned.ipa

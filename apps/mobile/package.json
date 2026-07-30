@@ -1,0 +1,26 @@
+{
+  "name": "@novella/mobile",
+  "version": "2.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@novella/client-core": "0.0.0",
+    "expo": "~57.0.9",
+    "expo-dev-client": "~57.0.9",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "android": "expo run:android",
+    "dev": "expo start --dev-client",
+    "ios": "expo run:ios",
+    "prebuild": "expo prebuild",
+    "start": "expo start --dev-client",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "private": true
+}

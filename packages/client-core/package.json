@@ -1,0 +1,23 @@
+{
+  "name": "@novella/client-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@novella/api-client": "0.0.0",
+    "@novella/platform-contracts": "0.0.0",
+    "@novella/reader-engine": "0.0.0",
+    "@novella/sync": "0.0.0",
+    "@novella/telemetry": "0.0.0"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
+}

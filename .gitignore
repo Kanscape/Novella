@@ -69,6 +69,11 @@ apps/site/dist/
 apps/site/.generated/
 site/build/
 site/.generated/
+apps/site/public/site_data.json
+apps/site/public/repository.json
+apps/site/public/sitemap.xml
+apps/site/public/404.html
+apps/site/public/assets/announcements/index.json
 
 # Generated type and tool files
 *.generated.*
@@ -80,3 +85,7 @@ docs/
 .trellis/
 .agents/
 .codex/
+/Web-master/
+/.dart_tool/
+/.fvm/
+/.flutter-plugins-dependencies
