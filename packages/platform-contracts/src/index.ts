@@ -20,6 +20,10 @@ export interface CredentialStore {
   set(key: string, value: string): Promise<void>;
 }
 
+export interface PasswordHasher {
+  sha256(value: string): Promise<string>;
+}
+
 export interface HttpRequest {
   body?: JsonValue | string;
   headers?: Readonly<Record<string, string>>;
@@ -36,6 +40,18 @@ export interface HttpResponse<T> {
 
 export interface HttpTransport {
   request<T>(request: HttpRequest): Promise<HttpResponse<T>>;
+}
+
+/**
+ * Platform-neutral SignalR operation transport.
+ *
+ * The concrete connection belongs to the host application because token
+ * storage, WebSocket availability, and lifecycle handling differ between
+ * mobile and desktop.
+ */
+export interface SignalRTransport {
+  invoke<T>(methodName: string, args: readonly unknown[]): Promise<T>;
+  close(): Promise<void>;
 }
 
 export interface Logger {
