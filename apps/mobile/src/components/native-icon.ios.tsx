@@ -25,7 +25,6 @@ const icons: Record<NativeIconName, SystemName> = {
   books: 'books.vertical',
   cache: 'internaldrive',
   chevronRight: 'chevron.right',
-  cloudSync: 'icloud.and.arrow.up',
   clock: 'clock',
   community: 'person.3',
   content: 'rectangle.3.group',
@@ -36,7 +35,6 @@ const icons: Record<NativeIconName, SystemName> = {
   reader: 'book.pages',
   search: 'magnifyingglass',
   settings: 'gearshape',
-  sync: 'arrow.triangle.2.circlepath',
 };
 
 export type { NativeIconName } from '@/components/native-icon-types';

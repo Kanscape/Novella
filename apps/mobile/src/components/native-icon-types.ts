@@ -17,7 +17,6 @@ export type NativeIconName =
   | 'books'
   | 'cache'
   | 'chevronRight'
-  | 'cloudSync'
   | 'community'
   | 'announcement'
   | 'content'
@@ -28,5 +27,4 @@ export type NativeIconName =
   | 'reader'
   | 'search'
   | 'settings'
-  | 'sync'
   | 'clock';

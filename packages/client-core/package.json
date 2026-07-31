@@ -14,7 +14,6 @@
     "@novella/api-client": "0.0.0",
     "@novella/platform-contracts": "0.0.0",
     "@novella/reader-engine": "0.0.0",
-    "@novella/sync": "0.0.0",
     "@novella/telemetry": "0.0.0"
   },
   "devDependencies": {

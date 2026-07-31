@@ -63,7 +63,7 @@ export default function RegisterRoute() {
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={styles.title}>Create your Novella account</Text>
-          <Text style={styles.description}>Register with LightNovelShelf to sync your shelf, history, and reading progress.</Text>
+              <Text style={styles.description}>Register with LightNovelShelf to use your shelf and community features.</Text>
         </View>
 
         <View style={styles.form}>

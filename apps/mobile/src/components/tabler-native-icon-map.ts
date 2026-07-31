@@ -1,12 +1,10 @@
 import {
   IconAlertTriangle,
   IconArrowBackUp,
-  IconArrowsShuffle,
   IconBook2,
   IconBooks,
   IconChevronRight,
   IconClock,
-  IconCloudUpload,
   IconDatabase,
   IconFilePencil,
   IconHexagon,
@@ -56,7 +54,6 @@ export const tablerNativeIcons: Record<NativeIconName, TablerNativeIcon> = {
   cache: IconDatabase,
   chevronRight: IconChevronRight,
   clock: IconClock,
-  cloudSync: IconCloudUpload,
   community: IconUsers,
   content: IconLayoutDashboard,
   discover: IconBook2,
@@ -66,5 +63,4 @@ export const tablerNativeIcons: Record<NativeIconName, TablerNativeIcon> = {
   reader: IconBook2,
   search: IconSearch,
   settings: IconSettings,
-  sync: IconArrowsShuffle,
 };

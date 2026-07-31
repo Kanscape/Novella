@@ -64,13 +64,6 @@ export function NativeSettingsPanel() {
           title="Cache"
           trailing={<DisclosureIcon />}
         />
-        <NativeGroupedListRow
-          description="Back up settings and reading progress"
-          icon="cloudSync"
-          onPress={() => router.push('/sync')}
-          title="Sync"
-          trailing={<DisclosureIcon />}
-        />
       </NativeGroupedListSection>
 
       <NativeGroupedListSection title="About">

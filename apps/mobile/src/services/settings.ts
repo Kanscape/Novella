@@ -13,7 +13,6 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 export type TranslationMode = 'none' | 't2s' | 's2t';
 
 export interface AppSettings {
-  appSettingsSyncEnabled: boolean;
   bookDetailCacheEnabled: boolean;
   coverColorExtraction: boolean;
   dynamicSchemeVariant: MaterialSchemeVariant;
@@ -39,7 +38,6 @@ export interface AppSettings {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  appSettingsSyncEnabled: false,
   bookDetailCacheEnabled: true,
   coverColorExtraction: false,
   dynamicSchemeVariant: 'tonalSpot',
@@ -130,9 +128,6 @@ function decodeSettings(value: unknown): AppSettings {
   const candidate = value as Record<string, unknown>;
   return {
     ...DEFAULT_SETTINGS,
-    ...(typeof candidate.appSettingsSyncEnabled === 'boolean'
-      ? { appSettingsSyncEnabled: candidate.appSettingsSyncEnabled }
-      : {}),
     ...(typeof candidate.bookDetailCacheEnabled === 'boolean'
       ? { bookDetailCacheEnabled: candidate.bookDetailCacheEnabled }
       : {}),

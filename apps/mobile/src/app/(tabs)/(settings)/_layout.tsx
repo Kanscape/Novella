@@ -15,7 +15,6 @@ export default function SettingsStackLayout() {
       <Stack.Screen name="content" options={{ title: 'Content' }} />
       <Stack.Screen name="appearance" options={{ title: 'Appearance' }} />
       <Stack.Screen name="cache" options={{ title: 'Cache' }} />
-      <Stack.Screen name="sync" options={{ title: 'Sync' }} />
       <Stack.Screen name="about" options={{ title: 'About Novella' }} />
     </Stack>
   );

@@ -23,7 +23,6 @@ import type {
   PasswordHasher,
   SignalRTransport,
 } from '@novella/platform-contracts';
-import type { SyncCrypto } from '@novella/sync';
 import { Telemetry, type TelemetrySink } from '@novella/telemetry';
 
 export const APP_DISPLAY_NAME = 'Novella';
@@ -41,7 +40,6 @@ export interface ClientRuntimeDependencies {
   lifecycle: AppLifecycle;
   logger: Logger;
   storage: KeyValueStore;
-  syncCrypto: SyncCrypto;
   telemetry: TelemetrySink;
 }
 
