@@ -15,6 +15,18 @@ The previous Flutter implementation is preserved on the `archive/flutter` branch
 
 The React Native rewrite is under active development. The application contract and data formats remain compatible with the existing LightNovelShelf service unless a migration note documents a change.
 
+## Mobile development
+
+The mobile app uses a local Expo development build for Android and iOS. EAS and
+Expo Go are not part of the development workflow.
+
+```bash
+npm run prebuild --workspace @novella/mobile
+npm run android --workspace @novella/mobile
+npm run ios --workspace @novella/mobile
+npm run dev:mobile
+```
+
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE).

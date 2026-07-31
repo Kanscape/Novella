@@ -10,14 +10,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   scheme: 'novella',
   userInterfaceStyle: 'automatic',
   icon: './assets/icon.png',
-  plugins: ['expo-dev-client'],
+  plugins: ['expo-router', 'expo-dev-client'],
   ios: {
     bundleIdentifier: 'sh.celia.novella',
     supportsTablet: true,
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
+      backgroundColor: '#FFFFFF',
       backgroundImage: './assets/android-icon-background.png',
       foregroundImage: './assets/android-icon-foreground.png',
       monochromeImage: './assets/android-icon-monochrome.png',
