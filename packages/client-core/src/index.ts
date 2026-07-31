@@ -11,6 +11,7 @@ import {
   type NovelContentRequest,
   type OnlineInfo,
   type PostCommentRequest,
+  type SaveReadPositionRequest,
   type ShelfItem,
 } from '@novella/api-client';
 import type {
@@ -65,6 +66,7 @@ export interface BookDetailUseCase {
 
 export interface ReaderUseCase {
   loadChapter(request: NovelContentRequest): Promise<NovelContent>;
+  savePosition(request: SaveReadPositionRequest): Promise<void>;
 }
 
 export interface CommentsUseCase {
@@ -169,6 +171,14 @@ export function createReaderUseCase(api: ApiClient): ReaderUseCase {
       assertValidBookId(request.bookId);
       assertPositiveInteger(request.sortNum, 'A valid chapter number is required.');
       return api.getNovelContent(request);
+    },
+    savePosition(request: SaveReadPositionRequest) {
+      assertValidBookId(request.bookId);
+      assertPositiveInteger(request.chapterId, 'A valid chapter id is required.');
+      if (request.position.trim().length === 0) {
+        return Promise.reject(new Error('A valid reading position is required.'));
+      }
+      return api.saveReadPosition(request);
     },
   });
 }

@@ -182,6 +182,12 @@ export interface NovelContent {
   readPosition: BookReadPosition | null;
 }
 
+export interface SaveReadPositionRequest {
+  bookId: number;
+  chapterId: number;
+  position: string;
+}
+
 export type CommentTargetType = 'Book' | 'Announcement' | 'Series';
 
 export interface CommentUser {
@@ -363,6 +369,18 @@ export class ApiClient {
         ...(request.convert === undefined ? {} : { Convert: request.convert }),
       },
       decodeNovelContent,
+    );
+  }
+
+  saveReadPosition(request: SaveReadPositionRequest): Promise<void> {
+    return this.invoke(
+      'SaveReadPosition',
+      {
+        Bid: request.bookId,
+        Cid: request.chapterId,
+        XPath: request.position,
+      },
+      () => undefined,
     );
   }
 
