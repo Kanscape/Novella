@@ -1,0 +1,48 @@
+import { useCallback, useEffect, useState } from 'react';
+
+import { ApiError, type BookDetail } from '@novella/api-client';
+
+import { bookDetails } from '@/services/client';
+
+type BookInfoState =
+  | { status: 'loading'; book: null; error: null }
+  | { status: 'ready'; book: BookDetail; error: null }
+  | { status: 'error'; book: null; error: string };
+
+export function useBookInfo(bookId: number) {
+  const [state, setState] = useState<BookInfoState>({
+    status: 'loading',
+    book: null,
+    error: null,
+  });
+
+  const load = useCallback(async () => {
+    setState({ status: 'loading', book: null, error: null });
+    try {
+      const book = await bookDetails.load(bookId);
+      setState({ status: 'ready', book, error: null });
+    } catch (error) {
+      setState({ status: 'error', book: null, error: getBookInfoErrorMessage(error) });
+    }
+  }, [bookId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return {
+    book: state.book,
+    error: state.error,
+    isLoading: state.status === 'loading',
+    reload: load,
+  };
+}
+
+function getBookInfoErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.category === 'auth') return 'Sign in again to open this book.';
+    if (error.category === 'network') return 'The book could not be loaded while offline.';
+    return error.message;
+  }
+  return 'The book details could not be loaded.';
+}
