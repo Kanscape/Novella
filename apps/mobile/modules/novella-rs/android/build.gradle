@@ -1,0 +1,19 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'sh.celia.novella.modules.novellars'
+version = '0.1.0'
+
+android {
+  namespace 'sh.celia.novella.modules.novellars'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+  externalNativeBuild {
+    cmake {
+      path 'src/main/cpp/CMakeLists.txt'
+      version '3.22.1'
+    }
+  }
+}
