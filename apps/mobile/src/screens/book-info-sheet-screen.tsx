@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import {
   ActivityIndicator,
   Pressable,
@@ -18,6 +17,7 @@ import {
 
 import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider';
 import { BookHtmlContent } from '@/components/book-html-content';
+import { ProfileAvatar } from '@/components/profile-avatar';
 import { useBookInfo } from '@/hooks/use-book-info';
 import type { BookDetailPalette } from '@/theme/book-detail-theme';
 
@@ -155,20 +155,18 @@ function UploaderAvatar({
   palette: BookDetailPalette;
   userName: string;
 }) {
-  const fallback = userName.trim().slice(0, 1).toUpperCase() || '?';
-  return avatarUrl ? (
-    <Image accessibilityLabel={`${userName} avatar`} source={avatarUrl} style={styles.avatar} />
-  ) : (
-    <View style={[styles.avatarFallback, { backgroundColor: palette.surfaceContainerHighest }]}>
-      <Text style={[styles.avatarFallbackLabel, { color: palette.onSurface }]}>{fallback}</Text>
-    </View>
+  return (
+    <ProfileAvatar
+      avatarUrl={avatarUrl}
+      fallbackBackground={palette.surfaceContainerHighest}
+      fallbackColor={palette.onSurface}
+      size={56}
+      userName={userName}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  avatar: { borderRadius: 28, height: 56, width: 56 },
-  avatarFallback: { alignItems: 'center', borderRadius: 28, height: 56, justifyContent: 'center', width: 56 },
-  avatarFallbackLabel: { fontSize: 24, fontWeight: '700' },
   content: {
     paddingBottom: 48,
     paddingHorizontal: 24,

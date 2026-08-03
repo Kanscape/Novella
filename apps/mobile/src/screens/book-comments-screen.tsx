@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef } from 'react';
 import {
@@ -18,6 +17,7 @@ import type { CommentItem, CommentReply, CommentUser } from '@novella/api-client
 import { BookCommentsNavigation } from '@/components/book-comments-navigation';
 import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider';
 import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
+import { ProfileAvatar } from '@/components/profile-avatar';
 import { useComments } from '@/hooks/use-comments';
 import { consumeCommentsChanged } from '@/services/comment-events';
 import type { BookDetailPalette } from '@/theme/book-detail-theme';
@@ -370,22 +370,14 @@ function Avatar({
   size: number;
   user: CommentUser;
 }) {
-  return user.avatarUrl ? (
-    <Image accessibilityLabel={`${user.userName} avatar`} source={user.avatarUrl} style={{ borderRadius: size / 2, height: size, width: size }} />
-  ) : (
-    <View style={[
-      styles.avatarFallback,
-      {
-        backgroundColor: palette.surfaceContainerHighest,
-        borderRadius: size / 2,
-        height: size,
-        width: size,
-      },
-    ]}>
-      <Text style={[styles.avatarLabel, { color: palette.onSurface, fontSize: size * 0.4 }]}>
-        {user.userName.trim().slice(0, 1).toUpperCase() || '?'}
-      </Text>
-    </View>
+  return (
+    <ProfileAvatar
+      avatarUrl={user.avatarUrl}
+      fallbackBackground={palette.surfaceContainerHighest}
+      fallbackColor={palette.onSurface}
+      size={size}
+      userName={user.userName}
+    />
   );
 }
 
@@ -406,8 +398,6 @@ function formatRelativeTime(value: string): string {
 
 const styles = StyleSheet.create({
   actionButtons: { alignItems: 'center', flexDirection: 'row', gap: 8 },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  avatarLabel: { fontWeight: '700' },
   commentActions: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 32 },
   commentBlock: { paddingBottom: 8 },
   commentBody: { flex: 1, gap: 4 },
@@ -426,8 +416,7 @@ const styles = StyleSheet.create({
   replyConnector: { fontWeight: '400' },
   replyIdentity: { alignItems: 'center', flexDirection: 'row', gap: 8 },
   skeletonAction: { height: 11, marginTop: 4, width: '32%' },
-  skeletonAvatar: { borderRadius: 20, height: 40, overflow: 'hidden', width: 40 },
-  skeletonBody: { flex: 1, gap: 7, paddingTop: 3 },
+  skeletonAvatar: { borderRadius: 20, height: 40, overflow: 'hidden', width: 40 },  skeletonBody: { flex: 1, gap: 7, paddingTop: 3 },
   skeletonLine: { borderRadius: 6, height: 13, overflow: 'hidden', width: '100%' },
   skeletonList: { gap: 22, paddingHorizontal: 16, paddingTop: 8 },
   skeletonName: { height: 12, width: '42%' },
