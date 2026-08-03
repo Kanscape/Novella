@@ -1,27 +1,23 @@
-import { Asset } from 'expo-asset';
+import { arrayBufferToBase64 } from '@/services/reader-rwpm';
 import * as FileSystem from 'expo-file-system';
-import * as Font from 'expo-font';
 
 import { SERVICE_ENDPOINTS } from '@novella/api-client';
-import {
-  convertWoff2ToTtf,
-  extractInvisibleCodepoints,
-} from '../../modules/novella-rs';
 
 const readerFontCache = new Map<string, Promise<string>>();
 const readerFontCacheDirectory = new FileSystem.Directory(
   FileSystem.Paths.cache,
   'novella-reader-fonts',
 );
+// Kept empty: the reader WebView renders the raw chapter like the web
+// master does, so nothing is extracted.
 const readerInvisibleCodepoints = new Map<string, ReadonlySet<number>>();
 
 /**
- * Registers a Web-Master chapter font with native text rendering.
- *
- * Web-Master serves obfuscated WOFF2 files. The shared Rust implementation
- * converts them to TTF before Expo Font registration so Android and iOS use
- * the same format. A failed conversion/download blocks encoded chapter text
- * instead of rendering misleading replacement glyphs.
+ * Downloads and caches a Web-Master book font (WOFF2). The cached file is
+ * inlined into each chapter's `@font-face` as a `data:font/woff2` URL so both
+ * platforms render it exactly like the web master (which links the font URL
+ * directly). The legacy Rust conversion and expo-font registration are gone —
+ * the WebView consumes WOFF2 natively.
  */
 export function loadReaderFont(family: string, fontUrl: string): Promise<string> {
   const cached = readerFontCache.get(fontUrl);
@@ -56,6 +52,33 @@ export function invisibleCodepointsForReaderFont(family: string): ReadonlySet<nu
   return readerInvisibleCodepoints.get(family) ?? new Set<number>();
 }
 
+/**
+ * Returns the cached book font as a WOFF2 base64 data URL suitable for an
+ * `@font-face` src.
+ *
+ * The backend serves one font per book, so a chapter's `fontUrl` is stable for
+ * the whole book. A missing cache entry returns null (the caller decides how to
+ * handle the missing font).
+ */
+export function readerFontDataUrl(fontUrl: string | null | undefined): string | null {
+  const resolved = resolveReaderFontUrl(fontUrl);
+  if (!resolved) return null;
+  const cacheKey = hashFontUrl(resolved);
+  const woff2File = new FileSystem.File(readerFontCacheDirectory, `${cacheKey}.woff2`);
+  if (!woff2File.exists || (woff2File.size ?? 0) < 4) return null;
+  try {
+    const bytes = woff2File.bytesSync();
+    if (!isWoff2Bytes(bytes)) return null;
+    const buffer = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
+    return `data:font/woff2;base64,${arrayBufferToBase64(buffer)}`;
+  } catch {
+    return null;
+  }
+}
+
 export function clearReaderFontCache(): number {
   readerFontCache.clear();
   readerInvisibleCodepoints.clear();
@@ -68,24 +91,8 @@ export function clearReaderFontCache(): number {
 
 async function loadReaderFontInternal(family: string, url: string): Promise<string> {
   console.info('[ReaderFont] loading', { family, url });
-  const fontFile = await getCachedFontFile(url);
-  // Mark the already-downloaded file as an Expo Asset so expo-font uses its
-  // file:// URI instead of attempting a second remote download.
-  const asset = Asset.fromURI(fontFile.uri);
-  asset.localUri = fontFile.uri;
-  asset.downloaded = true;
-  await Font.loadAsync(family, asset);
-  if (!Font.isLoaded(family)) {
-    throw new Error(`Expo Font did not register ${family}`);
-  }
-  const ttfBytes = fontFile.bytesSync();
-  const invisible = await extractInvisibleCodepoints(ttfBytes);
-  readerInvisibleCodepoints.set(family, new Set(invisible));
-  console.info('[ReaderFont] extracted invisible codepoints', {
-    family,
-    count: invisible.length,
-  });
-  console.info('[ReaderFont] registered', { family, uri: fontFile.uri });
+  const woff2File = await getCachedFontFile(url);
+  console.info('[ReaderFont] cached WOFF2', { uri: woff2File.uri, bytes: woff2File.size });
   return family;
 }
 
@@ -93,27 +100,26 @@ async function getCachedFontFile(url: string): Promise<FileSystem.File> {
   ensureCacheDirectory();
 
   const cacheKey = hashFontUrl(url);
-  const ttfFile = new FileSystem.File(readerFontCacheDirectory, `${cacheKey}.ttf`);
-  if (ttfFile.exists && isTtfFile(ttfFile)) {
-    console.info('[ReaderFont] using cached TTF', { uri: ttfFile.uri });
-    return ttfFile;
+  const woff2File = new FileSystem.File(readerFontCacheDirectory, `${cacheKey}.woff2`);
+  if (woff2File.exists && isWoff2File(woff2File)) {
+    console.info('[ReaderFont] using cached WOFF2', { uri: woff2File.uri });
+    return woff2File;
   }
-  if (ttfFile.exists) ttfFile.delete();
+  if (woff2File.exists) woff2File.delete();
+
+  // Drop any legacy TTF produced by the previous conversion pipeline.
+  const legacyTtf = new FileSystem.File(readerFontCacheDirectory, `${cacheKey}.ttf`);
+  if (legacyTtf.exists) legacyTtf.delete();
 
   console.info('[ReaderFont] downloading WOFF2', { url });
-  const woff2File = await downloadFont(url, `${cacheKey}.woff2`);
-  try {
-    const woff2Bytes = woff2File.bytesSync();
-    if (!isWoff2Bytes(woff2Bytes)) throw new Error('Reader font is not a WOFF2 file');
-    console.info('[ReaderFont] downloaded WOFF2', { bytes: woff2Bytes.byteLength });
-    const ttfBytes = await convertWoff2ToTtf(woff2Bytes);
-    if (!isTtfBytes(ttfBytes)) throw new Error('Rust WOFF2 conversion returned invalid TTF');
-    ttfFile.write(ttfBytes);
-    console.info('[ReaderFont] converted WOFF2 to TTF', { bytes: ttfBytes.byteLength });
-    return ttfFile;
-  } finally {
-    if (woff2File.exists) woff2File.delete();
+  const downloaded = await downloadFont(url, `${cacheKey}.woff2`);
+  const bytes = downloaded.bytesSync();
+  if (!isWoff2Bytes(bytes)) {
+    downloaded.delete();
+    throw new Error('Reader font is not a WOFF2 file');
   }
+  console.info('[ReaderFont] downloaded WOFF2', { bytes: bytes.byteLength });
+  return downloaded;
 }
 
 function ensureCacheDirectory(): void {
@@ -137,15 +143,9 @@ function readUint32(bytes: Uint8Array, offset: number): number {
   ) >>> 0;
 }
 
-function isTtfFile(file: FileSystem.File): boolean {
+function isWoff2File(file: FileSystem.File): boolean {
   if (!file.exists || (file.size ?? 0) < 4) return false;
-  return isTtfBytes(file.bytesSync());
-}
-
-function isTtfBytes(bytes: Uint8Array): boolean {
-  if (bytes.byteLength < 4) return false;
-  const signature = readUint32(bytes, 0);
-  return signature === 0x00010000 || signature === 0x4f54544f;
+  return isWoff2Bytes(file.bytesSync());
 }
 
 function isWoff2Bytes(bytes: Uint8Array): boolean {

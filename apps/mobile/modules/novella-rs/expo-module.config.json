@@ -1,9 +1,0 @@
-{
-  "platforms": ["android", "ios"],
-  "android": {
-    "modules": ["sh.celia.novella.modules.novellars.NovellaRsModule"]
-  },
-  "ios": {
-    "modules": ["NovellaRsModule"]
-  }
-}

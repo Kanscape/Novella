@@ -201,12 +201,25 @@ export function calculateReaderProgress(
   };
 }
 
+export interface NormalizeNovelBlocksOptions {
+  /**
+   * Skip invisible-codepoint stripping and entity repair so the block text
+   * stays byte-identical with the WebView-rendered DOM.
+   * The web master renders the raw server HTML the same way. Default: true
+   * (legacy RN/Flutter text-layout behavior).
+   */
+  sanitize?: boolean;
+}
+
 /** Normalize server HTML into stable render units without importing a DOM runtime. */
 export function normalizeNovelBlocks(
   html: string,
   invisibleCodepoints: ReadonlySet<number> = EMPTY_INVISIBLE_CODEPOINTS,
+  options: NormalizeNovelBlocksOptions = {},
 ): NovelReaderBlock[] {
-  const source = removeReaderMetadata(sanitizeNovelHtml(html, invisibleCodepoints));
+  const source = removeReaderMetadata(
+    options.sanitize === false ? html : sanitizeNovelHtml(html, invisibleCodepoints),
+  );
   const nodes = parseHtmlBlockNodes(source);
   const blocks = selectLeafBlockNodes(nodes, source);
   const result = blocks.map((node) => createNovelBlock(

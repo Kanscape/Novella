@@ -8,12 +8,12 @@ import {
 } from '@/services/reader-font-loader';
 
 /**
- * Loads the optional chapter font into a native RN font family.
+ * Loads the optional book font for the reader.
  *
- * The chapter content remains HTML, but the font is registered with the
- * native text system so `react-native-render-html` can render it without a
- * WebView. Failed font downloads intentionally fall back to the platform
- * font instead of blocking the chapter.
+ * The font is downloaded/cached (WOFF2) and inlined into each chapter's
+ * `@font-face` as a data URL; the reader WebView renders it natively. A failed
+ * font download intentionally gates the chapter (encoded PUA text would
+ * otherwise render as tofu boxes).
  */
 export type ReaderFontState =
   | { status: 'idle'; family: undefined; error: undefined; invisibleCodepoints: ReadonlySet<number> }
