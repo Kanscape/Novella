@@ -2,43 +2,53 @@ import type { PrimitiveBaseProps, ViewEvent } from '@expo/ui/jetpack-compose';
 import { createViewModifierEventListener } from '@expo/ui/jetpack-compose/modifiers';
 import { requireNativeView } from 'expo';
 
-export interface NativeM3ExpressiveDropdownItem {
+export type NativeSelectionMenuIcon =
+  | 'books'
+  | 'equal'
+  | 'sparkles'
+  | 'tag'
+  | 'textSize'
+  | 'user';
+
+export interface NativeSelectionMenuItem {
   enabled?: boolean;
+  icon?: NativeSelectionMenuIcon;
   label: string;
 }
 
-export interface NativeM3ExpressiveDropdownProps extends PrimitiveBaseProps {
+export interface NativeSelectionMenuProps extends PrimitiveBaseProps {
   enabled?: boolean;
   expanded: boolean;
-  items: readonly NativeM3ExpressiveDropdownItem[];
+  items: readonly NativeSelectionMenuItem[];
   onExpandedChange?: (expanded: boolean) => void;
   onItemSelected?: (index: number) => void;
   selectedIndex: number;
 }
 
 type NativeViewProps = Omit<
-  NativeM3ExpressiveDropdownProps,
+  NativeSelectionMenuProps,
   'onExpandedChange' | 'onItemSelected' | 'items'
 > &
   ViewEvent<'onExpandedChange', { value: boolean }> &
   ViewEvent<'onItemSelected', { index: number }> & {
-    items: NativeM3ExpressiveDropdownItem[];
+    items: NativeSelectionMenuItem[];
   };
 
-const NativeView = requireNativeView<NativeViewProps>('NovellaUi', 'M3ExpressiveDropdown');
+const NativeView = requireNativeView<NativeViewProps>('NovellaUi', 'SelectionMenu');
 
-export function NativeM3ExpressiveDropdown({
+export function NativeSelectionMenu({
   items,
   modifiers,
   onExpandedChange,
   onItemSelected,
   ...props
-}: NativeM3ExpressiveDropdownProps) {
+}: NativeSelectionMenuProps) {
   return (
     <NativeView
       {...props}
       items={items.map((item) => ({
         enabled: item.enabled ?? true,
+        ...(item.icon ? { icon: item.icon } : {}),
         label: item.label,
       }))}
       {...(modifiers ? { modifiers } : {})}

@@ -8,6 +8,10 @@ class NovellaUiModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("NovellaUi")
 
+    ExpoUIView<BlurHashProps>("BlurHash") {
+      Content { props -> BlurHashContent(props) }
+    }
+
     ExpoUIView<TopAppBarScaffoldProps>("TopAppBarScaffold") {
       val onActionPressed by Event<TopAppBarActionEvent>()
       val onBackPressed by Event<BackPressedEvent>()
@@ -21,12 +25,33 @@ class NovellaUiModule : Module() {
       }
     }
 
-    ExpoUIView<M3ExpressiveDropdownProps>("M3ExpressiveDropdown") {
+    ExpoUIView<SegmentedControlProps>("SegmentedControl") {
+      val onValueChange by Event<SegmentedControlChangeEvent>()
+
+      Content { props ->
+        SegmentedControlContent(props) { onValueChange(it) }
+      }
+    }
+
+    ExpoUIView<SearchBarProps>("SearchBar") {
+      val onQueryChange by Event<SearchTextEvent>()
+      val onSearch by Event<SearchTextEvent>()
+
+      Content { props ->
+        SearchBarContent(
+          props,
+          onQueryChange = { onQueryChange(it) },
+          onSearch = { onSearch(it) }
+        )
+      }
+    }
+
+    ExpoUIView<SelectionMenuProps>("SelectionMenu") {
       val onExpandedChange by Event<ExpandedChangeEvent>()
       val onItemSelected by Event<DropdownItemSelectedEvent>()
 
       Content { props ->
-        M3ExpressiveDropdownContent(
+        SelectionMenuContent(
           props,
           onExpandedChange = { onExpandedChange(ExpandedChangeEvent(it)) },
           onItemSelected = { onItemSelected(DropdownItemSelectedEvent(it)) }

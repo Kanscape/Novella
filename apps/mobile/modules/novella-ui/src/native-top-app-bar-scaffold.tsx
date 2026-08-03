@@ -4,11 +4,29 @@ import { requireNativeView } from 'expo';
 import type { ReactNode } from 'react';
 import type { ColorValue } from 'react-native';
 
+import type { NativeSelectionMenuIcon } from './native-selection-menu';
+
+export type NativeTopAppBarActionMenuItem = {
+  enabled?: boolean;
+  icon?: NativeSelectionMenuIcon;
+  id: string;
+  label: string;
+  selected?: boolean;
+};
+
 export type NativeTopAppBarAction = {
   accessibilityLabel: string;
   enabled?: boolean;
-  icon: 'pencil';
+  icon:
+    | 'adjustmentsHorizontal'
+    | 'check'
+    | 'dots'
+    | 'folderPlus'
+    | 'pencil'
+    | 'sortAscending'
+    | 'userCircle';
   id: string;
+  menuItems?: readonly NativeTopAppBarActionMenuItem[];
 };
 
 export interface NativeTopAppBarScaffoldProps extends PrimitiveBaseProps {
@@ -23,13 +41,15 @@ export interface NativeTopAppBarScaffoldProps extends PrimitiveBaseProps {
   title: string;
 }
 
-type NativeViewProps = Omit<NativeTopAppBarScaffoldProps, 'onActionPress' | 'onBackPress'> &
+type NativeViewProps = Omit<NativeTopAppBarScaffoldProps, 'onActionPress' | 'onBackPress' | 'actions'> &
+  { actions?: Array<Omit<NativeTopAppBarAction, 'menuItems'> & { menuItems?: NativeTopAppBarActionMenuItem[] }> } &
   ViewEvent<'onActionPressed', { id: string }> &
   ViewEvent<'onBackPressed', { value: boolean }>;
 
 const NativeView = requireNativeView<NativeViewProps>('NovellaUi', 'TopAppBarScaffold');
 
 export function NativeTopAppBarScaffold({
+  actions,
   children,
   modifiers,
   onActionPress,
@@ -39,6 +59,17 @@ export function NativeTopAppBarScaffold({
   return (
     <NativeView
       {...props}
+      {...(actions
+        ? {
+            actions: actions.map((action) => ({
+              accessibilityLabel: action.accessibilityLabel,
+              ...(action.enabled === undefined ? {} : { enabled: action.enabled }),
+              icon: action.icon,
+              id: action.id,
+              ...(action.menuItems ? { menuItems: [...action.menuItems] } : {}),
+            })),
+          }
+        : {})}
       {...(modifiers ? { modifiers } : {})}
       onActionPressed={
         onActionPress ? (event) => onActionPress(event.nativeEvent.id) : undefined

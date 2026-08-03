@@ -14,6 +14,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
@@ -35,20 +39,42 @@ data class BackPressedEvent(
 ) : Record
 
 enum class TopAppBarActionIcon(val value: String) : Enumerable {
-  PENCIL("pencil");
+  ADJUSTMENTS_HORIZONTAL("adjustmentsHorizontal"),
+  CHECK("check"),
+  DOTS("dots"),
+  FOLDER_PLUS("folderPlus"),
+  PENCIL("pencil"),
+  SORT_ASCENDING("sortAscending"),
+  USER_CIRCLE("userCircle");
 
   val resourceId: Int
     get() = when (this) {
+      ADJUSTMENTS_HORIZONTAL -> R.drawable.ic_tabler_adjustments_horizontal_24
+      CHECK -> R.drawable.ic_tabler_check_24
+      DOTS -> R.drawable.ic_tabler_dots_24
+      FOLDER_PLUS -> R.drawable.ic_tabler_folder_plus_24
       PENCIL -> R.drawable.ic_pencil_24
+      SORT_ASCENDING -> R.drawable.ic_tabler_sort_ascending_24
+      USER_CIRCLE -> R.drawable.ic_tabler_user_circle_24
     }
 }
+
+@OptimizedRecord
+data class TopAppBarActionMenuItem(
+  @Field val id: String = "",
+  @Field val label: String = "",
+  @Field val enabled: Boolean = true,
+  @Field val selected: Boolean = false,
+  @Field val icon: SelectionMenuIcon? = null
+) : Record
 
 @OptimizedRecord
 data class TopAppBarAction(
   @Field val id: String = "",
   @Field val icon: TopAppBarActionIcon = TopAppBarActionIcon.PENCIL,
   @Field val accessibilityLabel: String = "",
-  @Field val enabled: Boolean = true
+  @Field val enabled: Boolean = true,
+  @Field val menuItems: List<TopAppBarActionMenuItem> = emptyList()
 ) : Record
 
 @OptimizedRecord
@@ -131,13 +157,40 @@ private fun TopAppBarActions(
   onActionPressed: (TopAppBarActionEvent) -> Unit
 ) {
   actions.take(3).forEach { action ->
-    IconButton(
-      enabled = action.enabled,
-      onClick = { onActionPressed(TopAppBarActionEvent(action.id)) }
-    ) {
-      Icon(
-        contentDescription = action.accessibilityLabel,
-        painter = painterResource(action.icon.resourceId)
+    var menuExpanded by remember(action.id) { mutableStateOf(false) }
+    Box {
+      IconButton(
+        enabled = action.enabled,
+        onClick = {
+          if (action.menuItems.isEmpty()) {
+            onActionPressed(TopAppBarActionEvent(action.id))
+          } else {
+            menuExpanded = true
+          }
+        }
+      ) {
+        Icon(
+          contentDescription = action.accessibilityLabel,
+          painter = painterResource(action.icon.resourceId)
+        )
+      }
+      SelectionDropdownMenu(
+        enabled = action.enabled,
+        entries = action.menuItems.map { item ->
+          SelectionMenuEntry(
+            id = item.id,
+            label = item.label,
+            enabled = item.enabled,
+            selected = item.selected,
+            icon = item.icon
+          )
+        },
+        expanded = menuExpanded,
+        onDismissRequest = { menuExpanded = false },
+        onSelected = { item ->
+          menuExpanded = false
+          onActionPressed(TopAppBarActionEvent(item.id))
+        }
       )
     }
   }
