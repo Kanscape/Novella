@@ -2,6 +2,7 @@ import {
   hexFromArgb,
 } from '@material/material-color-utilities';
 import { MD3DarkTheme, MD3LightTheme, type MD3Theme } from 'react-native-paper';
+import { extractBlurHashPlaceholder } from '@novella/api-client';
 
 import {
   createMaterialScheme,
@@ -109,17 +110,21 @@ export function interpolateBookDetailTheme(
 export function createBookDetailTheme({
   colorProfile,
   coverColorExtraction,
+  coverPlaceholder,
   coverUrl,
   dynamicSchemeVariant,
   themeSeedColor,
 }: {
   colorProfile: BookColorProfile;
   coverColorExtraction: boolean;
+  coverPlaceholder: string | null;
   coverUrl: string | null;
   dynamicSchemeVariant: MaterialSchemeVariant;
   themeSeedColor: string;
 }): BookDetailTheme {
-  const extractedSeed = coverColorExtraction ? extractCoverSeedColor(coverUrl) : null;
+  const extractedSeed = coverColorExtraction
+    ? extractCoverSeedColor(coverUrl, coverPlaceholder)
+    : null;
   const isDark = colorProfile !== 'light';
   const scheme = createMaterialScheme({
     isDark,
@@ -221,8 +226,14 @@ export function createBookDetailTheme({
   };
 }
 
-export function extractCoverSeedColor(coverUrl: string | null): string | null {
-  const hash = extractCoverBlurHash(coverUrl);
+export function extractCoverSeedColor(
+  coverUrl: string | null,
+  coverPlaceholder: string | null = null,
+): string | null {
+  // Prefer the blurhash the API already delivered; re-parsing the URL is only a
+  // fallback (legacy/raw URLs can carry base83 chars like `+` that URL parsing
+  // corrupts).
+  const hash = coverPlaceholder ?? (coverUrl ? extractBlurHashPlaceholder(coverUrl) : null);
   if (!hash) return null;
   const dc = decode83(hash.slice(2, 6));
   const raw = `#${dc.toString(16).padStart(6, '0')}`;
@@ -232,22 +243,6 @@ export function extractCoverSeedColor(coverUrl: string | null): string | null {
     s: Math.min(1, hsl.s * 1.5 + 0.1),
     l: clamp(hsl.l * 0.9, 0.15, 0.75),
   }));
-}
-
-export function extractCoverBlurHash(coverUrl: string | null): string | null {
-  if (!coverUrl) return null;
-  try {
-    const hash = new URL(coverUrl).searchParams.get('placeholder');
-    if (!hash || hash.length < 6) return null;
-    for (const character of hash) {
-      if (!BASE83.includes(character)) return null;
-    }
-    const sizeFlag = decode83(hash[0] ?? '');
-    const componentCount = (Math.floor(sizeFlag / 9) + 1) * ((sizeFlag % 9) + 1);
-    return hash.length === 4 + 2 * componentCount ? hash : null;
-  } catch {
-    return null;
-  }
 }
 
 function rgbaFromHex(hex: string, alpha: number): string {
