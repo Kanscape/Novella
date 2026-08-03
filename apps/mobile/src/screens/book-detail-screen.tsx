@@ -1,5 +1,5 @@
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
+import { SkeletonGroup } from 'heroui-native';
 import {
   useCallback,
   useRef,
@@ -47,17 +47,21 @@ import {
 
 import type { BookDetail } from '@novella/api-client';
 
+import { BookCoverImage } from '@/components/book-cover-image';
 import { BookDetailNavigation } from '@/components/book-detail-navigation';
 import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider';
 import { BookHtmlContent } from '@/components/book-html-content';
 import { useBookDetail } from '@/hooks/use-book-detail';
-import {
-  extractCoverBlurHash,
-  type BookDetailPalette,
-} from '@/theme/book-detail-theme';
+import { simplifyReaderChapterTitle } from '@/services/chapter-title';
+import { useAppSettings } from '@/services/settings';
+import type { BookDetailPalette } from '@/theme/book-detail-theme';
 
 export interface BookDetailScreenProps {
   bookId: number;
+  bookType?: 'Novel' | 'Comic';
+  initialCoverPlaceholder?: string;
+  initialCoverUrl?: string;
+  initialTitle?: string;
 }
 
 type TablerIcon = ComponentType<ComponentProps<typeof IconHeart>>;
@@ -66,7 +70,13 @@ const BOOK_HERO_HEIGHT = 280;
 const BOOK_HERO_TOOLBAR_HEIGHT = 56;
 const BOOK_HERO_COLLAPSE_DISTANCE = BOOK_HERO_HEIGHT - BOOK_HERO_TOOLBAR_HEIGHT;
 
-export function BookDetailScreen({ bookId }: BookDetailScreenProps) {
+export function BookDetailScreen({
+  bookId,
+  bookType,
+  initialCoverPlaceholder,
+  initialCoverUrl,
+  initialTitle,
+}: BookDetailScreenProps) {
   const {
     book,
     error,
@@ -78,14 +88,26 @@ export function BookDetailScreen({ bookId }: BookDetailScreenProps) {
     shelfError,
     toggleShelf,
   } = useBookDetail(bookId);
-  const detailTheme = useBookDetailRouteTheme(bookId, book?.coverUrl ?? null);
+  const hintedCoverUrl = initialCoverUrl?.trim() ? initialCoverUrl : null;
+  const coverUrl = hintedCoverUrl ?? book?.coverUrl ?? null;
+  const coverPlaceholder = hintedCoverUrl
+    ? initialCoverPlaceholder ?? book?.coverPlaceholder ?? null
+    : book?.coverPlaceholder ?? null;
+  const detailTheme = useBookDetailRouteTheme(bookId, coverUrl, coverPlaceholder);
   const [usesSoftScrollEdge, setUsesSoftScrollEdge] = useState(false);
 
   return (
     <PaperProvider theme={detailTheme.paperTheme}>
       <View style={[styles.root, { backgroundColor: detailTheme.palette.surface }]}>
         <BookDetailNavigation book={book} palette={detailTheme.palette} />
-        {isLoading ? <BookDetailLoading palette={detailTheme.palette} /> : null}
+        {isLoading ? (
+          <BookDetailLoading
+            coverPlaceholder={coverPlaceholder}
+            coverUrl={coverUrl}
+            initialTitle={initialTitle?.trim() || null}
+            palette={detailTheme.palette}
+          />
+        ) : null}
         {error ? (
           <BookDetailError
             error={error}
@@ -97,6 +119,9 @@ export function BookDetailScreen({ bookId }: BookDetailScreenProps) {
         {book ? (
           <BookDetailContent
             book={book}
+            {...(bookType === undefined ? {} : { bookType })}
+            coverPlaceholder={coverPlaceholder}
+            coverUrl={coverUrl}
             isInShelf={isInShelf}
             usesSoftScrollEdge={usesSoftScrollEdge}
             isShelfLoading={isShelfLoading}
@@ -113,6 +138,9 @@ export function BookDetailScreen({ bookId }: BookDetailScreenProps) {
 
 function BookDetailContent({
   book,
+  bookType,
+  coverPlaceholder,
+  coverUrl,
   isInShelf,
   usesSoftScrollEdge,
   isShelfLoading,
@@ -122,6 +150,9 @@ function BookDetailContent({
   shelfError,
 }: {
   book: BookDetail;
+  bookType?: 'Novel' | 'Comic';
+  coverPlaceholder: string | null;
+  coverUrl: string | null;
   isInShelf: boolean;
   usesSoftScrollEdge: boolean;
   isShelfLoading: boolean;
@@ -138,6 +169,12 @@ function BookDetailContent({
   const contentWidth = Math.max(1, width - horizontalPadding * 2);
   const currentSortNum = getCurrentSortNum(book);
   const resumeChapter = currentSortNum ? book.chapters[currentSortNum - 1] : undefined;
+  const settings = useAppSettings();
+  const cleanResumeTitle = resumeChapter
+    ? settings.cleanChapterTitleScopes.includes('continueReading')
+      ? simplifyReaderChapterTitle(resumeChapter.title)
+      : resumeChapter.title
+    : null;
   const startSortNum = currentSortNum ?? 1;
   const latestChapter = book.chapters.at(-1)?.title ?? book.lastUpdatedChapter;
   const usesCollapsibleAppBar = process.env.EXPO_OS === 'android';
@@ -177,6 +214,8 @@ function BookDetailContent({
           ) : (
             <InlineBookHero
               book={book}
+              coverPlaceholder={coverPlaceholder}
+              coverUrl={coverUrl}
               horizontalPadding={horizontalPadding}
               palette={palette}
               scrollOffset={scrollOffset}
@@ -217,11 +256,13 @@ function BookDetailContent({
             icon={({ color }) => <IconPlayerPlayFilled color={color} size={22} />}
             labelStyle={styles.readButtonLabel}
             mode="contained"
-            onPress={() => openReader(book.id, startSortNum)}
+            onPress={() => openReader(book.id, book.type ?? bookType ?? 'Novel', startSortNum)}
             style={styles.readButton}
             textColor={palette.onPrimary}
           >
-            {resumeChapter ? `Continue · ${shortenChapterTitle(resumeChapter.title)}` : 'Start reading'}
+            {cleanResumeTitle
+              ? `Continue · ${shortenChapterTitle(cleanResumeTitle)}`
+              : 'Start reading'}
           </Button>
         </View>
 
@@ -290,7 +331,7 @@ function BookDetailContent({
               accessibilityLabel={`Read chapter ${sortNum}, ${chapter.title}`}
               accessibilityRole="button"
               key={chapter.id}
-              onPress={() => openReader(book.id, sortNum)}
+              onPress={() => openReader(book.id, book.type ?? bookType ?? 'Novel', sortNum)}
               rippleColor={hexWithAlpha(palette.primary, 0.1)}
             >
               <View style={styles.chapterRow}>
@@ -334,6 +375,8 @@ function BookDetailContent({
       {usesCollapsibleAppBar ? (
         <CollapsibleBookAppBar
           book={book}
+          coverPlaceholder={coverPlaceholder}
+          coverUrl={coverUrl}
           horizontalPadding={horizontalPadding}
           palette={palette}
           scrollOffset={scrollOffset}
@@ -346,18 +389,22 @@ function BookDetailContent({
 
 function CollapsibleBookAppBar({
   book,
+  coverPlaceholder,
+  coverUrl,
   horizontalPadding,
   palette,
   scrollOffset,
   topInset,
 }: {
   book: BookDetail;
+  coverPlaceholder: string | null;
+  coverUrl: string | null;
   horizontalPadding: number;
   palette: BookDetailPalette;
   scrollOffset: SharedValue<number>;
   topInset: number;
 }) {
-  const author = book.authorName?.trim() || book.classification.author?.trim() || 'Unknown author';
+  const author = book.authorName?.trim() ?? '';
   const maxHeight = BOOK_HERO_HEIGHT + topInset;
   const minHeight = BOOK_HERO_TOOLBAR_HEIGHT + topInset;
   const appBarStyle = useAnimatedStyle(() => ({
@@ -408,6 +455,8 @@ function CollapsibleBookAppBar({
         <BookHeroContent
           author={author}
           book={book}
+          coverPlaceholder={coverPlaceholder}
+          coverUrl={coverUrl}
           height={maxHeight}
           horizontalPadding={horizontalPadding}
           palette={palette}
@@ -419,18 +468,22 @@ function CollapsibleBookAppBar({
 
 function InlineBookHero({
   book,
+  coverPlaceholder,
+  coverUrl,
   horizontalPadding,
   palette,
   scrollOffset,
   topInset,
 }: {
   book: BookDetail;
+  coverPlaceholder: string | null;
+  coverUrl: string | null;
   horizontalPadding: number;
   palette: BookDetailPalette;
   scrollOffset: SharedValue<number>;
   topInset: number;
 }) {
-  const author = book.authorName?.trim() || book.classification.author?.trim() || 'Unknown author';
+  const author = book.authorName?.trim() ?? '';
   const height = BOOK_HERO_HEIGHT + topInset;
   const flexibleBackgroundStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
@@ -459,6 +512,8 @@ function InlineBookHero({
         <BookHeroContent
           author={author}
           book={book}
+          coverPlaceholder={coverPlaceholder}
+          coverUrl={coverUrl}
           height={height}
           horizontalPadding={horizontalPadding}
           palette={palette}
@@ -471,12 +526,16 @@ function InlineBookHero({
 function BookHeroContent({
   author,
   book,
+  coverPlaceholder,
+  coverUrl,
   height,
   horizontalPadding,
   palette,
 }: {
   author: string;
   book: BookDetail;
+  coverPlaceholder: string | null;
+  coverUrl: string | null;
   height: number;
   horizontalPadding: number;
   palette: BookDetailPalette;
@@ -498,15 +557,11 @@ function BookHeroContent({
       <View style={[styles.heroContent, { left: horizontalPadding, right: horizontalPadding }]}>
         <View style={styles.coverShadow}>
           <View style={styles.coverFrame}>
-            {book.coverUrl ? (
-              <Image
+            {coverUrl ? (
+              <BookCoverImage
                 accessibilityLabel={`${book.title} cover`}
-                contentFit="cover"
-                placeholder={getCoverPlaceholder(book.coverUrl)}
-                placeholderContentFit="cover"
-                source={book.coverUrl}
-                style={styles.cover}
-                transition={200}
+                blurHash={coverPlaceholder}
+                source={coverUrl}
               />
             ) : (
               <View style={[styles.coverFallback, { backgroundColor: palette.surfaceContainerHighest }]}>
@@ -523,13 +578,15 @@ function BookHeroContent({
           >
             {book.title}
           </Text>
-          <Text
-            numberOfLines={2}
-            selectable
-            style={[styles.author, { color: palette.onSurfaceVariant }]}
-          >
-            {author}
-          </Text>
+          {author ? (
+            <Text
+              numberOfLines={2}
+              selectable
+              style={[styles.author, { color: palette.onSurfaceVariant }]}
+            >
+              {author}
+            </Text>
+          ) : null}
         </View>
       </View>
     </Surface>
@@ -555,7 +612,17 @@ function SectionTitle({ children, palette }: { children: ReactNode; palette: Boo
   return <Text style={[styles.sectionTitle, { color: palette.onSurfaceVariant }]}>{children}</Text>;
 }
 
-function BookDetailLoading({ palette }: { palette: BookDetailPalette }) {
+function BookDetailLoading({
+  coverPlaceholder,
+  coverUrl,
+  initialTitle,
+  palette,
+}: {
+  coverPlaceholder: string | null;
+  coverUrl: string | null;
+  initialTitle: string | null;
+  palette: BookDetailPalette;
+}) {
   const { top: topInset } = useSafeAreaInsets();
   const block = { backgroundColor: palette.surfaceContainerHighest };
   return (
@@ -564,30 +631,87 @@ function BookDetailLoading({ palette }: { palette: BookDetailPalette }) {
       contentContainerStyle={{ backgroundColor: palette.surface }}
       scrollEnabled={false}
     >
-      <View
-        style={[
-          styles.loadingHero,
-          { height: BOOK_HERO_HEIGHT + topInset },
-        ]}
+      <SkeletonGroup
+        animation={{
+          shimmer: {
+            duration: 1_400,
+            highlightColor: shimmerHighlightColor(palette.surfaceContainerHighest),
+          },
+        }}
+        isLoading
+        variant="shimmer"
       >
-        <View style={[styles.loadingBlock, styles.loadingCover, block]} />
-        <View style={styles.loadingTextGroup}>
-          <View style={[styles.loadingBlock, styles.loadingTitle, block]} />
-          <View style={[styles.loadingBlock, styles.loadingAuthor, block]} />
+        <View
+          style={[
+            styles.loadingHero,
+            { height: BOOK_HERO_HEIGHT + topInset },
+          ]}
+        >
+          <View style={[styles.loadingBlock, styles.loadingCover, block]}>
+            {coverUrl ? (
+              <BookCoverImage
+                accessibilityLabel={`${initialTitle ?? 'Book'} cover`}
+                blurHash={coverPlaceholder}
+                source={coverUrl}
+              />
+            ) : null}
+          </View>
+          <View style={styles.loadingTextGroup}>
+            {initialTitle ? (
+              <Text
+                numberOfLines={4}
+                style={[styles.bookTitle, { color: palette.onSurface }]}
+              >
+                {initialTitle}
+              </Text>
+            ) : (
+              <SkeletonGroup.Item
+                style={[styles.loadingBlock, styles.loadingTitle, block]}
+              />
+            )}
+            <SkeletonGroup.Item
+              style={[styles.loadingBlock, styles.loadingAuthor, block]}
+            />
+          </View>
         </View>
-      </View>
-      <View style={styles.loadingBody}>
-        <View style={styles.loadingChipRow}>
-          <View style={[styles.loadingBlock, styles.loadingChip, block]} />
-          <View style={[styles.loadingBlock, styles.loadingChip, block]} />
-          <View style={[styles.loadingBlock, styles.loadingChipWide, block]} />
+        <View style={styles.loadingBody}>
+          <View style={styles.loadingChipRow}>
+            <SkeletonGroup.Item
+              style={[styles.loadingBlock, styles.loadingChip, block]}
+            />
+            <SkeletonGroup.Item
+              style={[styles.loadingBlock, styles.loadingChip, block]}
+            />
+            <SkeletonGroup.Item
+              style={[styles.loadingBlock, styles.loadingChipWide, block]}
+            />
+          </View>
+          <SkeletonGroup.Item
+            style={[styles.loadingBlock, styles.loadingAction, block]}
+          />
+          <SkeletonGroup.Item
+            style={[styles.loadingBlock, styles.loadingParagraph, block]}
+          />
+          <SkeletonGroup.Item
+            style={[styles.loadingBlock, styles.loadingUpdate, block]}
+          />
         </View>
-        <View style={[styles.loadingBlock, styles.loadingAction, block]} />
-        <View style={[styles.loadingBlock, styles.loadingParagraph, block]} />
-        <View style={[styles.loadingBlock, styles.loadingUpdate, block]} />
-      </View>
+      </SkeletonGroup>
     </ScrollView>
   );
+}
+
+/** Pick a shimmer highlight that reads on the detail palette: a bright white
+ * sweep on light blocks, a dim one on dark/OLED blocks. */
+function shimmerHighlightColor(blockColor: string): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(blockColor);
+  if (!match) return 'rgba(255, 255, 255, 0.5)';
+  const value = Number.parseInt(match[1] ?? '', 16);
+  const red = (value >> 16) & 0xff;
+  const green = (value >> 8) & 0xff;
+  const blue = value & 0xff;
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return luminance > 120 ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.16)';
 }
 
 function BookDetailError({
@@ -628,10 +752,10 @@ function getCurrentSortNum(book: BookDetail): number | null {
   return index < 0 ? null : index + 1;
 }
 
-function openReader(bookId: number, sortNum: number) {
+function openReader(bookId: number, type: 'Novel' | 'Comic', sortNum: number) {
   router.push({
     pathname: '/reader/[bookId]/[sortNum]',
-    params: { bookId: String(bookId), sortNum: String(sortNum) },
+    params: { bookId: String(bookId), sortNum: String(sortNum), type },
   });
 }
 
@@ -677,11 +801,6 @@ function heroTransitionStyle(
   };
 }
 
-function getCoverPlaceholder(coverUrl: string): { blurhash: string; width: number; height: number } | null {
-  const blurhash = extractCoverBlurHash(coverUrl);
-  return blurhash ? { blurhash, width: 32, height: 48 } : null;
-}
-
 function hexWithAlpha(hex: string, alpha: number): string {
   const normalized = hex.replace('#', '');
   if (normalized.length !== 6) return hex;
@@ -704,7 +823,6 @@ const styles = StyleSheet.create({
   chapterTitle: { flex: 1, fontSize: 14, letterSpacing: 0.5, lineHeight: 21 },
   chips: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 20 },
   collapsibleAppBar: { left: 0, overflow: 'hidden', position: 'absolute', right: 0, top: 0, zIndex: 1 },
-  cover: { borderRadius: 8, height: 150, width: 100 },
   coverFallback: { alignItems: 'center', height: 150, justifyContent: 'center', width: 100 },
   coverFrame: { borderRadius: 8, height: 150, overflow: 'hidden', width: 100 },
   coverShadow: { borderRadius: 8, boxShadow: '0 3px 8px rgba(0, 0, 0, 0.176)', height: 150, width: 100 },
@@ -725,19 +843,19 @@ const styles = StyleSheet.create({
   introductionClipWithRuby: { maxHeight: 1000 },
   introductionPreview: { borderRadius: 8, paddingVertical: 4 },
   introductionSection: { gap: 8, paddingBottom: 24, paddingTop: 24 },
-  loadingAction: { height: 56, width: '100%' },
+  loadingAction: { borderRadius: 16, height: 56, width: '100%' },
   loadingAuthor: { height: 15, width: '42%' },
-  loadingBlock: { borderRadius: 8 },
+  loadingBlock: { borderRadius: 8, overflow: 'hidden' },
   loadingBody: { gap: 20, padding: 20 },
   loadingChip: { height: 26, width: 58 },
   loadingChipRow: { flexDirection: 'row', gap: 8 },
   loadingChipWide: { height: 26, width: 92 },
-  loadingCover: { height: 150, width: 100 },
+  loadingCover: { height: 150, overflow: 'hidden', width: 100 },
   loadingHero: { alignItems: 'flex-end', flexDirection: 'row', gap: 16, padding: 20, paddingBottom: 16 },
   loadingParagraph: { height: 88, width: '100%' },
-  loadingTextGroup: { flex: 1, gap: 10, paddingBottom: 8 },
-  loadingTitle: { height: 26, width: '88%' },
-  loadingUpdate: { height: 42, width: '100%' },
+  loadingTextGroup: { flex: 1, gap: 9, paddingBottom: 1 },
+  loadingTitle: { height: 28, width: '88%' },
+  loadingUpdate: { borderRadius: 12, height: 42, width: '100%' },
   metaChip: { alignItems: 'center', borderRadius: 8, flexDirection: 'row', gap: 4, height: 26, paddingHorizontal: 10 },
   metaChipText: { fontSize: 12, fontWeight: '500', letterSpacing: 0.25, lineHeight: 17 },
   readButton: { borderRadius: 16, flex: 1, height: 56 },

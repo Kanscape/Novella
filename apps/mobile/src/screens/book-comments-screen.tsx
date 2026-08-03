@@ -2,7 +2,6 @@ import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Pressable,
@@ -12,6 +11,7 @@ import {
 } from 'react-native';
 import { IconArrowBackUp, IconMessage, IconRefresh, IconTrash } from '@tabler/icons-react-native';
 import { PaperProvider } from 'react-native-paper';
+import { Skeleton } from 'heroui-native';
 
 import type { CommentItem, CommentReply, CommentUser } from '@novella/api-client';
 
@@ -19,8 +19,8 @@ import { BookCommentsNavigation } from '@/components/book-comments-navigation';
 import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider';
 import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
 import { useComments } from '@/hooks/use-comments';
+import { consumeCommentsChanged } from '@/services/comment-events';
 import type { BookDetailPalette } from '@/theme/book-detail-theme';
-
 export interface BookCommentsScreenProps {
   bookId: number;
 }
@@ -32,7 +32,7 @@ interface ReplyTarget {
 }
 
 export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
-  const detailTheme = useBookDetailRouteTheme(bookId, null, true);
+  const detailTheme = useBookDetailRouteTheme(bookId, null, null, true);
   const { palette } = detailTheme;
   const {
     deleteComment,
@@ -47,7 +47,11 @@ export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
 
   useFocusEffect(
     useCallback(() => {
-      if (hasFocused.current) void refresh();
+      // Only refresh when a comment was actually posted (or deleted) while this
+      // screen was not focused. Dismissing the composer without posting must not
+      // cause a refresh — and the callback must stay referentially stable, or the
+      // focus effect re-subscribes on every render and loops (Maximum update depth).
+      if (hasFocused.current && consumeCommentsChanged()) void refresh();
       hasFocused.current = true;
     }, [refresh]),
   );
@@ -77,7 +81,7 @@ export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
 
   return (
     <PaperProvider theme={detailTheme.paperTheme}>
-      <BookCommentsNavigation onCompose={() => openComposer()} palette={palette} />
+      <BookCommentsNavigation onCompose={openComposer} palette={palette} />
       <NativeScreenScaffold
         actions={[
           {
@@ -103,20 +107,34 @@ export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
             data={page?.items ?? []}
             keyExtractor={(item) => String(item.id)}
             ListEmptyComponent={
-              !isLoading && !error ? (
+              isLoading ? (
+                <CommentsSkeleton palette={palette} />
+              ) : error ? (
+                <View style={styles.errorBlock}>
+                  <Text style={[styles.errorText, { color: palette.error }]}>{error}</Text>
+                  <Pressable
+                    accessibilityLabel="Reload comments"
+                    accessibilityRole="button"
+                    onPress={() => void refresh()}
+                    style={({ pressed }) => [styles.inlineButton, pressed && styles.pressed]}
+                  >
+                    <IconRefresh color={palette.primary} size={17} strokeWidth={2} />
+                    <Text style={[styles.inlineButtonLabel, { color: palette.primary }]}>Try again</Text>
+                  </Pressable>
+                </View>
+              ) : (
                 <View style={styles.emptyState}>
                   <IconMessage color={palette.onSurfaceVariant} size={44} strokeWidth={1.5} />
                   <Text style={[styles.emptyText, { color: palette.onSurfaceVariant }]}>No comments yet.</Text>
                 </View>
-              ) : null
+              )
             }
             ListFooterComponent={
-              isLoadingMore ? <ActivityIndicator color={palette.primary} /> : null
+              isLoadingMore ? <CommentsSkeleton palette={palette} rows={1} /> : null
             }
-            ListHeaderComponent={isLoading || error ? (
-              <View style={styles.header}>
-                {isLoading ? <ActivityIndicator color={palette.primary} /> : null}
-                {error ? (
+            ListHeaderComponent={
+              error && page ? (
+                <View style={styles.header}>
                   <View style={styles.errorBlock}>
                     <Text style={[styles.errorText, { color: palette.error }]}>{error}</Text>
                     <Pressable
@@ -129,9 +147,9 @@ export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
                       <Text style={[styles.inlineButtonLabel, { color: palette.primary }]}>Try again</Text>
                     </Pressable>
                   </View>
-                ) : null}
-              </View>
-            ) : null}
+                </View>
+              ) : null
+            }
             onEndReached={loadMore}
             onEndReachedThreshold={0.35}
             renderItem={({ item }) => (
@@ -147,6 +165,48 @@ export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
         </View>
       </NativeScreenScaffold>
     </PaperProvider>
+  );
+}
+
+function CommentsSkeleton({ palette, rows = 8 }: { palette: BookDetailPalette; rows?: number }) {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={styles.skeletonList}
+    >
+      {Array.from({ length: rows }, (_, index) => (
+        <View key={`comment-skeleton-${index}`} style={styles.skeletonRow}>
+          <Skeleton
+            animation={{ entering: false, exiting: false }}
+            style={[styles.skeletonAvatar, { backgroundColor: palette.surfaceContainerHighest }]}
+            variant="shimmer"
+          />
+          <View style={styles.skeletonBody}>
+            <Skeleton
+              animation={{ entering: false, exiting: false }}
+              style={[styles.skeletonLine, styles.skeletonName, { backgroundColor: palette.surfaceContainerHighest }]}
+              variant="shimmer"
+            />
+            <Skeleton
+              animation={{ entering: false, exiting: false }}
+              style={[styles.skeletonLine, { backgroundColor: palette.surfaceContainerHighest }]}
+              variant="shimmer"
+            />
+            <Skeleton
+              animation={{ entering: false, exiting: false }}
+              style={[styles.skeletonLine, styles.skeletonTextShort, { backgroundColor: palette.surfaceContainerHighest }]}
+              variant="shimmer"
+            />
+            <Skeleton
+              animation={{ entering: false, exiting: false }}
+              style={[styles.skeletonLine, styles.skeletonAction, { backgroundColor: palette.surfaceContainerHighest }]}
+              variant="shimmer"
+            />
+          </View>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -365,6 +425,14 @@ const styles = StyleSheet.create({
   replies: { borderLeftWidth: 2, gap: 12, marginBottom: 8, marginLeft: 72, marginRight: 16, paddingLeft: 12 },
   replyConnector: { fontWeight: '400' },
   replyIdentity: { alignItems: 'center', flexDirection: 'row', gap: 8 },
+  skeletonAction: { height: 11, marginTop: 4, width: '32%' },
+  skeletonAvatar: { borderRadius: 20, height: 40, overflow: 'hidden', width: 40 },
+  skeletonBody: { flex: 1, gap: 7, paddingTop: 3 },
+  skeletonLine: { borderRadius: 6, height: 13, overflow: 'hidden', width: '100%' },
+  skeletonList: { gap: 22, paddingHorizontal: 16, paddingTop: 8 },
+  skeletonName: { height: 12, width: '42%' },
+  skeletonRow: { flexDirection: 'row', gap: 16 },
+  skeletonTextShort: { width: '72%' },
   replyIdentityText: { flex: 1, fontSize: 12, lineHeight: 16 },
   replyName: { fontWeight: '700' },
   replyRow: { gap: 4 },

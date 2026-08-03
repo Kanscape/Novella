@@ -23,7 +23,7 @@ export default function CommentComposeRoute() {
     userName?: string;
   }>();
   const bookId = Number(id);
-  const { palette } = useBookDetailRouteTheme(bookId, null, true);
+  const { palette } = useBookDetailRouteTheme(bookId, null, null, true);
   const [draft, setDraft] = useState('');
   const replyTarget = parentId
     ? {

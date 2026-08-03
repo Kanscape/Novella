@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { ApiError, type PostCommentRequest } from '@novella/api-client';
 
 import { comments } from '@/services/client';
+import { markCommentsChanged } from '@/services/comment-events';
 
 interface CommentReplyTarget {
   parentId: number;
@@ -31,6 +32,7 @@ export function useCommentSubmission(bookId: number, replyTarget?: CommentReplyT
     try {
       if (replyTarget) await comments.reply(request);
       else await comments.post(request);
+      markCommentsChanged();
       return true;
     } catch (nextError) {
       setError(getCommentSubmissionError(nextError));

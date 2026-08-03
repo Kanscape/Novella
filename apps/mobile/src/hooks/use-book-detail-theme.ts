@@ -9,7 +9,7 @@ import {
 } from '@/theme/book-detail-theme';
 import { useSystemThemeSeed } from '@/hooks/use-system-theme-seed';
 
-export function useBookDetailTheme(coverUrl: string | null) {
+export function useBookDetailTheme(coverUrl: string | null, coverPlaceholder: string | null) {
   const colorScheme = useColorScheme();
   const settings = useAppSettings();
   const systemColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
@@ -26,6 +26,7 @@ export function useBookDetailTheme(coverUrl: string | null) {
     () => createBookDetailTheme({
       colorProfile,
       coverColorExtraction: settings.coverColorExtraction,
+      coverPlaceholder,
       coverUrl,
       dynamicSchemeVariant: useSystemThemeSeedValue
         ? 'tonalSpot'
@@ -36,6 +37,7 @@ export function useBookDetailTheme(coverUrl: string | null) {
     }),
     [
       colorProfile,
+      coverPlaceholder,
       coverUrl,
       settings.coverColorExtraction,
       settings.dynamicSchemeVariant,

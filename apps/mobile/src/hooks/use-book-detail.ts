@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 
 import { ApiError } from '@novella/api-client';
 import type { BookDetail } from '@novella/api-client';
 
 import { bookDetails, shelf } from '@/services/client';
+import { waitForMinimumDisplay } from '@/services/min-skeleton-display';
+import {
+  getCachedReaderPosition,
+  shouldUseCachedReaderPosition,
+  subscribeCachedReaderPosition,
+} from '@/services/reader-position-cache';
 
 type BookDetailState =
   | { status: 'loading'; book: null; error: null }
@@ -23,14 +30,35 @@ export function useBookDetail(bookId: number) {
     book: null,
     error: null,
   });
+  // Kept up to date so load() (stabilized on [bookId]) can tell whether the
+  // skeleton is on screen without being recreated on every state change.
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const load = useCallback(async () => {
-    setState({ status: 'loading', book: null, error: null });
+    const startedAt = Date.now();
+    // Only enforce the minimum display time when the skeleton is actually
+    // showing (first load / retry). Silent focus refreshes keep 'ready' and
+    // must not be delayed.
+    const showSkeleton = stateRef.current.status !== 'ready';
+    setState((current) => current.status === 'ready'
+      ? current
+      : { status: 'loading', book: null, error: null });
     try {
-      const [book, isInShelf] = await Promise.all([
+      const [serverBook, isInShelf, cachedPosition] = await Promise.all([
         bookDetails.load(bookId),
         shelf.contains(bookId),
+        getCachedReaderPosition(bookId),
       ]);
+      if (showSkeleton) await waitForMinimumDisplay(startedAt);
+      const hasCachedChapter = cachedPosition
+        ? serverBook.chapters.some((chapter) => chapter.id === cachedPosition.chapterId)
+        : false;
+      const useCachedPosition = hasCachedChapter && cachedPosition !== null &&
+        shouldUseCachedReaderPosition(bookId, cachedPosition, serverBook.readPosition);
+      const book: BookDetail = useCachedPosition
+        ? { ...serverBook, readPosition: cachedPosition }
+        : serverBook;
       setState({
         status: 'ready',
         book,
@@ -40,18 +68,35 @@ export function useBookDetail(bookId: number) {
         shelfError: null,
       });
     } catch (error) {
-      setState({
-        status: 'error',
-        book: null,
-        error: getBookDetailErrorMessage(error),
-        requiresAuth: error instanceof ApiError && error.category === 'auth',
-      });
+      if (showSkeleton) await waitForMinimumDisplay(startedAt);
+      setState((current) => current.status === 'ready'
+        ? current
+        : {
+            status: 'error',
+            book: null,
+            error: getBookDetailErrorMessage(error),
+            requiresAuth: error instanceof ApiError && error.category === 'auth',
+          });
     }
   }, [bookId]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     void load();
-  }, [load]);
+  }, [load]));
+
+  useEffect(() => subscribeCachedReaderPosition(bookId, (position) => {
+    setState((current) => {
+      if (current.status !== 'ready') return current;
+      const belongsToBook = current.book.chapters.some(
+        (chapter) => chapter.id === position.chapterId,
+      );
+      if (!belongsToBook) return current;
+      return {
+        ...current,
+        book: { ...current.book, readPosition: position },
+      };
+    });
+  }), [bookId]);
 
   const toggleShelf = useCallback(async () => {
     setState((current) =>

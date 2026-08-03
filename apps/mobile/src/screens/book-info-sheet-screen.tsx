@@ -31,7 +31,11 @@ export interface BookInfoSheetScreenProps {
 export function BookInfoSheetScreen({ bookId, variant }: BookInfoSheetScreenProps) {
   const { book, error, isLoading, reload } = useBookInfo(bookId);
   const { width } = useWindowDimensions();
-  const { palette } = useBookDetailRouteTheme(bookId, book?.coverUrl ?? null);
+  const { palette } = useBookDetailRouteTheme(
+    bookId,
+    book?.coverUrl ?? null,
+    book?.coverPlaceholder ?? null,
+  );
 
   return (
     <ScrollView

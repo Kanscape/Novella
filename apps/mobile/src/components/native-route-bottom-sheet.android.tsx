@@ -12,7 +12,7 @@ export function NativeRouteBottomSheet({
   snapPoints,
 }: NativeRouteBottomSheetProps) {
   const hasDismissed = useRef(false);
-  const { palette } = useBookDetailRouteTheme(bookId);
+  const { palette } = useBookDetailRouteTheme(bookId, null, null);
 
   const handleDismiss = useCallback(() => {
     if (hasDismissed.current) return;
