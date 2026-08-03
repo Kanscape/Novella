@@ -1,47 +1,104 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError, type NovelContent, type TextConversionMode } from '@novella/api-client';
+import { resolveReaderRestorePosition } from '@novella/reader-engine';
 
 import { reader } from '@/services/client';
+import { takePreloadedReaderChapter } from '@/services/reader-chapter-preload';
+import {
+  getCachedReaderPosition,
+  shouldUseCachedReaderPosition,
+} from '@/services/reader-position-cache';
 
 type ReaderChapterState =
-  | { status: 'loading'; content: null; error: null }
-  | { status: 'ready'; content: NovelContent; error: null }
-  | { status: 'error'; content: null; error: string };
+  | { key: string; status: 'loading'; content: null; error: null }
+  | { key: string; status: 'ready'; content: NovelContent; error: null }
+  | { key: string; status: 'error'; content: null; error: string };
 
 export function useReaderChapter(
   bookId: number,
   sortNum: number,
   convert: TextConversionMode | undefined,
+  restorePosition = true,
 ) {
+  const requestKey = `${bookId}:${sortNum}:${convert ?? 'none'}:${restorePosition ? 'restore' : 'boundary'}`;
   const [state, setState] = useState<ReaderChapterState>({
+    key: requestKey,
     status: 'loading',
     content: null,
     error: null,
   });
+  const requestVersion = useRef(0);
 
   const load = useCallback(async () => {
-    setState({ status: 'loading', content: null, error: null });
+    const version = ++requestVersion.current;
+    setState({
+      key: requestKey,
+      status: 'loading',
+      content: null,
+      error: null,
+    });
     try {
-      const content = await reader.loadChapter({
+      const request = {
         bookId,
         sortNum,
         ...(convert === undefined ? {} : { convert }),
+      };
+      const content = !restorePosition
+        ? takePreloadedReaderChapter(request) ?? await reader.loadChapter(request)
+        : await reader.loadChapter(request);
+      if (version !== requestVersion.current) return;
+      if (!restorePosition) {
+        setState({
+          key: requestKey,
+          status: 'ready',
+          content: { ...content, readPosition: null },
+          error: null,
+        });
+        return;
+      }
+
+      const cached = await getCachedReaderPosition(bookId);
+      if (version !== requestVersion.current) return;
+      const readPosition = resolveReaderRestorePosition(
+        content.chapter.id,
+        content.readPosition,
+        cached,
+        cached !== null && shouldUseCachedReaderPosition(
+          bookId,
+          cached,
+          content.readPosition,
+        ),
+      );
+      setState({
+        key: requestKey,
+        status: 'ready',
+        content: { ...content, readPosition },
+        error: null,
       });
-      setState({ status: 'ready', content, error: null });
     } catch (error) {
-      setState({ status: 'error', content: null, error: getReaderErrorMessage(error) });
+      if (version !== requestVersion.current) return;
+      setState({
+        key: requestKey,
+        status: 'error',
+        content: null,
+        error: getReaderErrorMessage(error),
+      });
     }
-  }, [bookId, convert, sortNum]);
+  }, [bookId, convert, requestKey, restorePosition, sortNum]);
 
   useEffect(() => {
     void load();
+    return () => {
+      requestVersion.current += 1;
+    };
   }, [load]);
 
+  const isCurrent = state.key === requestKey;
   return {
-    content: state.content,
-    error: state.error,
-    isLoading: state.status === 'loading',
+    content: isCurrent ? state.content : null,
+    error: isCurrent && state.status === 'error' ? state.error : null,
+    isLoading: !isCurrent || state.status === 'loading',
     reload: load,
   };
 }

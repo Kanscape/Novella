@@ -17,6 +17,10 @@ import type {
 const DEFAULT_FONT_SIZE = 16;
 const DEFAULT_LINE_HEIGHT_RATIO = 1.8;
 const ANNOTATION_FONT_SIZE_RATIO = 0.5;
+// Preview body: 14pt font / 22.4pt line → 4 rows ≈ 90. Matches the non-ruby
+// `introductionClip` maxHeight in book-detail-screen, so the placeholder holds
+// the same space while the ruby flow is being measured.
+const PREVIEW_CLIP_PLACEHOLDER_HEIGHT = 90;
 
 const CJK_CHARACTER = /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u;
 
@@ -326,6 +330,19 @@ function RubyInlineFlow({
   // Keep this read so layout callbacks remain a dependency of this render.
   void layoutRevision;
 
+  // The clip needs measured token positions, but the full (un-clipped)
+  // introduction is what gets rendered on the very first frames. Hide the flow
+  // until measurements arrive and hold the 4-line placeholder height, so the
+  // "next line then correct clip" flash never shows on entry.
+  const previewSettled = !preview || (ellipsisLayout !== null && flowWidth > 0);
+  const previewHeight = preview
+    ? fourthRow
+      ? fourthRow.bottom
+      : rows.length > 0
+        ? rows[rows.length - 1]?.bottom
+        : PREVIEW_CLIP_PLACEHOLDER_HEIGHT
+    : undefined;
+
   return (
     <View
       onLayout={(event) => {
@@ -333,7 +350,12 @@ function RubyInlineFlow({
           setFlowWidth(event.nativeEvent.layout.width);
         }
       }}
-      style={[styles.previewFlowClip, fourthRow && { height: fourthRow.bottom }]}
+      style={[
+        styles.previewFlowClip,
+        ...(preview
+          ? [{ height: previewHeight, opacity: previewSettled ? 1 : 0 }]
+          : []),
+      ]}
     >
       <View style={styles.inlineFlow}>
         {tokens.map((token) => {
