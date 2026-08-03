@@ -205,6 +205,8 @@ export const ReaderWebView = forwardRef<ReaderWebViewHandle, ReaderWebViewProps>
           onLoadEnd={handleLoadEnd}
           onMessage={handleMessage}
           scrollEnabled
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
           setSupportMultipleWindows={false}
           source={{ html }}
           style={[style, { backgroundColor: pageBackground }]}

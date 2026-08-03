@@ -230,8 +230,29 @@ export function buildChapterXhtml(
         return Math.max(0, (scrollEl.scrollWidth || 0) - (scrollEl.clientWidth || 0));
       }
       function scrollToLeft(left, animated) {
+        animating = animated;
         scrollEl.scrollTo({ left: Math.max(0, Math.min(maxScroll(), left)), behavior: animated ? 'smooth' : 'auto' });
       }
+
+      // The page the user is currently "on". Scroll events keep it in sync
+      // with free swipes, but while a programmatic smooth animation is
+      // running the intermediate scrollLeft must NOT update it — otherwise a
+      // rapid second tap computes its target from the animation's midpoint
+      // and lands on a half page (e.g. two taps => 1.5 pages).
+      var stablePage = Math.round((scrollEl.scrollLeft || 0) / pageW) || 0;
+      var animating = false;
+      var animTimer = null;
+      scrollEl.addEventListener('scroll', function () {
+        if (animating) {
+          clearTimeout(animTimer);
+          animTimer = setTimeout(function () {
+            animating = false;
+            stablePage = Math.round((scrollEl.scrollLeft || 0) / pageW);
+          }, 120);
+          return;
+        }
+        stablePage = Math.round((scrollEl.scrollLeft || 0) / pageW);
+      }, { passive: true });
 
       // Finger drag: JS drives scrollLeft directly so the page follows the
       // finger exactly (native scrollView drag on WKWebView neither tracks
@@ -292,12 +313,15 @@ export function buildChapterXhtml(
         }
         var w = scrollEl.clientWidth;
         var x = e.clientX;
+        var maxPage = Math.max(0, Math.round(maxScroll() / w));
         if (x < w * 0.22) {
           e.preventDefault();
-          scrollToLeft(scrollEl.scrollLeft - w, ${pagedNoAnimation ? 'false' : 'true'});
+          stablePage = Math.max(0, stablePage - 1);
+          scrollToLeft(stablePage * w, ${pagedNoAnimation ? 'false' : 'true'});
         } else if (x > w * 0.78) {
           e.preventDefault();
-          scrollToLeft(scrollEl.scrollLeft + w, ${pagedNoAnimation ? 'false' : 'true'});
+          stablePage = Math.min(maxPage, stablePage + 1);
+          scrollToLeft(stablePage * w, ${pagedNoAnimation ? 'false' : 'true'});
         }
       });
 
@@ -306,6 +330,7 @@ export function buildChapterXhtml(
         var left = Math.max(0, Math.min(1, progression)) * maxScroll();
         // Snap to the nearest page boundary so we never rest on a half page.
         left = Math.round(left / pageW) * pageW;
+        stablePage = Math.round(left / pageW);
         scrollToLeft(left, false);
         setTimeout(reportPosition, 50);
       };
