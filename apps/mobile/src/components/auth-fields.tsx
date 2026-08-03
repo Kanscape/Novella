@@ -1,8 +1,9 @@
-import { IconEye, IconEyeOff, IconSend } from '@tabler/icons-react-native';
+import { InputOTP, REGEXP_ONLY_DIGITS_AND_CHARS } from 'heroui-native';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { IconEye, IconEyeOff } from '@tabler/icons-react-native';
 
-import { colors } from '@/theme/colors';
+import { useAuthPalette } from '@/theme/auth-theme';
 
 export function PasswordField({
   accessibilityLabel,
@@ -18,21 +19,22 @@ export function PasswordField({
   value: string;
 }) {
   const [visible, setVisible] = useState(false);
+  const palette = useAuthPalette();
 
   return (
-    <View style={styles.passwordRow}>
+    <View style={[styles.passwordRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
       <TextInput
         accessibilityLabel={accessibilityLabel}
         autoCapitalize="none"
         autoCorrect={false}
-        placeholder={label}
-        placeholderTextColor={colors.secondaryLabel as string}
-        secureTextEntry={!visible}
-        style={styles.passwordInput}
-        textContentType={label === 'Password' ? 'password' : 'newPassword'}
-        value={value}
         onChangeText={onChangeText}
         onSubmitEditing={onSubmitEditing}
+        placeholder={label}
+        placeholderTextColor={palette.placeholder}
+        secureTextEntry={!visible}
+        style={[styles.passwordInput, { color: palette.foreground }]}
+        textContentType={label === 'Password' ? 'password' : 'newPassword'}
+        value={value}
       />
       <Pressable
         accessibilityLabel={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
@@ -41,9 +43,9 @@ export function PasswordField({
         style={({ pressed }) => [styles.passwordToggle, pressed && styles.pressed]}
       >
         {visible ? (
-          <IconEyeOff color={colors.secondaryLabel as string} size={20} strokeWidth={2} />
+          <IconEyeOff color={palette.secondary} size={20} strokeWidth={2} />
         ) : (
-          <IconEye color={colors.secondaryLabel as string} size={20} strokeWidth={2} />
+          <IconEye color={palette.secondary} size={20} strokeWidth={2} />
         )}
       </Pressable>
     </View>
@@ -52,48 +54,80 @@ export function PasswordField({
 
 export function VerificationCodeField({
   cooldown,
+  error,
   isSending,
   onChangeText,
   onSend,
   value,
 }: {
   cooldown: number;
+  error?: boolean;
   isSending: boolean;
   onChangeText: (value: string) => void;
   onSend: () => void;
   value: string;
 }) {
+  const palette = useAuthPalette();
   const canSend = !isSending && cooldown === 0;
   return (
-    <View style={styles.codeRow}>
-      <TextInput
-        accessibilityLabel="Verification code"
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="number-pad"
-        placeholder="Verification code"
-        placeholderTextColor={colors.secondaryLabel as string}
-        style={styles.codeInput}
+    <View style={styles.otpField}>
+      <View style={styles.otpHeading}>
+        <Text style={[styles.otpLabel, { color: palette.foreground }]}>Verification code</Text>
+        <Pressable
+          accessibilityLabel={isSending ? 'Sending verification code' : 'Send verification code'}
+          accessibilityRole="button"
+          disabled={!canSend}
+          onPress={onSend}
+          style={({ pressed }) => [styles.sendButton, !canSend && styles.disabled, pressed && styles.pressed]}
+        >
+          <Text style={[styles.sendLabel, { color: canSend ? palette.accent : palette.secondary }]}>
+            {isSending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+          </Text>
+        </Pressable>
+      </View>
+      <InputOTP
+        inputMode="text"
+        {...(error === undefined ? {} : { isInvalid: error })}
+        maxLength={4}
+        onChange={onChangeText}
+        pattern={REGEXP_ONLY_DIGITS_AND_CHARS}
+        textInputProps={{
+          autoCapitalize: 'none',
+          autoComplete: 'one-time-code',
+          autoCorrect: false,
+          spellCheck: false,
+          textContentType: 'oneTimeCode',
+        }}
         value={value}
-        onChangeText={onChangeText}
-      />
-      <Pressable
-        accessibilityLabel={isSending ? 'Sending verification code' : 'Send verification code'}
-        accessibilityRole="button"
-        disabled={!canSend}
-        onPress={onSend}
-        style={({ pressed }) => [styles.sendButton, !canSend && styles.disabled, pressed && styles.pressed]}
       >
-        {isSending ? null : <IconSend color={canSend ? '#FFFFFF' : colors.secondaryLabel as string} size={16} strokeWidth={2} />}
-        <Text style={[styles.sendLabel, !canSend && styles.disabledLabel]}>
-          {isSending ? 'Sending...' : cooldown > 0 ? `${cooldown}s` : 'Send code'}
-        </Text>
-      </Pressable>
+        <InputOTP.Group style={styles.otpGroup}>
+          {[0, 1, 2, 3].map((index) => (
+            <InputOTP.Slot
+              background={(
+                <InputOTP.SlotBackground
+                  style={[styles.otpSlotBackground, { backgroundColor: palette.surface }]}
+                />
+              )}
+              index={index}
+              key={index}
+              style={[
+                styles.otpSlot,
+                { borderColor: error ? palette.error : palette.border },
+              ]}
+            >
+              <InputOTP.SlotPlaceholder style={[styles.otpSlotPlaceholder, { color: palette.placeholder }]} />
+              <InputOTP.SlotValue style={[styles.otpSlotValue, { color: palette.foreground }]} />
+              <InputOTP.SlotCaret style={[styles.otpSlotCaret, { backgroundColor: palette.accent }]} />
+            </InputOTP.Slot>
+          ))}
+        </InputOTP.Group>
+      </InputOTP>
     </View>
   );
 }
 
 export function AuthFooterLink({ label, onPress }: { label: string; onPress: () => void }) {
+  const palette = useAuthPalette();
   return (
     <Pressable
       accessibilityLabel={label}
@@ -101,22 +135,28 @@ export function AuthFooterLink({ label, onPress }: { label: string; onPress: () 
       onPress={onPress}
       style={({ pressed }) => [styles.footerLink, pressed && styles.pressed]}
     >
-      <Text style={styles.footerLinkLabel}>{label}</Text>
+      <Text style={[styles.footerLinkLabel, { color: palette.accent }]}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  codeInput: { color: colors.label as string, flex: 1, fontSize: 16, height: 49, paddingHorizontal: 14 },
-  codeRow: { alignItems: 'center', backgroundColor: colors.card as string, borderColor: colors.separator as string, borderRadius: 12, borderWidth: 0.5, flexDirection: 'row' },
-  disabled: { opacity: 0.55 },
-  disabledLabel: { color: colors.secondaryLabel as string },
-  footerLink: { paddingVertical: 4 },
-  footerLinkLabel: { color: colors.accent as string, fontSize: 14, fontWeight: '600' },
-  passwordInput: { color: colors.label as string, flex: 1, fontSize: 16, height: 49, paddingHorizontal: 14 },
-  passwordRow: { alignItems: 'center', backgroundColor: colors.card as string, borderColor: colors.separator as string, borderRadius: 12, borderWidth: 0.5, flexDirection: 'row' },
-  passwordToggle: { alignItems: 'center', height: 49, justifyContent: 'center', width: 48 },
-  pressed: { opacity: 0.7 },
-  sendButton: { alignItems: 'center', backgroundColor: colors.accent as string, borderRadius: 9, flexDirection: 'row', gap: 5, justifyContent: 'center', marginRight: 6, minHeight: 38, paddingHorizontal: 10 },
-  sendLabel: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  disabled: { opacity: 0.5 },
+  footerLink: { paddingVertical: 5 },
+  footerLinkLabel: { fontSize: 15, fontWeight: '600' },
+  otpField: { gap: 14 },
+  otpGroup: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
+  otpHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  otpLabel: { fontSize: 15, fontWeight: '600' },
+  otpSlot: { borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, height: 54, width: 54 },
+  otpSlotBackground: { ...StyleSheet.absoluteFill },
+  otpSlotCaret: { height: 21 },
+  otpSlotPlaceholder: { fontSize: 20 },
+  otpSlotValue: { fontSize: 20, fontWeight: '600' },
+  passwordInput: { flex: 1, fontSize: 17, height: 52, paddingHorizontal: 15 },
+  passwordRow: { alignItems: 'center', borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row' },
+  passwordToggle: { alignItems: 'center', height: 52, justifyContent: 'center', width: 48 },
+  pressed: { opacity: 0.65 },
+  sendButton: { minHeight: 32, paddingHorizontal: 2, justifyContent: 'center' },
+  sendLabel: { fontSize: 14, fontWeight: '600' },
 });
