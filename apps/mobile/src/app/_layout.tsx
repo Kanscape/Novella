@@ -10,31 +10,50 @@ import { Stack } from 'expo-router/stack';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { StyleSheet, View, useColorScheme } from 'react-native';
 
 import { BookDetailThemeProvider } from '@/components/book-detail-theme-provider';
 import { useAuthentication } from '@/hooks/use-authentication';
-import { startClient } from '@/services/client';
+import { hasStoredSession, startClient } from '@/services/client';
 import { colors } from '@/theme/colors';
 import { systemScreenStackPreset } from '@/theme/stack-preset';
+
+// The session probe is a local SecureStore read (no network). It is kicked off
+// at module scope so the route decision (app vs sign-in welcome) is typically
+// ready before the first frame paints. The splash shows the logo normally and
+// auto-hides; it is never used to cover up a routing transition.
+
+const sessionProbe = hasStoredSession();
 
 export default function RootLayout() {
   const authentication = useAuthentication();
   const colorScheme = useColorScheme();
   const usesComposeBottomSheets = process.env.EXPO_OS === 'android';
-  const [hadAuthenticatedSession, setHadAuthenticatedSession] = useState(
-    authentication.status === 'authenticated',
-  );
-  const [startupSettled, setStartupSettled] = useState(false);
+  // False until the local session probe resolves. The probe decides the very
+  // first rendered screen, so a logged-in user never passes through the
+  // welcome page and a first-install user goes straight to the welcome page.
+  const [sessionDecided, setSessionDecided] = useState(false);
+  const [hadAuthenticatedSession, setHadAuthenticatedSession] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    void startClient().finally(() => {
-      if (mounted) setStartupSettled(true);
+    void sessionProbe.then((stored) => {
+      if (!mounted) return;
+      setHadAuthenticatedSession(stored);
+      setSessionDecided(true);
     });
     return () => {
       mounted = false;
     };
+  }, []);
+
+  // Session init (token refresh + signalR) is a background concern shared by
+  // both entry surfaces: the welcome page (first install) and the home page
+  // (logged-in, which shows its existing skeletons meanwhile). A failed
+  // refresh clears credentials and flips the guard back to the welcome page;
+  // manual sign-out does the same.
+  useEffect(() => {
+    void startClient().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -48,22 +67,15 @@ export default function RootLayout() {
       ? false
       : hadAuthenticatedSession;
   const navigationTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
-  if (!startupSettled) {
+  if (!sessionDecided) {
+    // A plain themed frame for the sub-frame probe window (local read only,
+    // no spinner, no wrong-screen flash); it visually continues the splash.
     return (
       <GestureHandlerRootView style={styles.gestureRoot}>
-        <HeroUINativeProvider config={heroUIConfig}>
-          <ThemeProvider value={navigationTheme}>
-        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-        <View style={styles.startupRoot}>
-          <ActivityIndicator color={colors.accent as string} size="large" />
-          <Text style={styles.startupLabel}>Preparing a secure connection…</Text>
-        </View>
-          </ThemeProvider>
-        </HeroUINativeProvider>
+        <View style={styles.blankRoot} />
       </GestureHandlerRootView>
     );
   }
-
   return (
     <GestureHandlerRootView style={styles.gestureRoot}>
       <HeroUINativeProvider config={heroUIConfig}>
@@ -233,16 +245,8 @@ const heroUIConfig = {
 
 const styles = StyleSheet.create({
   gestureRoot: { flex: 1 },
-  startupLabel: {
-    color: colors.secondaryLabel as string,
-    fontSize: 15,
-  },
-  startupRoot: {
-    alignItems: 'center',
+  blankRoot: {
     backgroundColor: colors.background as string,
     flex: 1,
-    gap: 14,
-    justifyContent: 'center',
-    padding: 24,
   },
 });

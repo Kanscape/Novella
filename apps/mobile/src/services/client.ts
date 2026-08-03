@@ -1,5 +1,6 @@
 import { ApiClient } from '@novella/api-client';
 import {
+  AUTH_CREDENTIAL_KEYS,
   createAuthenticationUseCase,
   createBookDetailUseCase,
   createBookSearchUseCase,
@@ -62,6 +63,21 @@ authentication = createAuthenticationUseCase(
 );
 
 export { authentication };
+
+/**
+ * Local-only probe of whether a session was ever stored. Resolves fast (no
+ * network): lets the root layout decide the initial screen immediately and
+ * skip the startup spinner. The stored token is validated in the background
+ * by `startClient()`; an invalid session flips the auth status to signedOut
+ * and the root guard bounces the user back to the sign-in flow.
+ */
+export async function hasStoredSession(): Promise<boolean> {
+  try {
+    return (await credentials.get(AUTH_CREDENTIAL_KEYS.refreshToken)) !== null;
+  } catch {
+    return false;
+  }
+}
 
 export function startClient() {
   return session.start();
