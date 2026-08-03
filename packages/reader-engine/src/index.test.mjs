@@ -1,0 +1,219 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  calculateReaderProgress,
+  createComicPageSlots,
+  createReaderPagePlan,
+  createReaderPositionWriteQueue,
+  findReaderBlockIndex,
+  getReaderBlockLayout,
+  mergeComicPageBatch,
+  normalizeNovelBlocks,
+  processNovelFootnotes,
+  getAdjacentChapterSortNum,
+  resolveReaderInitialIndex,
+  resolveReaderRestorePosition,
+  sanitizeNovelHtml,
+} from './index.ts';
+
+test('normalizes nested novel blocks with server-compatible locators', () => {
+  const blocks = normalizeNovelBlocks(
+    '<head><style>.hidden{display:none}</style></head><div><p>第一段</p><p><ruby>漢<rt>かん</rt></ruby>字</p></div>',
+  );
+
+  assert.deepEqual(blocks.map((block) => block.locator), ['//*/div[1]/p[1]', '//*/div[1]/p[2]']);
+  assert.equal(blocks[1].imageCount, 0);
+  assert.match(blocks[1].html, /ruby/);
+  assert.equal(blocks[0].id, 'block://*/div[1]/p[1]');
+});
+
+test('preserves standalone illustration containers for native image layout', () => {
+  const blocks = normalizeNovelBlocks(
+    '<div class="duokan-image-single"><img src="/cover.jpg" width="100" height="160"></div><p>正文</p>',
+  );
+
+  assert.equal(blocks[0].locator, '//*/div[1]');
+  assert.match(blocks[0].html, /duokan-image-single/);
+  assert.equal(blocks[0].imageCount, 1);
+  assert.equal(blocks[1].html, '<p>正文</p>');
+});
+
+test('keeps multi-image illustration groups as one styled reader block', () => {
+  const blocks = normalizeNovelBlocks(
+    '<div class="illus"><img src="/left.jpg"><img src="/right.jpg"></div><p>正文</p>',
+  );
+
+  assert.equal(blocks[0].locator, '//*/div[1]');
+  assert.equal(blocks[0].imageCount, 2);
+  assert.match(blocks[0].html, /right\.jpg/);
+});
+
+test('drops metadata and explicitly hidden reader nodes', () => {
+  const blocks = normalizeNovelBlocks('<meta name="x"/><p hidden>secret</p><p>visible</p><div style="display:none"><p>also hidden</p></div>');
+  assert.deepEqual(blocks.map((block) => block.html), ['<p>visible</p>']);
+});
+
+test('sanitizes zero-width characters in text without altering tags', () => {
+  assert.equal(sanitizeNovelHtml('<p>A\u200B\u200BB &\u200B#160;</p>'), '<p>AB &#160;</p>');
+});
+
+test('removes font placeholders encoded as decimal, hexadecimal, and repaired HTML entities', () => {
+  const invisibleCodepoints = new Set([0xE001]);
+
+  assert.equal(
+    sanitizeNovelHtml(
+      '<p>甲&#57345;乙&#xE001;丙&\u200B#X\u200BE001;丁&#8203;戊&#x4E2D;</p>',
+      invisibleCodepoints,
+    ),
+    '<p>甲乙丙丁戊&#x4E2D;</p>',
+  );
+});
+
+test('extracts Web-Master footnotes and removes hidden note bodies from reader flow', () => {
+  const result = processNovelFootnotes(
+    '<p>正文。<a class="duokan-footnote" href="#note-1"><sup><img class="footnote" /></sup></a></p>' +
+      '<ol id="note-1"><li><b>注释</b>内容</li></ol>',
+  );
+
+  assert.equal(result.notesById['note-1'], '<li><b>注释</b>内容</li>');
+  assert.match(result.html, /正文。<a/);
+  assert.match(result.html, /data-reader-footnote-id="note-1"[^>]*>\*<\/a>/);
+  assert.doesNotMatch(result.html, /href=/);
+  assert.doesNotMatch(result.html, /<sup|class="footnote"/);
+  assert.doesNotMatch(result.html, /<ol/);
+});
+
+test('restores an inline Web XPath to its nearest reader block ancestor', () => {
+  const blocks = normalizeNovelBlocks(
+    '<div><p>第一段</p><p><span>第二段</span></p><p>第三段</p></div>',
+  );
+
+  assert.equal(findReaderBlockIndex(blocks, '//*/div[1]/p[2]/span[1]'), 1);
+  assert.equal(findReaderBlockIndex(blocks, 'div[1]/p[3]'), 2);
+});
+
+test('creates measured page slices and preserves block order', () => {
+  const blocks = normalizeNovelBlocks('<p>one</p><p>two</p><p>three</p>');
+  const pages = createReaderPagePlan(
+    blocks,
+    { [blocks[0].id]: 40, [blocks[1].id]: 40, [blocks[2].id]: 40 },
+    90,
+    10,
+  );
+
+  assert.deepEqual(pages.map((page) => [page.start, page.end]), [[0, 2], [2, 3]]);
+  assert.deepEqual(getReaderBlockLayout(blocks, { [blocks[0].id]: 40, [blocks[1].id]: 40 }, 2), { index: 2, length: 29, offset: 104 });
+});
+
+test('moves a measured illustration to the next page instead of clipping it', () => {
+  const blocks = normalizeNovelBlocks(
+    '<p>before image</p><div class="illus"><img src="/illustration.jpg"></div>',
+  );
+  const pages = createReaderPagePlan(
+    blocks,
+    { [blocks[0].id]: 300, [blocks[1].id]: 500 },
+    600,
+    12,
+  );
+
+  assert.deepEqual(pages.map((page) => [page.start, page.end]), [[0, 1], [1, 2]]);
+});
+
+test('preallocates comic pages and fills batches by server skip', () => {
+  const slots = createComicPageSlots(4);
+  const next = mergeComicPageBatch(slots, 2, [{ url: 'page-3', placeholder: '', width: 2, height: 3 }]);
+
+  assert.equal(next.length, 4);
+  assert.equal(next[0].image, null);
+  assert.equal(next[2].image?.url, 'page-3');
+});
+
+test('clamps reader progress to the chapter bounds', () => {
+  assert.deepEqual(calculateReaderProgress(9, 4), { completed: 4, ratio: 1, total: 4 });
+  assert.deepEqual(calculateReaderProgress(-1, 0), { completed: 0, ratio: 0, total: 0 });
+});
+
+test('opens adjacent chapters at a deterministic boundary', () => {
+  assert.equal(getAdjacentChapterSortNum({ sortNum: 2, totalChapters: 3 }, 'previous'), 1);
+  assert.equal(getAdjacentChapterSortNum({ sortNum: 3, totalChapters: 3 }, 'next'), null);
+  assert.equal(resolveReaderInitialIndex('start', 8, 10), 0);
+  assert.equal(resolveReaderInitialIndex('end', 0, 10), 9);
+  assert.equal(resolveReaderInitialIndex('saved', 99, 10), 9);
+});
+
+test('resolves pending local progress without overriding newer server data after sync', () => {
+  const server = { chapterId: 7, position: '//*/p[2]' };
+  assert.deepEqual(
+    resolveReaderRestorePosition(7, server, {
+      chapterId: 7,
+      position: '//*/p[8]',
+      syncState: 'pending',
+    }),
+    { chapterId: 7, position: '//*/p[8]', syncState: 'pending' },
+  );
+  const syncedLocal = {
+    chapterId: 7,
+    position: '//*/p[1]',
+    syncState: 'synced',
+  };
+  assert.deepEqual(resolveReaderRestorePosition(7, server, syncedLocal), server);
+  assert.deepEqual(resolveReaderRestorePosition(7, server, syncedLocal, true), syncedLocal);
+  assert.equal(
+    resolveReaderRestorePosition(7, null, {
+      chapterId: 8,
+      position: '//*/p[3]',
+      syncState: 'pending',
+    }),
+    null,
+  );
+});
+
+test('coalesces rapid reader movement to the latest scheduled position', async () => {
+  const writes = [];
+  const queue = createReaderPositionWriteQueue((value) => {
+    writes.push(value);
+  });
+
+  queue.schedule('block-2');
+  queue.schedule('block-8');
+  queue.schedule('block-13');
+  await queue.flush();
+
+  assert.deepEqual(writes, ['block-13']);
+});
+
+test('serializes a chapter-boundary save before newer chapter progress', async () => {
+  const writes = [];
+  let releaseFirst;
+  const firstWrite = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const queue = createReaderPositionWriteQueue(async (value) => {
+    writes.push(value);
+    if (writes.length === 1) await firstWrite;
+  }, { delayMs: 1, fingerprint: (value) => value });
+
+  queue.schedule('chapter-1:last-visible');
+  const boundary = queue.commit('chapter-1:last-visible');
+  queue.schedule('chapter-2:first-visible');
+  const drain = queue.flush();
+  await Promise.resolve();
+  releaseFirst();
+  await Promise.all([boundary, drain]);
+
+  assert.deepEqual(writes, ['chapter-1:last-visible', 'chapter-2:first-visible']);
+});
+
+test('allows an unsynced position to retry after a failed write', async () => {
+  let attempts = 0;
+  const queue = createReaderPositionWriteQueue(async () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error('offline');
+  });
+
+  await queue.commit('chapter-1:block-4');
+  await queue.commit('chapter-1:block-4');
+
+  assert.equal(attempts, 2);
+});

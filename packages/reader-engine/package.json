@@ -8,6 +8,7 @@
   },
   "types": "./src/index.ts",
   "scripts": {
+    "test": "node --experimental-strip-types --test src/index.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
