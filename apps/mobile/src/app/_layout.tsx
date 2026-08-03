@@ -202,6 +202,24 @@ export default function RootLayout() {
               title: 'Chapters',
             }}
           />
+          <Stack.Screen
+            name="reader/[bookId]/footnote"
+            options={{
+              ...(usesComposeBottomSheets
+                ? {
+                    animation: 'none',
+                    contentStyle: { backgroundColor: 'transparent' },
+                  }
+                : {
+                    sheetAllowedDetents: [0.5, 1],
+                    sheetGrabberVisible: true,
+                    sheetInitialDetentIndex: 0,
+                  }),
+              headerShown: false,
+              presentation: usesComposeBottomSheets ? 'transparentModal' : 'formSheet',
+              title: 'Footnote',
+            }}
+          />
           </Stack.Protected>
           <Stack.Protected guard={!hasAuthenticatedSession}>
             <Stack.Screen name="sign-in" options={{ headerShown: false }} />

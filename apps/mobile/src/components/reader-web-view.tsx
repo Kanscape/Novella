@@ -40,6 +40,7 @@ export interface ReaderWebViewProps {
   /** Theme knobs; changes are applied via CSS variables without reloading. */
   theme?: ReaderWebViewTheme;
   onPosition?: (position: ReaderWebViewPosition) => void;
+  onFootnote?: (id: string) => void;
   onLoadEnd?: () => void;
   style?: StyleProp<ViewStyle>;
 }
@@ -87,12 +88,14 @@ function themeScript(theme: ReaderWebViewTheme): string {
 
 export const ReaderWebView = forwardRef<ReaderWebViewHandle, ReaderWebViewProps>(
   function ReaderWebView(
-    { html, initialProgression, readingMode = 'scroll', theme, onPosition, onLoadEnd, style },
+    { html, initialProgression, readingMode = 'scroll', theme, onPosition, onFootnote, onLoadEnd, style },
     ref,
   ) {
     const webViewRef = useRef<WebView>(null);
     const onPositionRef = useRef(onPosition);
     onPositionRef.current = onPosition;
+    const onFootnoteRef = useRef(onFootnote);
+    onFootnoteRef.current = onFootnote;
     // Latest reported progression — used to restore position after the html
     // reloads (reading-mode switch rebuilds the document).
     const lastProgressionRef = useRef<number>(0);
@@ -120,6 +123,7 @@ export const ReaderWebView = forwardRef<ReaderWebViewHandle, ReaderWebViewProps>
           progression?: number;
           anchor?: string;
           src?: string;
+          id?: string;
           level?: string;
           message?: string;
         };
@@ -132,6 +136,10 @@ export const ReaderWebView = forwardRef<ReaderWebViewHandle, ReaderWebViewProps>
           }
           lastProgressionRef.current = position.progression;
           onPositionRef.current?.(position);
+        } else if (data.type === 'footnote') {
+          if (typeof data.id === 'string' && data.id.length > 0) {
+            onFootnoteRef.current?.(data.id);
+          }
         } else if (data.type === 'image-preview') {
           if (typeof data.src === 'string' && data.src.length > 0) {
             setPreviewSrc(data.src);

@@ -100,7 +100,7 @@ export function buildChapterXhtml(
     `body { font-family: ${fontFamily}; font-size: var(--nv-font); line-height: var(--nv-line); word-break: break-word; overflow-wrap: break-word; -webkit-text-size-adjust: 100%; }`,
     'p { margin: 0 0 0.8em; text-indent: var(--nv-indent); }',
     'img { max-width: 100%; height: auto; }',
-    'ruby rt { font-size: 0.5em; color: rgba(128,128,128,0.8); }',
+    'ruby rt { font-size: 0.5em; color: var(--nv-fg); }',
     'a { color: inherit; text-decoration: none; }',
     '* { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none; }',
     ...(isPaged ? [
@@ -153,98 +153,27 @@ export function buildChapterXhtml(
       console.error = function () { forward('error', arguments); origError.apply(console, arguments); };
     })();
     var isPaged = ${isPaged ? 'true' : 'false'};
-    var footnoteDialog = null;
-
-    function closeFootnote() {
-      if (footnoteDialog) {
-        try { footnoteDialog.close(); } catch (e) {}
-        if (footnoteDialog.parentNode) footnoteDialog.remove();
-        footnoteDialog = null;
-      }
-    }
-
-    function resolveColors() {
-      var bg = '#ffffff';
-      var fg = '#111827';
-      try {
-        var cs = getComputedStyle(document.body);
-        var bodyBg = cs.backgroundColor;
-        var bodyFg = cs.color;
-        if (bodyBg && bodyBg !== 'transparent' && bodyBg !== 'rgba(0, 0, 0, 0)') bg = bodyBg;
-        if (bodyFg && bodyFg !== 'transparent' && bodyFg !== 'rgba(0, 0, 0, 0)') fg = bodyFg;
-      } catch (e) {}
-      return { bg: bg, fg: fg };
-    }
-
-    function showFootnote(content) {
-      closeFootnote();
-      var colors = resolveColors();
-      var vw = document.documentElement.clientWidth || window.innerWidth || 0;
-      var vh = document.documentElement.clientHeight || window.innerHeight || 0;
-
-      var dialog = document.createElement('dialog');
-      dialog.style.cssText = 'border:none;border-radius:12px;padding:0;box-shadow:0 8px 30px rgba(0,0,0,0.22);position:fixed;inset:0;margin:auto;width:' + Math.min(Math.round(vw * 0.84), 420) + 'px;max-width:90vw;max-height:' + Math.round(vh * 0.62) + 'px;display:flex;flex-direction:column;';
-      dialog.style.background = colors.bg;
-      dialog.style.color = colors.fg;
-
-      var styleEl = document.createElement('style');
-      styleEl.textContent = 'dialog::backdrop{background:rgba(0,0,0,0.4)}ruby rt{font-size:0.5em;color:rgba(128,128,128,0.85)}p{margin:0 0 0.6em}';
-
-      var header = document.createElement('div');
-      header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 16px;font-size:15px;font-weight:600;border-bottom:1px solid rgba(128,128,128,0.25);flex:none;';
-      header.appendChild(document.createTextNode('注释'));
-      var closeBtn = document.createElement('button');
-      closeBtn.textContent = '×';
-      closeBtn.setAttribute('aria-label', '关闭');
-      closeBtn.style.cssText = 'border:none;background:transparent;font-size:22px;line-height:1;color:inherit;padding:2px 6px;cursor:pointer;';
-      header.appendChild(closeBtn);
-
-      var bodyEl = document.createElement('div');
-      bodyEl.style.cssText = 'overflow-y:auto;flex:1;padding:14px 16px;font-size:15px;line-height:1.7;word-break:break-word;';
-      var contentEl = document.createElement('div');
-      contentEl.innerHTML = content;
-      var scripts = contentEl.querySelectorAll('script');
-      for (var i = 0; i < scripts.length; i++) scripts[i].parentNode.removeChild(scripts[i]);
-      bodyEl.appendChild(contentEl);
-
-      dialog.appendChild(styleEl);
-      dialog.appendChild(header);
-      dialog.appendChild(bodyEl);
-      document.body.appendChild(dialog);
-      dialog.showModal();
-      footnoteDialog = dialog;
-
-      closeBtn.addEventListener('click', function () { dialog.close(); });
-      dialog.addEventListener('click', function (e) {
-        if (e.target === dialog) dialog.close();
-      });
-      dialog.addEventListener('close', function () {
-        dialog.remove();
-        if (footnoteDialog === dialog) footnoteDialog = null;
-      });
-    }
-
     function initFootnotes() {
-      var links = document.querySelectorAll('a.duokan-footnote');
+      // Tap a note marker -> tell React Native to present the note in a
+      // native sheet. The note bodies were already extracted server-side
+      // equivalent (processNovelFootnotes) before the document was built, so
+      // there is nothing to look up here — just forward the marker id.
+      var links = document.querySelectorAll('a.duokan-footnote, a[data-reader-footnote-id]');
       var index = 0;
       for (var i = 0; i < links.length; i++) {
         var link = links[i];
-        var href = link.getAttribute('href') || '';
-        var id = href.replace('#', '');
-        var node = document.getElementById(id);
-        if (!node) continue;
+        var id = link.getAttribute('data-reader-footnote-id') || (link.getAttribute('href') || '').replace('#', '');
+        if (!id) continue;
         index++;
-        var content = node.innerHTML;
-        node.style.display = 'none';
-        link.setAttribute('epub:type', 'noteref');
-        link.setAttribute('href', '#' + id);
         link.innerHTML = '<sup style="font-size:0.7em;line-height:0;color:inherit;vertical-align:super">[' + index + ']</sup>';
-        (function (noteContent) {
+        (function (noteId) {
           link.addEventListener('click', function (e) {
             e.preventDefault();
-            showFootnote(noteContent);
+            if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'footnote', id: noteId }));
+            }
           });
-        })(content);
+        })(id);
       }
     }
 
@@ -310,6 +239,7 @@ export function buildChapterXhtml(
       var dragging = false, startX = 0, startLeft = 0, lastX = 0, lastT = 0, velocity = 0, moved = false;
       document.addEventListener('touchstart', function (e) {
         if (e.touches.length !== 1) return;
+        if (e.target && e.target.closest && e.target.closest('dialog')) return; // footnote dialog: leave native scroll/tap alone
         dragging = true; moved = false;
         startX = e.touches[0].clientX;
         startLeft = scrollEl.scrollLeft;
@@ -330,6 +260,7 @@ export function buildChapterXhtml(
       }, { passive: false });
       document.addEventListener('touchend', function (e) {
         if (!dragging) return;
+        if (e.target && e.target.closest && e.target.closest('dialog')) { dragging = false; return; }
         dragging = false;
         var pageW = scrollEl.clientWidth || 1;
         var cur = scrollEl.scrollLeft;
@@ -355,6 +286,10 @@ export function buildChapterXhtml(
       // Tap the left/right edges of the screen to turn pages.
       scrollEl.addEventListener('click', function (e) {
         if (moved) return; // a drag just ended — don't also treat it as a tap
+        if (e.target && e.target.closest) {
+          // Never hijack clicks inside the footnote dialog or on links/buttons.
+          if (e.target.closest('dialog') || e.target.closest('a') || e.target.closest('button')) return;
+        }
         var w = scrollEl.clientWidth;
         var x = e.clientX;
         if (x < w * 0.22) {

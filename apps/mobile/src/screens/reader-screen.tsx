@@ -7,6 +7,7 @@ import { SERVICE_ENDPOINTS } from '@novella/api-client';
 import {
   getAdjacentChapterSortNum,
   normalizeNovelBlocks,
+  processNovelFootnotes,
   type ReaderMode,
   type ReaderOpenPosition,
 } from '@novella/reader-engine';
@@ -20,6 +21,7 @@ import { useReaderChapterPreload } from '@/hooks/use-reader-chapter-preload';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import { readerFontDataUrl } from '@/services/reader-font-loader';
 import { useReaderPositionSaver } from '@/hooks/use-reader-position-saver';
+import { presentReaderFootnote } from '@/services/reader-footnote-session';
 import { subscribeReaderChapterSelection } from '@/services/reader-chapter-selection';
 import {
   type ReaderProgressCheckpoint,
@@ -73,15 +75,22 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
   // XHTML document whose @font-face embeds the book font (one font per book
   // on the backend).
   const chapterHtml = content?.chapter.content ?? '';
+  // Extract footnote bodies (like the web master does) so the WebView renders
+  // the chapter without them, and the native footnote sheet can show the
+  // extracted note content when a marker is tapped.
+  const footnotes = useMemo(
+    () => (content ? processNovelFootnotes(chapterHtml) : { html: chapterHtml, notesById: {} }),
+    [content, chapterHtml],
+  );
   // The chapter is rendered by the reader WebView, which (like the web master)
   // consumes the raw server HTML and the font directly — no invisible
   // codepoint stripping (that was a Flutter/RN text-layout requirement). The
   // block list used for position anchoring must therefore also use the raw
   // text so it stays byte-consistent with the rendered DOM.
-  const sanitizedHtml = chapterHtml;
+  const sanitizedHtml = footnotes.html;
   const blocks = useMemo(
-    () => (content ? normalizeNovelBlocks(chapterHtml, undefined, { sanitize: false }) : []),
-    [content, chapterHtml],
+    () => (content ? normalizeNovelBlocks(footnotes.html, undefined, { sanitize: false }) : []),
+    [content, footnotes.html],
   );
   const fontDataUrl = useMemo(() => {
     if (!requiresReaderFont || readerFont.status !== 'loaded') return null;
@@ -127,6 +136,7 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
   const lastPositionRef = useRef<ReaderWebViewPosition | null>(null);
   const activeChapterIdRef = useRef<number | null>(null);
   activeChapterIdRef.current = content?.chapter.id ?? null;
+
 
   const savePosition = useCallback((position: ReaderWebViewPosition) => {
     if (!content || activeChapterIdRef.current !== content.chapter.id) return;
@@ -214,6 +224,19 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
     ? IOS_READER_BOTTOM_TOOLBAR_HEIGHT + insets.bottom + 16
     : 0;
 
+  const openFootnote = useCallback(
+    (id: string) => {
+      const content = footnotes.notesById[id];
+      if (!content) return;
+      presentReaderFootnote({
+        content,
+        ...(fontDataUrl ? { fontDataUrl } : {}),
+      });
+      router.push({ pathname: '/reader/[bookId]/footnote', params: { bookId: String(bookId) } });
+    },
+    [bookId, fontDataUrl, footnotes.notesById],
+  );
+
   const readerWebViewTheme: ReaderWebViewTheme = {
     backgroundColor: readerBackground,
     textColor: readerTextColor,
@@ -245,6 +268,7 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
             readingMode={mode}
             theme={readerWebViewTheme}
             onPosition={savePosition}
+            onFootnote={openFootnote}
             style={styles.reader}
           />
         )}
