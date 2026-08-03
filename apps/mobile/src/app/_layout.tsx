@@ -87,12 +87,12 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="settings" options={{ headerShown: false }} />
           <Stack.Screen name="book/[id]" options={{ title: '' }} />
-          <Stack.Screen name="book/[id]/comments" options={{ title: 'Comments' }} />
-          <Stack.Screen name="recent-updates" options={{ title: 'Recently updated' }} />
-          <Stack.Screen name="ranking" options={{ title: 'Rankings' }} />
+          <Stack.Screen name="book/[id]/comments" options={{ headerShown: !usesComposeBottomSheets, title: 'Comments' }} />
+          <Stack.Screen name="recent-updates" options={{ headerShown: !usesComposeBottomSheets, title: 'Recently updated' }} />
+          <Stack.Screen name="ranking" options={{ headerShown: !usesComposeBottomSheets, title: 'Rankings' }} />
           <Stack.Screen
             name="shelf/folder"
-            options={{ headerShown: true, title: 'Folder' }}
+            options={{ headerShown: !usesComposeBottomSheets, title: 'Folder' }}
           />
           <Stack.Screen
             name="shelf/manage"
