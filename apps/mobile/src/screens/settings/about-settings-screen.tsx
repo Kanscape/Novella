@@ -20,19 +20,19 @@ export function AboutSettingsScreen() {
       <NativeGroupedListSection title="Novella">
         <NativeValueRow
           description="Installed app version"
-          icon="info"
+          icon="version"
           title="Version"
           value={version}
         />
         <NativeGroupedListRow
           description="Open the source repository"
-          icon="info"
+          icon="sourceCode"
           onPress={() => void Linking.openURL(repositoryUrl)}
           title="Source code"
         />
         <NativeGroupedListRow
           description="Read release notes on GitHub"
-          icon="info"
+          icon="changelogs"
           onPress={() => void Linking.openURL(`${repositoryUrl}/releases`)}
           title="Changelogs"
         />

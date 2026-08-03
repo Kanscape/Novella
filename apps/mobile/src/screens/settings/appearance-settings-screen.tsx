@@ -17,7 +17,7 @@ export function AppearanceSettingsScreen() {
       <NativeGroupedListSection title="Theme">
         <NativePickerRow
           description="Follow the device or choose a fixed appearance"
-          icon="appearance"
+          icon="theme"
           onValueChange={(value) => void updateAppSettings({ theme: value })}
           options={[
             { label: 'System', value: 'system' },
@@ -29,7 +29,7 @@ export function AppearanceSettingsScreen() {
         />
         <NativeToggleRow
           description="Use the cover color on book detail pages"
-          icon="appearance"
+          icon="coverColor"
           onValueChange={(value) => void updateAppSettings({ coverColorExtraction: value })}
           title="Cover color extraction"
           value={settings.coverColorExtraction}
@@ -37,7 +37,7 @@ export function AppearanceSettingsScreen() {
         {process.env.EXPO_OS === 'android' ? (
           <NativeToggleRow
             description="Use the device wallpaper colors"
-            icon="appearance"
+            icon="systemColors"
             onValueChange={(value) => void updateAppSettings({ useSystemColor: value })}
             title="System colors"
             value={settings.useSystemColor}
@@ -45,7 +45,7 @@ export function AppearanceSettingsScreen() {
         ) : null}
         <NativeToggleRow
           description="Use a pure black background in dark mode"
-          icon="appearance"
+          icon="oledBlack"
           onValueChange={(value) => void updateAppSettings({ oledBlack: value })}
           title="OLED black"
           value={settings.oledBlack}

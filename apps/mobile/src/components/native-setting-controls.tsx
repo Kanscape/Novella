@@ -80,7 +80,6 @@ export function NativePickerRow<T extends string | number>({
   selectedValue: T;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const selectedLabel = options.find((option) => option.value === selectedValue)?.label ?? '';
   const handlePress = disabled
     ? onPress
     : () => {
@@ -93,7 +92,6 @@ export function NativePickerRow<T extends string | number>({
       {...row}
       disabled={disabled}
       {...(handlePress ? { onPress: handlePress } : {})}
-      description={`${row.description ?? ''}${row.description ? ' · ' : ''}${selectedLabel}`}
       trailing={
         <NativePickerControl
           enabled={!disabled}

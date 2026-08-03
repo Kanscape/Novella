@@ -36,12 +36,12 @@ export default function TabsLayout() {
         />
         <NativeTabs.Trigger.Label>Community</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="(settings)">
+      <NativeTabs.Trigger name="(search)">
         <NativeTabs.Trigger.Icon
-          drawable="ic_tabler_settings_24"
-          sf="gearshape.fill"
+          drawable="ic_tabler_search_24"
+          sf="magnifyingglass"
         />
-        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Search</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

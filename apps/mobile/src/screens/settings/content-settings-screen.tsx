@@ -2,7 +2,11 @@ import { router } from 'expo-router';
 
 import { NativeGroupedList, NativeGroupedListSection } from '@/components/native-grouped-list';
 import { NativePickerRow, NativeToggleRow } from '@/components/native-setting-controls';
-import { updateAppSettings, useAppSettings } from '@/services/settings';
+import {
+  RANK_PERIOD_OPTIONS,
+  updateAppSettings,
+  useAppSettings,
+} from '@/services/settings';
 
 export function ContentSettingsScreen() {
   const settings = useAppSettings();
@@ -14,24 +18,35 @@ export function ContentSettingsScreen() {
       testID="content-settings"
       title="Content"
     >
+      <NativeGroupedListSection title="Home">
+        <NativePickerRow
+          description="Choose which leaderboard the home screen shows"
+          icon="ranking"
+          onValueChange={(value) => void updateAppSettings({ homeRankType: value })}
+          options={RANK_PERIOD_OPTIONS}
+          selectedValue={settings.homeRankType}
+          title="Home ranking"
+        />
+      </NativeGroupedListSection>
+
       <NativeGroupedListSection title="Content filters">
         <NativeToggleRow
           description="Hide Japanese titles from discovery lists"
-          icon="content"
+          icon="japanese"
           onValueChange={(value) => void updateAppSettings({ ignoreJapanese: value })}
           title="Hide Japanese content"
           value={settings.ignoreJapanese}
         />
         <NativeToggleRow
           description="Hide AI-tagged books from discovery lists"
-          icon="content"
+          icon="aiContent"
           onValueChange={(value) => void updateAppSettings({ ignoreAI: value })}
           title="Hide AI content"
           value={settings.ignoreAI}
         />
         <NativeToggleRow
           description="Hide Level 6 books from discovery lists"
-          icon="content"
+          icon="level6Content"
           onValueChange={(value) => void updateAppSettings({ ignoreLevel6: value })}
           title="Hide Level 6 content"
           value={settings.ignoreLevel6}
@@ -41,7 +56,7 @@ export function ContentSettingsScreen() {
       <NativeGroupedListSection title="Text conversion">
         <NativePickerRow
           description="Convert text while reading"
-          icon="content"
+          icon="textConvert"
           onValueChange={(value) => void updateAppSettings({ convertType: value })}
           options={[
             { label: 'Off', value: 'none' },

@@ -8,9 +8,11 @@ export default function SettingsStackLayout() {
   return (
     <Stack screenOptions={{ ...systemScreenStackPreset, headerShown: !isAndroid }}>
       <Stack.Screen
-        name="settings"
+        name="index"
         options={{ headerLargeTitle: !isAndroid, title: 'Settings' }}
       />
+      <Stack.Screen name="profile" options={{ title: 'Profile' }} />
+      <Stack.Screen name="avatar" options={{ title: 'Avatar' }} />
       <Stack.Screen name="reader" options={{ title: 'Reading' }} />
       <Stack.Screen name="content" options={{ title: 'Content' }} />
       <Stack.Screen name="appearance" options={{ title: 'Appearance' }} />

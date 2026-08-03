@@ -1,11 +1,17 @@
+import { RNHostView } from '@expo/ui';
 import { Image } from '@expo/ui/swift-ui';
 import { accessibilityLabel } from '@expo/ui/swift-ui/modifiers';
+import { StyleSheet, View } from 'react-native';
 
+import { tablerNativeIcons } from '@/components/tabler-native-icon-map';
 import type { NativeIconName } from '@/components/native-icon-types';
 
 type SystemName = NonNullable<React.ComponentProps<typeof Image>['systemName']>;
 
-const icons: Record<NativeIconName, SystemName> = {
+// SF Symbols are used where they express the meaning well. Names without an SF
+// entry (settings second-level rows use Tabler-only names because SF cannot
+// express those meanings) fall back to the shared Tabler icon set.
+const icons: Partial<Record<NativeIconName, SystemName>> = {
   account: 'person.crop.circle',
   announcement: 'megaphone.fill',
   appearance: 'paintpalette',
@@ -50,12 +56,38 @@ export function NativeIcon({
   name: NativeIconName;
   size?: number;
 }) {
+  const systemName = icons[name];
+  if (!systemName) {
+    const IconComponent = tablerNativeIcons[name];
+    return (
+      <RNHostView matchContents>
+        <View style={styles.iconSlot}>
+          <IconComponent
+            color={color}
+            size={size}
+            strokeWidth={2}
+            {...(label ? { accessibilityLabel: label, accessible: true } : {})}
+          />
+        </View>
+      </RNHostView>
+    );
+  }
+
   return (
     <Image
       color={color}
       size={size}
-      systemName={icons[name]}
+      systemName={systemName}
       {...(label ? { modifiers: [accessibilityLabel(label)] } : {})}
     />
   );
 }
+
+const styles = StyleSheet.create({
+  iconSlot: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+});

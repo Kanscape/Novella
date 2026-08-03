@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { NativeM3ExpressiveDropdown } from '../../modules/novella-ui';
+import { NativeSelectionMenu } from '../../modules/novella-ui';
 
 import type { NativePickerControlProps } from '@/components/native-picker-control';
 
@@ -21,7 +21,7 @@ export function NativePickerControl<T extends string | number>({
   const selectedIndex = options.findIndex((option) => option.value === selectedValue);
 
   return (
-    <NativeM3ExpressiveDropdown
+    <NativeSelectionMenu
       enabled={enabled}
       expanded={expanded}
       items={options}
