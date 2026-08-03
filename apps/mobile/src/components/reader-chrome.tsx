@@ -12,15 +12,19 @@ export function ReaderChapterBar({ current, total, bottomInset, onPrevious, onNe
 }) {
   return (
     <View style={[styles.chapterBar, { paddingBottom: bottomInset + 10 }]}>
-      <Pressable accessibilityLabel="Previous chapter" disabled={onPrevious === null} onPress={onPrevious ?? undefined} style={[styles.chapterButton, onPrevious === null && styles.disabled]}>
-        <IconChevronLeft color={onPrevious ? colors.accent as string : colors.secondaryLabel as string} size={20} />
-        <Text style={styles.chapterText}>Previous</Text>
-      </Pressable>
+      <View style={styles.side}>
+        <Pressable accessibilityLabel="Previous chapter" disabled={onPrevious === null} onPress={onPrevious ?? undefined} style={[styles.chapterButton, onPrevious === null && styles.disabled]}>
+          <IconChevronLeft color={onPrevious ? colors.accent as string : colors.secondaryLabel as string} size={20} />
+          <Text style={styles.chapterText}>Previous</Text>
+        </Pressable>
+      </View>
       <Text style={styles.chapterCount}>{total > 0 ? `${current} / ${total}` : ''}</Text>
-      <Pressable accessibilityLabel="Next chapter" disabled={onNext === null} onPress={onNext ?? undefined} style={[styles.chapterButton, onNext === null && styles.disabled]}>
-        <Text style={styles.chapterText}>Next</Text>
-        <IconChevronRight color={onNext ? colors.accent as string : colors.secondaryLabel as string} size={20} />
-      </Pressable>
+      <View style={[styles.side, styles.sideEnd]}>
+        <Pressable accessibilityLabel="Next chapter" disabled={onNext === null} onPress={onNext ?? undefined} style={[styles.chapterButton, onNext === null && styles.disabled]}>
+          <Text style={styles.chapterText}>Next</Text>
+          <IconChevronRight color={onNext ? colors.accent as string : colors.secondaryLabel as string} size={20} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -48,8 +52,13 @@ export function ReaderErrorState({ message, onRetry }: { message: string; onRetr
 }
 
 const styles = StyleSheet.create({
-  chapterBar: { alignItems: 'center', backgroundColor: colors.surface as string, borderTopColor: colors.separator as string, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 },
-  chapterButton: { alignItems: 'center', flexDirection: 'row', gap: 4, minWidth: 100, paddingVertical: 8 },
+  chapterBar: { alignItems: 'center', backgroundColor: colors.surface as string, borderTopColor: colors.separator as string, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', paddingHorizontal: 16, paddingTop: 8 },
+  // Symmetric flex sides keep the counter perfectly centered horizontally
+  // and vertically aligned with the buttons, while the buttons hug the
+  // outer edges (Previous left, Next right).
+  side: { flex: 1, flexDirection: 'row' },
+  sideEnd: { justifyContent: 'flex-end' },
+  chapterButton: { alignItems: 'center', flexDirection: 'row', gap: 4, paddingVertical: 8 },
   chapterText: { color: colors.accent as string, fontSize: 14, fontWeight: '600' },
   chapterCount: { color: colors.secondaryLabel as string, fontSize: 13 },
   disabled: { opacity: 0.4 },
