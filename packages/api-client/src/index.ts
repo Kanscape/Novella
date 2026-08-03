@@ -28,6 +28,140 @@ export const SIGNALR_OPTIONS = Object.freeze({
   useGzip: true,
 });
 
+export const REQUEST_RATE_LIMIT = Object.freeze({
+  maxRequests: 9,
+  windowMilliseconds: 5_500,
+});
+
+export type RequestPriority = 'interactive' | 'preload';
+
+export interface RequestScheduleOptions {
+  priority?: RequestPriority;
+  signal?: AbortSignal;
+}
+
+export class RequestCancelledError extends Error {
+  constructor() {
+    super('The request was cancelled before it started.');
+    this.name = 'RequestCancelledError';
+  }
+}
+
+interface PendingRequest {
+  cleanup(): void;
+  operation: () => Promise<unknown>;
+  priority: RequestPriority;
+  resolve(value: unknown): void;
+  reject(error: unknown): void;
+}
+
+export interface RequestScheduler {
+  add<T>(operation: () => Promise<T>, options?: RequestScheduleOptions): Promise<T>;
+}
+
+export class RateLimitRequestScheduler implements RequestScheduler {
+  readonly #maxRequests: number;
+  readonly #windowMilliseconds: number;
+  readonly #now: () => number;
+  readonly #sleep: (milliseconds: number) => Promise<void>;
+  readonly #timestamps: number[] = [];
+  readonly #pending: PendingRequest[] = [];
+  #processing = false;
+
+  constructor(
+    maxRequests = REQUEST_RATE_LIMIT.maxRequests,
+    windowMilliseconds = REQUEST_RATE_LIMIT.windowMilliseconds,
+    now: () => number = Date.now,
+    sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
+      new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  ) {
+    if (!Number.isInteger(maxRequests) || maxRequests <= 0) {
+      throw new Error('Request limit must be a positive integer.');
+    }
+    if (!Number.isFinite(windowMilliseconds) || windowMilliseconds <= 0) {
+      throw new Error('Request window must be positive.');
+    }
+    this.#maxRequests = maxRequests;
+    this.#windowMilliseconds = windowMilliseconds;
+    this.#now = now;
+    this.#sleep = sleep;
+  }
+
+  add<T>(
+    operation: () => Promise<T>,
+    options: RequestScheduleOptions = {},
+  ): Promise<T> {
+    const { priority = 'interactive', signal } = options;
+    if (signal?.aborted) return Promise.reject(new RequestCancelledError());
+
+    const promise = new Promise<T>((resolve, reject) => {
+      const pending: PendingRequest = {
+        cleanup() {},
+        operation,
+        priority,
+        resolve: resolve as (value: unknown) => void,
+        reject,
+      };
+      if (signal) {
+        const onAbort = () => {
+          const index = this.#pending.indexOf(pending);
+          if (index < 0) return;
+          this.#pending.splice(index, 1);
+          pending.cleanup();
+          reject(new RequestCancelledError());
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+        pending.cleanup = () => signal.removeEventListener('abort', onAbort);
+      }
+      this.#pending.push(pending);
+    });
+    void this.#process();
+    return promise;
+  }
+
+  async #process(): Promise<void> {
+    if (this.#processing) return;
+    this.#processing = true;
+
+    try {
+      while (this.#pending.length > 0) {
+        const now = this.#now();
+        while (
+          this.#timestamps.length > 0 &&
+          now - (this.#timestamps[0] ?? now) >= this.#windowMilliseconds
+        ) {
+          this.#timestamps.shift();
+        }
+
+        if (this.#timestamps.length >= this.#maxRequests) {
+          const oldest = this.#timestamps[0] ?? now;
+          await this.#sleep(Math.max(1, this.#windowMilliseconds - (now - oldest)));
+          continue;
+        }
+
+        const interactiveIndex = this.#pending.findIndex(
+          (request) => request.priority === 'interactive',
+        );
+        const pendingIndex = interactiveIndex >= 0 ? interactiveIndex : 0;
+        const [pending] = this.#pending.splice(pendingIndex, 1);
+        if (!pending) continue;
+        pending.cleanup();
+        this.#timestamps.push(this.#now());
+        void Promise.resolve()
+          .then(pending.operation)
+          .then(pending.resolve, pending.reject);
+      }
+    } finally {
+      this.#processing = false;
+      if (this.#pending.length > 0) void this.#process();
+    }
+  }
+}
+
+const sharedRequestScheduler = new RateLimitRequestScheduler();
+const BLURHASH_BASE83 =
+  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#$%*+,-.:;=?@[]^_{|}~';
+
 export const SHELF_STRUCT_VERSION = '20220211';
 
 export interface ApiRequest extends Omit<HttpRequest, 'url'> {
@@ -65,7 +199,7 @@ export interface AuthRetryHandler {
 
 export interface BookListItem {
   id: number;
-  type: 'Novel' | 'Comic';
+  type: 'Novel' | 'Comic' | null;
   title: string;
   seriesTitle: string | null;
   coverUrl: string;
@@ -87,6 +221,39 @@ export interface BookListPage {
   page: number;
   totalPages: number;
   items: BookListItem[];
+}
+
+export type BookSearchMode = 'fuzzy' | 'exact' | 'title' | 'author' | 'name' | 'tags';
+export type BookListOrder = 'new' | 'view' | 'latest';
+
+export interface BookSearchRequest {
+  keywords: string;
+  mode: BookSearchMode;
+  page: number;
+  size: number;
+  ignoreJapanese?: boolean;
+  ignoreAI?: boolean;
+}
+
+export interface ComicSeriesListItem {
+  id: number;
+  title: string;
+  originalTitle: string | null;
+  coverUrl: string;
+  coverPlaceholder: string | null;
+  volumeCount: number;
+  lastUpdatedAt: string;
+}
+
+export interface ComicSeriesListPage {
+  page: number;
+  totalPages: number;
+  items: ComicSeriesListItem[];
+}
+
+export interface ReadHistory {
+  novelIds: number[];
+  comicIds: number[];
 }
 
 export type ShelfItemType = 'BOOK' | 'FOLDER';
@@ -140,6 +307,7 @@ export interface BookReadPosition {
 
 export interface BookDetail {
   id: number;
+  type: 'Novel' | 'Comic' | null;
   coverUrl: string;
   coverPlaceholder: string | null;
   title: string;
@@ -180,6 +348,97 @@ export interface NovelChapterContent {
 export interface NovelContent {
   chapter: NovelChapterContent;
   readPosition: BookReadPosition | null;
+}
+
+export interface ComicChapterSummary {
+  id: number;
+  sortNum: number;
+  title: string;
+  createdAt: string;
+  updatedAt: string | null;
+  pageCount: number;
+}
+
+export interface ComicImage {
+  url: string;
+  placeholder: string;
+  width: number;
+  height: number;
+}
+
+export interface ComicInfo {
+  id: number;
+  coverUrl: string;
+  coverPlaceholder: string | null;
+  title: string;
+  authorName: string | null;
+  views: number;
+  introduction: string;
+  createdAt: string;
+  lastUpdatedChapter: string | null;
+  lastUpdatedAt: string;
+  favoriteCount: number;
+  user: BookDetailUser | null;
+  classification: BookClassification;
+  chapters: ComicChapterSummary[];
+  readPosition: BookReadPosition | null;
+}
+
+export type ComicOrder = 'latest' | 'new' | 'view';
+
+export interface ComicSeriesVolume {
+  id: number;
+  title: string;
+  uploader: {
+    userName: string;
+    avatarUrl: string;
+  };
+  coverUrl: string;
+  coverPlaceholder: string | null;
+  createdAt: string;
+  lastUpdatedChapter: string | null;
+  lastUpdatedAt: string;
+  readPosition: (BookReadPosition & { readAt: string | null }) | null;
+  chapters: ComicChapterSummary[];
+}
+
+export interface ComicSeriesDetail {
+  id: string;
+  title: string;
+  originalTitle: string | null;
+  coverUrl: string;
+  coverPlaceholder: string | null;
+  authorName: string | null;
+  views: number;
+  favoriteCount: number;
+  introduction: string;
+  createdAt: string;
+  lastUpdatedChapter: string | null;
+  lastUpdatedAt: string;
+  classification: BookClassification;
+  volumes: ComicSeriesVolume[];
+}
+
+export interface ComicContentChapter {
+  id: number;
+  bookId: number;
+  bookName: string;
+  title: string;
+  sortNum: number;
+  total: number;
+  skip: number;
+  images: ComicImage[];
+}
+
+export interface ComicContent {
+  chapter: ComicContentChapter;
+  readPosition: BookReadPosition | null;
+}
+
+export interface ComicContentRequest {
+  chapterId: number;
+  skip?: number;
+  take?: number;
 }
 
 export interface SaveReadPositionRequest {
@@ -243,6 +502,36 @@ export interface OnlineInfo {
   dayRegister: number;
 }
 
+export interface UserGrowth {
+  experience: number;
+  level: number;
+  growthLevel: number;
+  currentLevelExperience: number;
+  nextLevelExperience: number | null;
+  signInStreak: number;
+  signedToday: boolean;
+}
+
+export interface UserProfile {
+  id: number;
+  userName: string;
+  avatarUrl: string;
+  email: string;
+  inviteCode: string;
+  groupName: string;
+  point: number;
+  unreadNotificationCount: number;
+  registeredAt: string | null;
+  growth: UserGrowth;
+}
+
+export interface DailyCheckInResult {
+  reward: number;
+  streak: number;
+  experience: number;
+  level: number;
+}
+
 export interface AnnouncementItem {
   id: number;
   title: string;
@@ -261,6 +550,14 @@ export interface LatestBooksRequest {
   size?: number;
 }
 
+export interface BookListRequest {
+  page: number;
+  size: number;
+  order: BookListOrder;
+  ignoreJapanese?: boolean;
+  ignoreAI?: boolean;
+}
+
 export interface AnnouncementListRequest {
   page: number;
   size: number;
@@ -270,19 +567,22 @@ export class ApiClient {
   readonly #transport: HttpTransport;
   readonly #signalR: SignalRTransport;
   readonly #authRetry: AuthRetryHandler | null;
+  readonly #scheduler: RequestScheduler;
 
   constructor(
     transport: HttpTransport,
     signalR: SignalRTransport,
     authRetry: AuthRetryHandler | null = null,
+    scheduler: RequestScheduler = sharedRequestScheduler,
   ) {
     this.#transport = transport;
     this.#signalR = signalR;
     this.#authRetry = authRetry;
+    this.#scheduler = scheduler;
   }
 
   request<T>(request: ApiRequest): Promise<HttpResponse<T>> {
-    return this.#requestWithAuthRetry(request);
+    return this.#requestWithAuthRetry<T>(request);
   }
 
   async #requestWithAuthRetry<T>(
@@ -290,10 +590,10 @@ export class ApiClient {
     hasRetried = false,
   ): Promise<HttpResponse<T>> {
     const { path, query, ...transportRequest } = request;
-    const response = await this.#transport.request<T>({
+    const response = await this.#scheduler.add(() => this.#transport.request<T>({
       ...transportRequest,
       url: buildApiUrl(path, query),
-    });
+    }));
 
     if (response.status !== 401 || hasRetried || this.#authRetry === null) {
       return response;
@@ -306,19 +606,35 @@ export class ApiClient {
     return this.#requestWithAuthRetry(request, true);
   }
 
-  async invoke<T>(
+  invoke<T>(
     methodName: string,
     params: JsonValue | undefined,
     decode: (value: unknown) => T,
+    options: RequestScheduleOptions = {},
+  ): Promise<T> {
+    return this.#invokeWithAuthRetry(methodName, params, decode, options);
+  }
+
+  async #invokeWithAuthRetry<T>(
+    methodName: string,
+    params: JsonValue | undefined,
+    decode: (value: unknown) => T,
+    options: RequestScheduleOptions,
   ): Promise<T> {
     for (let hasRetried = false; ; hasRetried = true) {
+      if (options.signal?.aborted) throw new RequestCancelledError();
       try {
-        const envelope = await this.#signalR.invoke<unknown>(methodName, [
-          params,
-          { UseGzip: SIGNALR_OPTIONS.useGzip },
-        ]);
+        const envelope = await this.#scheduler.add(() =>
+          this.#signalR.invoke<unknown>(methodName, [
+            params,
+            { UseGzip: SIGNALR_OPTIONS.useGzip },
+          ]), options,
+        );
         return decodeSignalRResponse(envelope, decode);
       } catch (error) {
+        if (error instanceof RequestCancelledError || options.signal?.aborted) {
+          throw new RequestCancelledError();
+        }
         const apiError = toApiError(error);
         if (apiError.category !== 'auth' || hasRetried || this.#authRetry === null) {
           throw apiError;
@@ -342,6 +658,57 @@ export class ApiClient {
     );
   }
 
+  /** Paged book list with an explicit order; use `order: 'latest'` for the
+   * recently-updated catalog (the Flutter/Web contract). */
+  getBookList(request: BookListRequest): Promise<BookListPage> {
+    return this.invoke(
+      'GetBookList',
+      {
+        Page: request.page,
+        Size: request.size,
+        Order: request.order,
+        IgnoreJapanese: request.ignoreJapanese ?? false,
+        IgnoreAI: request.ignoreAI ?? false,
+      },
+      decodeBookListPage,
+    );
+  }
+
+  /** Leaderboard for a period in days (1 daily, 7 weekly, 31 monthly). */
+  getRank(days: number): Promise<BookListItem[]> {
+    return this.invoke('GetRank', { Days: days }, decodeBookListItems);
+  }
+
+  searchNovelBooks(
+    request: BookSearchRequest,
+    options: RequestScheduleOptions = {},
+  ): Promise<BookListPage> {
+    const methodName = resolveNovelSearchMethod(request.mode);
+    return this.invoke(
+      methodName,
+      encodeBookSearchRequest(request, request.mode === 'exact'
+        ? `"${request.keywords}"`
+        : request.keywords),
+      decodeBookListPage,
+      options,
+    );
+  }
+
+  searchComicSeries(
+    request: BookSearchRequest,
+    options: RequestScheduleOptions = {},
+  ): Promise<ComicSeriesListPage> {
+    return this.invoke(
+      'SearchComicSeries',
+      {
+        ...encodeBookSearchRequest(request, request.keywords),
+        Mode: request.mode,
+      },
+      decodeComicSeriesListPage,
+      options,
+    );
+  }
+
   getOnlineInfo(): Promise<OnlineInfo> {
     return this.invoke('GetOnlineInfo', undefined, decodeOnlineInfo);
   }
@@ -360,7 +727,10 @@ export class ApiClient {
     return this.invoke('GetBookInfo', { Id: id }, decodeBookDetail);
   }
 
-  getNovelContent(request: NovelContentRequest): Promise<NovelContent> {
+  getNovelContent(
+    request: NovelContentRequest,
+    options: RequestScheduleOptions = {},
+  ): Promise<NovelContent> {
     return this.invoke(
       'GetNovelContent',
       {
@@ -369,6 +739,34 @@ export class ApiClient {
         ...(request.convert === undefined ? {} : { Convert: request.convert }),
       },
       decodeNovelContent,
+      options,
+    );
+  }
+
+  getComicInfo(id: number): Promise<ComicInfo> {
+    return this.invoke('GetComicInfo', { Id: id }, decodeComicInfo);
+  }
+
+  getComicSeriesInfo(
+    seriesTitle: string,
+    order: ComicOrder = 'latest',
+  ): Promise<ComicSeriesDetail> {
+    return this.invoke(
+      'GetComicSeriesInfo',
+      { SeriesTitle: seriesTitle, Order: order },
+      decodeComicSeriesDetail,
+    );
+  }
+
+  getComicContent(request: ComicContentRequest): Promise<ComicContent> {
+    return this.invoke(
+      'GetComicContent',
+      {
+        Cid: request.chapterId,
+        Skip: request.skip ?? 0,
+        Take: request.take ?? 12,
+      },
+      decodeComicContent,
     );
   }
 
@@ -411,6 +809,14 @@ export class ApiClient {
     return this.invoke('DeleteComment', { Id: id }, () => undefined);
   }
 
+  getReadHistory(): Promise<ReadHistory> {
+    return this.invoke('GetReadHistory', undefined, decodeReadHistory);
+  }
+
+  clearReadHistory(): Promise<void> {
+    return this.invoke('ClearReadHistory', undefined, () => undefined);
+  }
+
   getBookShelf(): Promise<UserShelf> {
     return this.invoke('GetBookShelf', undefined, decodeUserShelf);
   }
@@ -426,17 +832,26 @@ export class ApiClient {
     );
   }
 
-  getBookListByIds(ids: number[]): Promise<BookListItem[]> {
-    const uniqueIds = [...new Set(ids)];
-    if (uniqueIds.length > 24) {
-      return Promise.reject(new Error('A single shelf request cannot contain more than 24 books.'));
-    }
+  async getBookListByIds(ids: number[]): Promise<BookListItem[]> {
+    const uniqueIds = normalizeBatchIds(ids);
     if (uniqueIds.length === 0) return Promise.resolve([]);
     return this.invoke('GetBookListByIds', { Ids: uniqueIds }, decodeBookListItems);
   }
 
+  async getComicSeriesByIds(ids: number[]): Promise<ComicSeriesListPage> {
+    const uniqueIds = normalizeBatchIds(ids);
+    if (uniqueIds.length === 0) {
+      return Promise.resolve({ page: 1, totalPages: 0, items: [] });
+    }
+    return this.invoke(
+      'GetBookListByIds',
+      { Ids: uniqueIds, Type: 'Comic' },
+      decodeComicSeriesListPage,
+    );
+  }
+
   async login(request: LoginRequest): Promise<SessionTokens> {
-    const response = await this.#transport.request<unknown>({
+    const response = await this.#scheduler.add(() => this.#transport.request<unknown>({
       body: {
         email: request.email,
         password: request.passwordHash,
@@ -444,7 +859,7 @@ export class ApiClient {
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       method: 'POST',
       url: `${SERVICE_ENDPOINTS.apiOrigin}${SERVICE_ENDPOINTS.loginPath}`,
-    });
+    }));
     if (response.status < 200 || response.status >= 300) {
       throw new ApiError('Unable to sign in.', response.status === 401 ? 'auth' : 'server', {
         status: response.status,
@@ -454,7 +869,7 @@ export class ApiClient {
   }
 
   async register(request: RegisterRequest): Promise<SessionTokens> {
-    const response = await this.#transport.request<unknown>({
+    const response = await this.#scheduler.add(() => this.#transport.request<unknown>({
       body: {
         userName: request.userName,
         email: request.email,
@@ -465,7 +880,7 @@ export class ApiClient {
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       method: 'POST',
       url: `${SERVICE_ENDPOINTS.apiOrigin}${SERVICE_ENDPOINTS.registerPath}`,
-    });
+    }));
     if (response.status < 200 || response.status >= 300) {
       throw new ApiError('Unable to create your account.', response.status === 401 ? 'auth' : 'server', {
         status: response.status,
@@ -482,8 +897,20 @@ export class ApiClient {
     await this.#requestEmailCode(SERVICE_ENDPOINTS.sendResetEmailPath, email);
   }
 
+  getMyProfile(): Promise<UserProfile> {
+    return this.invoke('GetMyInfo', {}, decodeUserProfile);
+  }
+
+  setAvatar(url: string): Promise<void> {
+    return this.invoke('SetAvatar', { Url: url }, () => undefined);
+  }
+
+  checkIn(): Promise<DailyCheckInResult> {
+    return this.invoke('SignIn', {}, decodeDailyCheckInResult);
+  }
+
   async resetPassword(request: ResetPasswordRequest): Promise<void> {
-    const response = await this.#transport.request<unknown>({
+    const response = await this.#scheduler.add(() => this.#transport.request<unknown>({
       body: {
         email: request.email,
         newPassword: request.newPasswordHash,
@@ -492,7 +919,7 @@ export class ApiClient {
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       method: 'POST',
       url: `${SERVICE_ENDPOINTS.apiOrigin}${SERVICE_ENDPOINTS.resetPasswordPath}`,
-    });
+    }));
     if (response.status < 200 || response.status >= 300) {
       throw new ApiError('Unable to reset your password.', response.status === 401 ? 'auth' : 'server', {
         status: response.status,
@@ -502,10 +929,10 @@ export class ApiClient {
   }
 
   async #requestEmailCode(path: string, email: string): Promise<void> {
-    const response = await this.#transport.request<unknown>({
+    const response = await this.#scheduler.add(() => this.#transport.request<unknown>({
       method: 'GET',
       url: buildApiUrl(path, { email }),
-    });
+    }));
     if (response.status < 200 || response.status >= 300) {
       throw new ApiError('Unable to send the verification code.', 'server', {
         status: response.status,
@@ -519,12 +946,12 @@ export class ApiClient {
       throw new ApiError('Sign in is required.', 'auth', { status: 401 });
     }
 
-    const response = await this.#transport.request<unknown>({
+    const response = await this.#scheduler.add(() => this.#transport.request<unknown>({
       body: { token: refreshToken },
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       method: 'POST',
       url: `${SERVICE_ENDPOINTS.apiOrigin}${SERVICE_ENDPOINTS.refreshTokenPath}`,
-    });
+    }));
     if (response.status < 200 || response.status >= 300) {
       throw new ApiError(
         'Your session has expired. Sign in again to continue.',
@@ -534,6 +961,43 @@ export class ApiClient {
     }
     return decodeRefreshToken(response.body);
   }
+}
+
+function resolveNovelSearchMethod(mode: BookSearchMode): string {
+  switch (mode) {
+    case 'fuzzy':
+    case 'exact':
+      return 'GetBookList';
+    case 'title':
+      return 'GetBookListByTitle';
+    case 'author':
+      return 'GetBookListByAuthor';
+    case 'name':
+      return 'GetBookListByName';
+    case 'tags':
+      return 'GetBookListByTags';
+  }
+}
+
+function encodeBookSearchRequest(
+  request: BookSearchRequest,
+  keywords: string,
+): Record<string, JsonValue> {
+  return {
+    KeyWords: keywords,
+    Page: request.page,
+    Size: request.size,
+    IgnoreJapanese: request.ignoreJapanese ?? false,
+    IgnoreAI: request.ignoreAI ?? false,
+  };
+}
+
+function normalizeBatchIds(ids: number[]): number[] {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length > 24) {
+    throw new Error('A single batch request cannot contain more than 24 books.');
+  }
+  return uniqueIds;
 }
 
 export function decodeSignalRResponse<T>(
@@ -589,6 +1053,60 @@ export function decodeBookListItems(value: unknown): BookListItem[] {
     throw new ApiError('Invalid book list items.', 'server');
   }
   return rawItems.map(decodeBookListItem);
+}
+
+export function decodeComicSeriesListPage(value: unknown): ComicSeriesListPage {
+  const record = asRecord(value, 'comic series list response');
+  const rawItems = asArray(record.Data, 'comic series list items');
+  return {
+    page: asNumber(record.Page, 1),
+    totalPages: asNumber(record.TotalPages, 1),
+    items: rawItems.map(decodeComicSeriesListItem),
+  };
+}
+
+export function decodeReadHistory(value: unknown): ReadHistory {
+  const record = asRecord(value, 'read history response');
+  return {
+    novelIds: decodeNumberArray(record.Novel, 'novel history'),
+    comicIds: decodeNumberArray(record.Comic, 'comic history'),
+  };
+}
+
+export function decodeUserProfile(value: unknown): UserProfile {
+  const record = asRecord(value, 'user profile response');
+  const role = isRecord(record.Role) ? record.Role : {};
+  const growth = isRecord(record.Growth) ? record.Growth : {};
+  return {
+    id: asNumber(record.Id),
+    userName: asStringOrEmpty(record.UserName),
+    avatarUrl: asStringOrEmpty(record.Avatar),
+    email: asStringOrEmpty(record.Email),
+    inviteCode: asStringOrEmpty(record.InviteCode),
+    groupName: asStringOrEmpty(role.Name),
+    point: asNumber(record.Point, 0),
+    unreadNotificationCount: asNumber(record.UnreadNotificationCount, 0),
+    registeredAt: asNullableDateString(record.RegisterAt),
+    growth: {
+      experience: asNumber(growth.Exp, 0),
+      level: asNumber(growth.Level, 0),
+      growthLevel: asNumber(growth.GrowthLevel, 0),
+      currentLevelExperience: asNumber(growth.CurrentLevelExp, 0),
+      nextLevelExperience: asNullableNumber(growth.NextLevelExp),
+      signInStreak: asNumber(growth.SignStreak, 0),
+      signedToday: asBoolean(growth.TodaySigned, false),
+    },
+  };
+}
+
+export function decodeDailyCheckInResult(value: unknown): DailyCheckInResult {
+  const record = asRecord(value, 'daily check-in response');
+  return {
+    reward: asNumber(record.Reward),
+    streak: asNumber(record.Streak),
+    experience: asNumber(record.Exp),
+    level: asNumber(record.Level),
+  };
 }
 
 export function decodeUserShelf(value: unknown): UserShelf {
@@ -649,10 +1167,15 @@ export function decodeBookDetail(value: unknown): BookDetail {
 
   return {
     id: asNumber(book.Id),
+    type: book.Type === 'Comic' || book.Type === 1
+      ? 'Comic'
+      : book.Type === 'Novel' || book.Type === 0
+        ? 'Novel'
+        : null,
     coverUrl: asString(book.Cover),
-    coverPlaceholder: extractCoverPlaceholder(asString(book.Cover)),
+    coverPlaceholder: extractBlurHashPlaceholder(asString(book.Cover)),
     title: asString(book.Title),
-    authorName: asNullableString(book.Author) ?? classification.author,
+    authorName: asNullableString(book.Author),
     category,
     introduction: asStringOrEmpty(book.Introduction),
     lastUpdatedChapter: asNullableString(book.LastUpdatedChapter),
@@ -682,6 +1205,70 @@ export function decodeNovelContent(value: unknown): NovelContent {
       sortNum: asNumber(chapter.SortNum),
       chapterTitles: decodeStringArray(chapter.Chapters),
       canEdit: chapter.CanEdit === true,
+    },
+    readPosition: decodeBookReadPosition(response.ReadPosition),
+  };
+}
+
+export function decodeComicInfo(value: unknown): ComicInfo {
+  const response = asRecord(value, 'comic info response');
+  const book = asRecord(response.Book ?? response, 'comic info book');
+  const classification = decodeBookClassification(book.Extra);
+  return {
+    id: asNumber(book.Id),
+    coverUrl: asString(book.Cover),
+    coverPlaceholder: extractBlurHashPlaceholder(asString(book.Cover)),
+    title: asString(book.Title),
+    authorName: asNullableString(book.Author),
+    views: asNumber(book.Views, 0),
+    introduction: asStringOrEmpty(book.Introduction),
+    createdAt: asDateString(book.CreatedAt),
+    lastUpdatedChapter: asNullableString(book.LastUpdatedChapter),
+    lastUpdatedAt: asDateString(book.LastUpdatedAt),
+    favoriteCount: asNumber(book.Favorite, 0),
+    user: decodeBookDetailUser(book.User),
+    classification,
+    chapters: decodeComicChapterSummaries(book.Chapters),
+    readPosition: decodeBookReadPosition(response.ReadPosition),
+  };
+}
+
+export function decodeComicSeriesDetail(value: unknown): ComicSeriesDetail {
+  const response = asRecord(value, 'comic series detail response');
+  const series = asRecord(response.Series, 'comic series detail');
+  const coverUrl = asString(series.Cover);
+  return {
+    id: typeof series.Id === 'number' ? String(series.Id) : asString(series.Id),
+    title: asString(series.Title),
+    originalTitle: asNullableString(series.OriginalTitle),
+    coverUrl,
+    coverPlaceholder: extractBlurHashPlaceholder(coverUrl),
+    authorName: asNullableString(series.Author),
+    views: asNumber(series.Views, 0),
+    favoriteCount: asNumber(series.Favorite, 0),
+    introduction: asStringOrEmpty(series.Introduction),
+    createdAt: asDateString(series.CreatedAt),
+    lastUpdatedChapter: asNullableString(series.LastUpdatedChapter),
+    lastUpdatedAt: asDateString(series.LastUpdatedAt),
+    classification: decodeBookClassification(series.Extra),
+    volumes: asArray(response.Books, 'comic series volumes').map(decodeComicSeriesVolume),
+  };
+}
+
+export function decodeComicContent(value: unknown): ComicContent {
+  const response = asRecord(value, 'comic content response');
+  const chapter = asRecord(response.Chapter, 'comic content chapter');
+  const images = Array.isArray(chapter.Images) ? chapter.Images : [];
+  return {
+    chapter: {
+      id: asNumber(chapter.Id),
+      bookId: asNumber(chapter.BookId),
+      bookName: asStringOrEmpty(chapter.BookName),
+      title: asString(chapter.Title),
+      sortNum: asNumber(chapter.SortNum),
+      total: Math.max(0, asNumber(chapter.Total, images.length)),
+      skip: Math.max(0, asNumber(chapter.Skip, 0)),
+      images: images.map(decodeComicImage),
     },
     readPosition: decodeBookReadPosition(response.ReadPosition),
   };
@@ -796,12 +1383,26 @@ function decodeBookListItem(value: unknown): BookListItem {
     title: asString(book.Title),
     seriesTitle: asNullableString(book.SeriesTitle),
     coverUrl: asString(book.Cover),
-    coverPlaceholder: extractCoverPlaceholder(asString(book.Cover)),
+    coverPlaceholder: extractBlurHashPlaceholder(asString(book.Cover)),
     authorName: asNullableString(book.UserName),
     lastUpdatedAt: asDateString(book.LastUpdatedAt),
     level: asNullableNumber(book.Level),
     interiorLevel: asNullableNumber(book.InteriorLevel),
     category: decodeBookCategory(book.Category),
+  };
+}
+
+function decodeComicSeriesListItem(value: unknown): ComicSeriesListItem {
+  const comic = asRecord(value, 'comic series list item');
+  const coverUrl = asString(comic.Cover);
+  return {
+    id: asNumber(comic.Id),
+    title: asString(comic.Title),
+    originalTitle: asNullableString(comic.OriginalTitle),
+    coverUrl,
+    coverPlaceholder: extractBlurHashPlaceholder(coverUrl),
+    volumeCount: Math.max(0, asNumber(comic.Count, 0)),
+    lastUpdatedAt: asDateString(comic.LastUpdatedAt),
   };
 }
 
@@ -900,6 +1501,61 @@ function decodeBookChapters(value: unknown): BookChapter[] {
   });
 }
 
+function decodeComicSeriesVolume(value: unknown): ComicSeriesVolume {
+  const volume = asRecord(value, 'comic series volume');
+  const uploader = asRecord(volume.Uploader, 'comic series uploader');
+  const coverUrl = asString(volume.Cover);
+  const position = decodeBookReadPosition(volume.ReadPosition);
+  const readPosition = position === null
+    ? null
+    : {
+        ...position,
+        readAt: isRecord(volume.ReadPosition)
+          ? asNullableDateString(volume.ReadPosition.ReadAt)
+          : null,
+      };
+  return {
+    id: asNumber(volume.Id),
+    title: asString(volume.Title),
+    uploader: {
+      userName: asStringOrEmpty(uploader.UserName),
+      avatarUrl: asStringOrEmpty(uploader.Avatar),
+    },
+    coverUrl,
+    coverPlaceholder: extractBlurHashPlaceholder(coverUrl),
+    createdAt: asDateString(volume.CreatedAt),
+    lastUpdatedChapter: asNullableString(volume.LastUpdatedChapter),
+    lastUpdatedAt: asDateString(volume.LastUpdatedAt),
+    readPosition,
+    chapters: decodeComicChapterSummaries(volume.Chapters),
+  };
+}
+
+function decodeComicChapterSummaries(value: unknown): ComicChapterSummary[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const chapter = asRecord(item, 'comic chapter');
+    return {
+      id: asNumber(chapter.Id),
+      sortNum: asNumber(chapter.SortNum),
+      title: asString(chapter.Title),
+      createdAt: asDateString(chapter.CreatedAt),
+      updatedAt: asNullableDateString(chapter.UpdatedAt),
+      pageCount: Math.max(0, asNumber(chapter.PageCount, 0)),
+    };
+  });
+}
+
+function decodeComicImage(value: unknown): ComicImage {
+  const image = asRecord(value, 'comic image');
+  return {
+    url: asString(image.Url),
+    placeholder: normalizeBlurHash(asStringOrEmpty(image.Placeholder)) ?? '',
+    width: Math.max(1, asNumber(image.Width, 1)),
+    height: Math.max(1, asNumber(image.Height, 1)),
+  };
+}
+
 function decodeBookDetailUser(value: unknown): BookDetailUser | null {
   if (!isRecord(value)) return null;
   return {
@@ -922,6 +1578,10 @@ function decodeBookReadPosition(value: unknown): BookReadPosition | null {
 function decodeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
+function decodeNumberArray(value: unknown, name: string): number[] {
+  return asArray(value, name).map((item) => asNumber(item));
 }
 
 function asRecord(value: unknown, name: string): Record<string, unknown> {
@@ -950,7 +1610,8 @@ function asStringOrEmpty(value: unknown): string {
 }
 
 function asNullableString(value: unknown): string | null {
-  return value === null || value === undefined ? null : asString(value);
+  if (value === null || value === undefined || value === '') return null;
+  return asString(value);
 }
 
 function asNumber(value: unknown, fallback?: number): number {
@@ -963,9 +1624,19 @@ function asNullableNumber(value: unknown): number | null {
   return value === null || value === undefined ? null : asNumber(value);
 }
 
+function asBoolean(value: unknown, fallback?: boolean): boolean {
+  if (typeof value === 'boolean') return value;
+  if (fallback !== undefined) return fallback;
+  throw new ApiError('The server returned an invalid boolean field.', 'server');
+}
+
 function asDateString(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
   return asString(value);
+}
+
+function asNullableDateString(value: unknown): string | null {
+  return value === null || value === undefined || value === '' ? null : asDateString(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -973,7 +1644,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isAuthenticationError(message: string): boolean {
-  return /401|unauthori[sz]ed|invalid token|无效token|未登录|授权/i.test(message);
+  return /401|unauthori[sz]ed|invalid token|no\s*token|notoken|无效token|未登录|授权/i.test(message);
 }
 
 function toApiError(error: unknown): ApiError {
@@ -987,13 +1658,48 @@ function toApiError(error: unknown): ApiError {
   );
 }
 
-function extractCoverPlaceholder(value: string): string | null {
-  try {
-    const placeholder = new URL(value).searchParams.get('placeholder');
-    return placeholder && placeholder.length >= 6 ? placeholder : null;
-  } catch {
-    return null;
+export function normalizeBlurHash(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length < 6) return null;
+  for (const character of value) {
+    if (!BLURHASH_BASE83.includes(character)) return null;
   }
+  const sizeFlag = decodeBlurHash83(value[0] ?? '');
+  const componentCount =
+    (Math.floor(sizeFlag / 9) + 1) * ((sizeFlag % 9) + 1);
+  return value.length === 4 + 2 * componentCount ? value : null;
+}
+
+export function extractBlurHashPlaceholder(value: string): string | null {
+  return normalizeBlurHash(extractRawQueryValue(value, 'placeholder'));
+}
+
+/** Reads a query value straight from the raw URL string. The server normally
+ * percent-encodes cover placeholders, but legacy/raw URLs can carry base83
+ * characters unencoded — most notably `+`, which URLSearchParams would turn
+ * into a space. Parsing the raw query (then decoding `%XX` and re-encoding `+`
+ * as `%2B`) preserves the literal value. */
+function extractRawQueryValue(rawUrl: string, key: string): string | null {
+  const queryStart = rawUrl.indexOf('?');
+  if (queryStart < 0) return null;
+  const query = rawUrl.slice(queryStart + 1).split('#')[0] ?? '';
+  for (const pair of query.split('&')) {
+    const separator = pair.indexOf('=');
+    if (separator < 0 || pair.slice(0, separator) !== key) continue;
+    const encoded = pair.slice(separator + 1).replace(/\+/g, '%2B');
+    return encoded.replace(/%([0-9A-Fa-f]{2})/g, (_match, hex: string) =>
+      String.fromCharCode(Number.parseInt(hex, 16)));
+  }
+  return null;
+}
+
+function decodeBlurHash83(value: string): number {
+  let result = 0;
+  for (const character of value) {
+    const digit = BLURHASH_BASE83.indexOf(character);
+    if (digit < 0) return 0;
+    result = result * 83 + digit;
+  }
+  return result;
 }
 
 function buildApiUrl(
