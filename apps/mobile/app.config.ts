@@ -14,6 +14,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     bundleIdentifier: 'sh.celia.novella',
     supportsTablet: true,
+    // Icon Composer (iOS 26 Liquid Glass) 图标,覆盖顶层 icon。
+    icon: './assets/Novella.icon',
   },
   android: {
     adaptiveIcon: {
