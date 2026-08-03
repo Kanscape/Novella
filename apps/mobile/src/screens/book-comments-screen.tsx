@@ -106,6 +106,9 @@ export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
             contentContainerStyle={styles.content}
             data={page?.items ?? []}
             keyExtractor={(item) => String(item.id)}
+            // Inside the Android Compose top-bar host the list must
+            // participate in the nested scrolling coordinator.
+            nestedScrollEnabled={process.env.EXPO_OS === 'android'}
             ListEmptyComponent={
               isLoading ? (
                 <CommentsSkeleton palette={palette} />

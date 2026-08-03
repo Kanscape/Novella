@@ -35,6 +35,10 @@ export function ReaderChapterList({ emptyState, header, items, onSelect, palette
       keyExtractor={(item) => String(item.id)}
       ListEmptyComponent={emptyState ?? null}
       ListHeaderComponent={header ?? null}
+      // Inside the Android Compose bottom sheet the RN list must participate
+      // in the nested scrolling coordinator (same handling as the book
+      // introduction sheet).
+      nestedScrollEnabled={process.env.EXPO_OS === 'android'}
       renderItem={({ item }) => (
         <Pressable
           accessibilityLabel={`Open chapter ${item.sortNum}: ${item.title}`}
