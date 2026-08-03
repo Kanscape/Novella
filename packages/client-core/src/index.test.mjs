@@ -1,0 +1,634 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  createBookSearchUseCase,
+  createClientSessionController,
+  createDiscoveryUseCase,
+  createHistoryUseCase,
+  createProfileUseCase,
+  createReaderUseCase,
+  createShelfDraft,
+  createShelfFolder,
+  createShelfUseCase,
+  deleteShelfFolder,
+  getShelfFolderPaths,
+  getShelfItemsAtPath,
+  getShelfSelectionBookCount,
+  moveShelfBooks,
+  parseAvatarSource,
+  removeShelfItems,
+  renameShelfFolder,
+  reorderShelfSiblings,
+  resolveAvatarUrl,
+  shelfDraftHasChanges,
+  shelfItemKey,
+} from './index.ts';
+
+class FakeLifecycle {
+  state = 'foreground';
+  listeners = new Set();
+
+  getCurrentState() {
+    return this.state;
+  }
+
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  emit(state) {
+    this.state = state;
+    for (const listener of this.listeners) listener(state);
+  }
+}
+
+class FakeSignalR {
+  connectCalls = 0;
+  closeCalls = 0;
+  invokeCalls = 0;
+  connectImplementation = async () => undefined;
+
+  async connect() {
+    this.connectCalls += 1;
+    await this.connectImplementation();
+  }
+
+  async close() {
+    this.closeCalls += 1;
+  }
+
+  async invoke(methodName, args) {
+    this.invokeCalls += 1;
+    return { methodName, args };
+  }
+}
+
+test('client startup bootstraps auth before one shared SignalR connection', async () => {
+  const order = [];
+  const lifecycle = new FakeLifecycle();
+  const signalR = new FakeSignalR();
+  signalR.connectImplementation = async () => {
+    order.push('connect');
+  };
+  const session = createClientSessionController({
+    async bootstrapAuthentication() {
+      order.push('auth');
+    },
+    async refreshAuthentication() {
+      return true;
+    },
+    lifecycle,
+    signalR,
+  });
+
+  const first = session.start();
+  const second = session.start();
+  assert.equal(first, second);
+  assert.deepEqual(await first, { status: 'ready', error: null });
+  assert.deepEqual(order, ['auth', 'connect']);
+  assert.equal(signalR.connectCalls, 1);
+
+  await session.close();
+});
+
+test('startup re-reads lifecycle state before deciding whether to connect', async () => {
+  const lifecycle = new FakeLifecycle();
+  lifecycle.state = 'background';
+  const signalR = new FakeSignalR();
+  const session = createClientSessionController({
+    async bootstrapAuthentication() { return false; },
+    async refreshAuthentication() { return false; },
+    lifecycle,
+    signalR,
+  });
+
+  lifecycle.state = 'foreground';
+  assert.deepEqual(await session.start(), { status: 'ready', error: null });
+  assert.equal(signalR.connectCalls, 1);
+
+  await session.close();
+});
+
+test('a never-settling connection attempt releases startup as degraded', async () => {
+  const lifecycle = new FakeLifecycle();
+  const signalR = new FakeSignalR();
+  signalR.connectImplementation = () => new Promise(() => undefined);
+  const session = createClientSessionController({
+    async bootstrapAuthentication() { return true; },
+    async refreshAuthentication() { return true; },
+    lifecycle,
+    signalR,
+    connectionTimeoutMilliseconds: 5,
+  });
+
+  const result = await session.start();
+  assert.equal(result.status, 'degraded');
+  assert.match(result.error.message, /timed out/i);
+  assert.equal(signalR.closeCalls, 1);
+
+  await session.close();
+});
+
+test('degraded startup releases the invocation gate after the connection attempt', async () => {
+  const lifecycle = new FakeLifecycle();
+  const signalR = new FakeSignalR();
+  const connectionError = new Error('offline');
+  signalR.connectImplementation = async () => {
+    throw connectionError;
+  };
+  const session = createClientSessionController({
+    async bootstrapAuthentication() {},
+    async refreshAuthentication() {
+      return false;
+    },
+    lifecycle,
+    signalR,
+  });
+
+  assert.deepEqual(await session.start(), {
+    status: 'degraded',
+    error: connectionError,
+  });
+  const response = await session.transport.invoke('GetOnlineInfo', []);
+  assert.deepEqual(response, { methodName: 'GetOnlineInfo', args: [] });
+
+  await session.close();
+});
+
+test('background waits for registered reader persistence before closing SignalR', async () => {
+  const lifecycle = new FakeLifecycle();
+  const signalR = new FakeSignalR();
+  const persisted = deferred();
+  const session = createClientSessionController({
+    async bootstrapAuthentication() { return true; },
+    async refreshAuthentication() { return true; },
+    lifecycle,
+    signalR,
+    backgroundDrainTimeoutMilliseconds: 100,
+  });
+  await session.start();
+  session.registerBeforeBackground(() => persisted.promise);
+
+  lifecycle.emit('background');
+  await nextTask();
+  assert.equal(signalR.closeCalls, 0);
+
+  persisted.resolve();
+  await nextTask();
+  assert.equal(signalR.closeCalls, 1);
+
+  await session.close();
+});
+
+test('background closes the gate and foreground refreshes then reconnects before invoke', async () => {
+  const lifecycle = new FakeLifecycle();
+  const signalR = new FakeSignalR();
+  const refresh = deferred();
+  let refreshCalls = 0;
+  const session = createClientSessionController({
+    async bootstrapAuthentication() {},
+    async refreshAuthentication() {
+      refreshCalls += 1;
+      await refresh.promise;
+      return true;
+    },
+    lifecycle,
+    signalR,
+  });
+
+  await session.start();
+  lifecycle.emit('background');
+  await nextTask();
+  assert.equal(signalR.closeCalls, 1);
+
+  let invocationSettled = false;
+  const invocation = session.transport.invoke('GetLatestBookList', []).then(() => {
+    invocationSettled = true;
+  });
+  lifecycle.emit('foreground');
+  lifecycle.emit('foreground');
+  await nextTask();
+
+  assert.equal(refreshCalls, 1);
+  assert.equal(signalR.connectCalls, 1);
+  assert.equal(signalR.invokeCalls, 0);
+  assert.equal(invocationSettled, false);
+
+  refresh.resolve();
+  await invocation;
+  assert.equal(signalR.connectCalls, 2);
+  assert.equal(signalR.invokeCalls, 1);
+
+  await session.close();
+});
+
+test('reader preload marks chapter Hub work as cancellable preload priority', async () => {
+  const calls = [];
+  const useCase = createReaderUseCase({
+    async getNovelContent(request, options) {
+      calls.push([request, options]);
+      return {
+        chapter: {
+          id: 9,
+          bookId: request.bookId,
+          title: 'Chapter 2',
+          content: '<p>ready</p>',
+          fontUrl: null,
+          sortNum: request.sortNum,
+          chapterTitles: ['Chapter 1', 'Chapter 2'],
+          canEdit: false,
+        },
+        readPosition: null,
+      };
+    },
+  });
+  const controller = new AbortController();
+
+  await useCase.preloadChapter(
+    { bookId: 4, sortNum: 2, convert: 't2s' },
+    controller.signal,
+  );
+
+  assert.deepEqual(calls, [[
+    { bookId: 4, sortNum: 2, convert: 't2s' },
+    { priority: 'preload', signal: controller.signal },
+  ]]);
+});
+
+test('discovery exposes independently loadable home sections', async () => {
+  const calls = [];
+  const useCase = createDiscoveryUseCase({
+    async getLatestBookList(request) {
+      calls.push(['books', request]);
+      return { items: [], page: 1, totalPages: 0 };
+    },
+    async getAnnouncementList(request) {
+      calls.push(['announcements', request]);
+      return { items: [], page: 1, totalPages: 0 };
+    },
+    async getOnlineInfo() {
+      calls.push(['online']);
+      return { onlineUserCount: 1, dayCount: 2, dayRegister: 3 };
+    },
+  });
+
+  const [books, announcements, online] = await Promise.all([
+    useCase.loadLatestBooks(),
+    useCase.loadAnnouncements(),
+    useCase.loadOnlineInfo(),
+  ]);
+
+  assert.deepEqual(books.items, []);
+  assert.deepEqual(announcements.items, []);
+  assert.equal(online.onlineUserCount, 1);
+  assert.deepEqual(calls, [
+    ['books', { size: 6 }],
+    ['announcements', { page: 1, size: 5 }],
+    ['online'],
+  ]);
+});
+
+test('discovery loads paged recent updates through GetBookList latest order', async () => {
+  const calls = [];
+  const useCase = createDiscoveryUseCase({
+    async getBookList(request) {
+      calls.push(request);
+      return { items: [], page: request.page, totalPages: 4 };
+    },
+  });
+
+  const page = await useCase.loadLatestBooksPage({
+    page: 3,
+    ignoreAI: true,
+    ignoreJapanese: false,
+  });
+
+  assert.equal(page.totalPages, 4);
+  assert.deepEqual(calls, [
+    { page: 3, size: 24, order: 'latest', ignoreAI: true, ignoreJapanese: false },
+  ]);
+});
+
+test('discovery maps ranking periods to GetRank days', async () => {
+  const calls = [];
+  const useCase = createDiscoveryUseCase({
+    async getRank(days) {
+      calls.push(days);
+      return [{ id: 1, title: 'Top book' }];
+    },
+  });
+
+  const weekly = await useCase.loadRank('weekly');
+  assert.equal(weekly.length, 1);
+  assert.deepEqual(calls, [7]);
+
+  await useCase.loadRank('daily');
+  await useCase.loadRank('monthly');
+  assert.deepEqual(calls, [7, 1, 31]);
+
+  await assert.rejects(() => useCase.loadRank('hourly'), /unknown ranking period/i);
+});
+
+test('search keeps novel and comic requests equal and cancellable', async () => {
+  const calls = [];
+  const useCase = createBookSearchUseCase({
+    async searchNovelBooks(request, options) {
+      calls.push(['Novel', request, options]);
+      return { page: request.page, totalPages: 1, items: [] };
+    },
+    async searchComicSeries(request, options) {
+      calls.push(['Comic', request, options]);
+      return { page: request.page, totalPages: 1, items: [] };
+    },
+  });
+  const controller = new AbortController();
+  const request = { keywords: 'series', mode: 'name', page: 1, size: 24 };
+
+  await Promise.all([
+    useCase.searchNovels(request, controller.signal),
+    useCase.searchComics(request, controller.signal),
+  ]);
+
+  assert.deepEqual(calls, [
+    ['Novel', request, { signal: controller.signal }],
+    ['Comic', request, { signal: controller.signal }],
+  ]);
+});
+
+test('history hydrates novel order and comic series independently', async () => {
+  const useCase = createHistoryUseCase({
+    async getReadHistory() {
+      return { novelIds: [3, 2, 1], comicIds: [9, 8] };
+    },
+    async getBookListByIds(ids) {
+      return [...ids].reverse().map((id) => ({ id, title: `Book ${id}` }));
+    },
+    async getComicSeriesByIds() {
+      return {
+        page: 1,
+        totalPages: 1,
+        items: [
+          { id: 1, title: 'Series', volumeCount: 2 },
+          { id: 2, title: 'Series', volumeCount: 2 },
+        ],
+      };
+    },
+    async clearReadHistory() {},
+  });
+
+  assert.deepEqual(await useCase.loadIndex(), {
+    novelIds: [3, 2, 1],
+    comicIds: [9, 8],
+  });
+  const novels = await useCase.loadNovelPage([3, 2, 1], 1, 2);
+  assert.deepEqual(novels.items.map((item) => item.id), [3, 2]);
+  const comics = await useCase.loadComicPage([9, 8], 1, 24);
+  assert.equal(comics.items.length, 1);
+  await useCase.clear();
+});
+
+test('avatar sources round-trip Web-Master URL, QQ, and QQ group modes', () => {
+  assert.deepEqual(parseAvatarSource('https://cdn.example/avatar.png'), {
+    source: 'url',
+    value: 'https://cdn.example/avatar.png',
+  });
+  assert.deepEqual(parseAvatarSource('https://q.qlogo.cn/headimg_dl?spec=100&dst_uin=12345'), {
+    source: 'qq',
+    value: '12345',
+  });
+  assert.deepEqual(parseAvatarSource('https://p.qlogo.cn/gh/67890/67890/100'), {
+    source: 'qqGroup',
+    value: '67890',
+  });
+  assert.equal(resolveAvatarUrl('url', 'https://cdn.example/avatar.png'), 'https://cdn.example/avatar.png');
+  assert.equal(resolveAvatarUrl('qq', '12345'), 'https://q.qlogo.cn/headimg_dl?spec=100&dst_uin=12345');
+  assert.equal(resolveAvatarUrl('qqGroup', '67890'), 'https://p.qlogo.cn/gh/67890/67890/100');
+  assert.throws(() => resolveAvatarUrl('qq', '123'), /valid QQ number/);
+  assert.throws(() => resolveAvatarUrl('url', 'http://cdn.example/avatar.png'), /valid HTTPS/);
+});
+
+test('profile repository publishes refreshed avatar and check-in state', async () => {
+  let profile = {
+    id: 9,
+    userName: 'reader',
+    avatarUrl: '',
+    email: 'reader@example.com',
+    inviteCode: 'INVITE',
+    groupName: 'Member',
+    point: 0,
+    unreadNotificationCount: 0,
+    registeredAt: null,
+    growth: {
+      experience: 10,
+      level: 1,
+      growthLevel: 1,
+      currentLevelExperience: 0,
+      nextLevelExperience: 100,
+      signInStreak: 0,
+      signedToday: false,
+    },
+  };
+  const useCase = createProfileUseCase({
+    async getMyProfile() { return structuredClone(profile); },
+    async setAvatar(url) { profile = { ...profile, avatarUrl: url }; },
+    async checkIn() {
+      profile = {
+        ...profile,
+        growth: { ...profile.growth, experience: 15, signInStreak: 1, signedToday: true },
+      };
+      return { reward: 5, streak: 1, experience: 15, level: 1 };
+    },
+  });
+  const published = [];
+  useCase.subscribe((next) => published.push(next));
+
+  await useCase.load();
+  assert.equal(useCase.getSnapshot().id, 9);
+  await useCase.setAvatar('https://cdn.example/avatar.png');
+  assert.equal(useCase.getSnapshot().avatarUrl, 'https://cdn.example/avatar.png');
+  const outcome = await useCase.checkIn();
+  assert.equal(outcome.result.reward, 5);
+  assert.equal(outcome.profile.growth.signedToday, true);
+  assert.equal(useCase.getSnapshot().growth.signInStreak, 1);
+  assert.equal(published.length, 3);
+});
+
+test('shelf repository publishes one shared snapshot after load and save', async () => {
+  const saved = [];
+  const useCase = createShelfUseCase({
+    async getBookShelf() {
+      return {
+        version: '20220211',
+        items: [{ type: 'BOOK', id: 1, index: 0, parents: [], updatedAt: 'a' }],
+      };
+    },
+    async getBookListByIds(ids) {
+      return ids.map((id) => ({ id, title: `Book ${id}` }));
+    },
+    async saveBookShelf(draft) {
+      saved.push(draft);
+    },
+  });
+  const published = [];
+  const unsubscribe = useCase.subscribe((snapshot) => published.push(snapshot));
+
+  assert.equal(useCase.getSnapshot(), null);
+  const loaded = await useCase.load();
+  assert.equal(useCase.getSnapshot(), loaded);
+  assert.equal(published.length, 1);
+
+  const draft = createShelfFolder(createShelfDraft(loaded), {
+    id: 'folder',
+    title: 'Folder',
+    now: 'b',
+  });
+  const savedSnapshot = await useCase.save(draft);
+  assert.equal(useCase.getSnapshot(), savedSnapshot);
+  assert.equal(published.length, 2);
+  assert.deepEqual(saved[0].items.map(shelfItemKey), ['FOLDER:folder', 'BOOK:1']);
+
+  unsubscribe();
+  await useCase.load();
+  assert.equal(published.length, 2);
+});
+
+test('shelf load cannot publish an older response after save begins', async () => {
+  let resolveLoad;
+  let shelfCall = 0;
+  const useCase = createShelfUseCase({
+    async getBookShelf() {
+      shelfCall += 1;
+      if (shelfCall === 1) {
+        return { version: 'old', items: [
+          { type: 'BOOK', id: 1, index: 0, parents: [], updatedAt: 'a' },
+          { type: 'BOOK', id: 2, index: 1, parents: [], updatedAt: 'a' },
+        ] };
+      }
+      await new Promise((resolve) => { resolveLoad = resolve; });
+      return { version: 'server', items: [
+        { type: 'BOOK', id: 2, index: 0, parents: [], updatedAt: 'b' },
+        { type: 'BOOK', id: 1, index: 1, parents: [], updatedAt: 'b' },
+      ] };
+    },
+    async getBookListByIds(ids) {
+      return ids.map((id) => ({ id, title: `Book ${id}` }));
+    },
+    async saveBookShelf() {},
+  });
+
+  const initial = await useCase.load();
+  const staleLoad = useCase.load();
+  const draft = createShelfDraft(initial);
+  draft.items = [draft.items[1], draft.items[0]].map((item, index) => ({ ...item, index }));
+  const saved = await useCase.save(draft);
+  resolveLoad();
+  const loaded = await staleLoad;
+  assert.deepEqual(saved.items.map(shelfItemKey), ['BOOK:2', 'BOOK:1']);
+  assert.deepEqual(loaded.items.map(shelfItemKey), ['BOOK:2', 'BOOK:1']);
+  assert.deepEqual(useCase.getSnapshot().items.map(shelfItemKey), ['BOOK:2', 'BOOK:1']);
+});
+
+test('shelf dirty projection compares the complete ordered draft', () => {
+  const snapshot = {
+    version: '20220211',
+    books: [],
+    items: [
+      { type: 'FOLDER', id: 'folder', index: 0, parents: [], title: 'Folder', updatedAt: 'a' },
+      { type: 'BOOK', id: 1, index: 0, parents: ['folder'], updatedAt: 'a' },
+    ],
+  };
+  const clean = createShelfDraft(snapshot);
+  assert.equal(shelfDraftHasChanges(snapshot, clean), false);
+
+  const renamed = renameShelfFolder(clean, { id: 'folder', title: 'Renamed', now: 'b' });
+  assert.equal(shelfDraftHasChanges(snapshot, renamed), true);
+  assert.equal(shelfDraftHasChanges(snapshot, createShelfDraft(snapshot)), false);
+  assert.equal(shelfDraftHasChanges(snapshot, {
+    ...clean,
+    items: clean.items.map((item) => ({ ...item, updatedAt: 'metadata-only' })),
+  }), false);
+});
+
+test('shelf draft supports folders, moves, sibling reorder, and Web deletion semantics', () => {
+  const snapshot = {
+    version: '20220211',
+    books: [],
+    items: [
+      { type: 'BOOK', id: 1, index: 0, parents: [], updatedAt: 'a' },
+      { type: 'BOOK', id: 2, index: 1, parents: [], updatedAt: 'a' },
+    ],
+  };
+  let draft = createShelfDraft(snapshot);
+  draft = createShelfFolder(draft, { id: 'folder', title: 'Folder', now: 'b' });
+  draft = renameShelfFolder(draft, { id: 'folder', title: 'Renamed', now: 'c' });
+  draft = moveShelfBooks(draft, { bookIds: [2], destination: ['folder'], now: 'd' });
+
+  assert.deepEqual(
+    getShelfItemsAtPath(draft, ['folder']).map(shelfItemKey),
+    ['BOOK:2'],
+  );
+  assert.deepEqual(getShelfFolderPaths(draft), [{
+    id: 'folder',
+    label: 'Renamed',
+    path: ['folder'],
+  }]);
+  assert.equal(getShelfSelectionBookCount(draft, new Set(['FOLDER:folder'])), 1);
+  draft = reorderShelfSiblings(draft, {
+    parents: [],
+    orderedKeys: ['BOOK:1', 'FOLDER:folder'],
+    now: 'e',
+  });
+  assert.deepEqual(getShelfItemsAtPath(draft, []).map(shelfItemKey), [
+    'BOOK:1',
+    'FOLDER:folder',
+  ]);
+
+  draft = deleteShelfFolder(draft, { id: 'folder', now: 'f' });
+  assert.deepEqual(getShelfItemsAtPath(draft, []).map(shelfItemKey), [
+    'BOOK:1',
+    'BOOK:2',
+  ]);
+  draft = removeShelfItems(draft, {
+    keys: new Set(['BOOK:1']),
+    now: 'g',
+  });
+  assert.deepEqual(getShelfItemsAtPath(draft, []).map(shelfItemKey), ['BOOK:2']);
+});
+
+test('shelf draft rejects cross-container and incomplete reorder operations', () => {
+  const draft = createShelfDraft({
+    version: '20220211',
+    books: [],
+    items: [
+      { type: 'BOOK', id: 1, index: 0, parents: [], updatedAt: 'a' },
+      { type: 'FOLDER', id: 'folder', index: 1, parents: [], title: 'Folder', updatedAt: 'a' },
+    ],
+  });
+
+  assert.throws(() => reorderShelfSiblings(draft, {
+    parents: [],
+    orderedKeys: ['BOOK:1'],
+    now: 'b',
+  }), /every sibling/i);
+  assert.throws(() => moveShelfBooks(draft, {
+    bookIds: [1],
+    destination: ['missing'],
+    now: 'b',
+  }), /destination folder/i);
+});
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function nextTask() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}

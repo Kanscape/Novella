@@ -50,6 +50,7 @@ export interface HttpTransport {
  * mobile and desktop.
  */
 export interface SignalRTransport {
+  connect(): Promise<void>;
   invoke<T>(methodName: string, args: readonly unknown[]): Promise<T>;
   close(): Promise<void>;
 }
@@ -62,8 +63,9 @@ export interface Logger {
 }
 
 export type Unsubscribe = () => void;
+export type AppLifecycleState = 'foreground' | 'background';
 
 export interface AppLifecycle {
-  onForeground(listener: () => void): Unsubscribe;
-  onBackground(listener: () => void): Unsubscribe;
+  getCurrentState(): AppLifecycleState;
+  subscribe(listener: (state: AppLifecycleState) => void): Unsubscribe;
 }

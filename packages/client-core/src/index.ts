@@ -5,14 +5,23 @@ import {
   type BookDetail,
   type BookListItem,
   type BookListPage,
+  type BookSearchRequest,
+  type ComicContent,
+  type ComicContentRequest,
+  type ComicInfo,
+  type ComicSeriesListItem,
+  type ComicSeriesListPage,
   type CommentPage,
+  type DailyCheckInResult,
   type GetCommentsRequest,
   type NovelContent,
   type NovelContentRequest,
   type OnlineInfo,
   type PostCommentRequest,
+  type ReadHistory,
   type SaveReadPositionRequest,
   type ShelfItem,
+  type UserProfile,
 } from '@novella/api-client';
 import type {
   AppLifecycle,
@@ -50,6 +59,27 @@ export interface ClientRuntime {
   telemetry: Telemetry;
 }
 
+export interface ClientSessionDependencies {
+  bootstrapAuthentication(): Promise<boolean>;
+  refreshAuthentication(): Promise<boolean>;
+  lifecycle: AppLifecycle;
+  signalR: SignalRTransport;
+  backgroundDrainTimeoutMilliseconds?: number;
+  connectionTimeoutMilliseconds?: number;
+}
+
+export interface ClientStartupResult {
+  status: 'ready' | 'degraded';
+  error: unknown | null;
+}
+
+export interface ClientSessionController {
+  start(): Promise<ClientStartupResult>;
+  close(): Promise<void>;
+  registerBeforeBackground(task: () => void | Promise<void>): () => void;
+  transport: SignalRTransport;
+}
+
 export interface DiscoverySnapshot {
   announcements: AnnouncementPage;
   latestBooks: BookListPage;
@@ -58,14 +88,47 @@ export interface DiscoverySnapshot {
 
 export interface DiscoveryUseCase {
   load(): Promise<DiscoverySnapshot>;
+  loadAnnouncements(): Promise<AnnouncementPage>;
+  loadLatestBooks(): Promise<BookListPage>;
+  loadLatestBooksPage(request: {
+    page: number;
+    size?: number;
+    ignoreAI?: boolean;
+    ignoreJapanese?: boolean;
+  }): Promise<BookListPage>;
+  loadOnlineInfo(): Promise<OnlineInfo>;
+  loadRank(period: RankPeriod): Promise<BookListItem[]>;
 }
+
+export type RankPeriod = 'daily' | 'weekly' | 'monthly';
+
+export const RANK_PERIOD_DAYS: Record<RankPeriod, number> = {
+  daily: 1,
+  weekly: 7,
+  monthly: 31,
+};
 
 export interface BookDetailUseCase {
   load(bookId: number): Promise<BookDetail>;
 }
 
+export interface BookSearchUseCase {
+  searchNovels(request: BookSearchRequest, signal?: AbortSignal): Promise<BookListPage>;
+  searchComics(request: BookSearchRequest, signal?: AbortSignal): Promise<ComicSeriesListPage>;
+}
+
+export interface HistoryUseCase {
+  clear(): Promise<void>;
+  loadIndex(): Promise<ReadHistory>;
+  loadNovelPage(ids: number[], page: number, pageSize?: number): Promise<BookListPage>;
+  loadComicPage(ids: number[], page: number, pageSize?: number): Promise<ComicSeriesListPage>;
+}
+
 export interface ReaderUseCase {
   loadChapter(request: NovelContentRequest): Promise<NovelContent>;
+  preloadChapter(request: NovelContentRequest, signal?: AbortSignal): Promise<NovelContent>;
+  loadComicInfo(bookId: number): Promise<ComicInfo>;
+  loadComicContent(request: ComicContentRequest): Promise<ComicContent>;
   savePosition(request: SaveReadPositionRequest): Promise<void>;
 }
 
@@ -82,14 +145,50 @@ export interface ShelfSnapshot {
   version: string | null;
 }
 
+export interface ShelfDraft {
+  items: ShelfItem[];
+  version: string | null;
+}
+
+export type ShelfItemKey = `BOOK:${number}` | `FOLDER:${string}`;
+
+export interface ShelfFolderPath {
+  id: string;
+  label: string;
+  path: string[];
+}
+
 export interface ShelfUseCase {
   contains(bookId: number): Promise<boolean>;
+  getSnapshot(): ShelfSnapshot | null;
   load(): Promise<ShelfSnapshot>;
+  save(draft: ShelfDraft): Promise<ShelfSnapshot>;
+  subscribe(listener: (snapshot: ShelfSnapshot) => void): () => void;
   toggleBook(bookId: number): Promise<boolean>;
 }
 
+export type AvatarSource = 'url' | 'qq' | 'qqGroup';
+
+export interface AvatarSourceValue {
+  source: AvatarSource;
+  value: string;
+}
+
+export interface ProfileCheckInOutcome {
+  result: DailyCheckInResult;
+  profile: UserProfile;
+}
+
+export interface ProfileUseCase {
+  checkIn(): Promise<ProfileCheckInOutcome>;
+  getSnapshot(): UserProfile | null;
+  load(): Promise<UserProfile>;
+  setAvatar(url: string): Promise<UserProfile>;
+  subscribe(listener: (profile: UserProfile) => void): () => void;
+}
+
 export interface AuthenticationUseCase {
-  bootstrap(): Promise<void>;
+  bootstrap(): Promise<boolean>;
   getSnapshot(): AuthenticationSnapshot;
   refresh(): Promise<boolean>;
   register(input: RegistrationInput): Promise<void>;
@@ -141,17 +240,259 @@ export function createClientRuntime(
   });
 }
 
-export function createDiscoveryUseCase(api: ApiClient): DiscoveryUseCase {
+export function createClientSessionController(
+  dependencies: ClientSessionDependencies,
+): ClientSessionController {
+  let foreground = dependencies.lifecycle.getCurrentState() === 'foreground';
+  let lifecycleUnsubscribe: (() => void) | null = null;
+  let startupPromise: Promise<ClientStartupResult> | null = null;
+  let transition = Promise.resolve();
+  let epoch = 0;
+  let closed = false;
+  let gate = createClosedInvocationGate();
+  const backgroundTasks = new Set<() => void | Promise<void>>();
+  const backgroundDrainTimeoutMilliseconds =
+    dependencies.backgroundDrainTimeoutMilliseconds ?? 2_000;
+  const connectionTimeoutMilliseconds =
+    dependencies.connectionTimeoutMilliseconds ?? 30_000;
+
+  function closeGate(): void {
+    if (gate.open) gate = createClosedInvocationGate();
+  }
+
+  function openGate(): void {
+    gate.openGate();
+  }
+
+  function enqueueTransition<T>(operation: () => Promise<T>): Promise<T> {
+    const next = transition.then(operation, operation);
+    transition = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }
+
+  async function connectSignalR(): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<void>((_, reject) => {
+      timeout = setTimeout(() => {
+        void dependencies.signalR.close().catch(() => undefined);
+        reject(new Error('SignalR connection timed out.'));
+      }, connectionTimeoutMilliseconds);
+    });
+
+    try {
+      await Promise.race([dependencies.signalR.connect(), timeoutPromise]);
+    } finally {
+      if (timeout !== null) clearTimeout(timeout);
+    }
+  }
+
+  async function recoverForeground(recoveryEpoch: number): Promise<void> {
+    try {
+      await dependencies.refreshAuthentication();
+    } catch {
+      // A transient refresh failure must not permanently deadlock public or
+      // cached operations. The following connection attempt still runs.
+    }
+
+    if (closed || !foreground || recoveryEpoch !== epoch) return;
+
+    try {
+      await connectSignalR();
+    } catch {
+      // Degraded foreground state is allowed; the next invocation may retry.
+    } finally {
+      if (!closed && foreground && recoveryEpoch === epoch) openGate();
+    }
+  }
+
+  async function drainBackgroundTasks(): Promise<void> {
+    const tasks = [...backgroundTasks].map((task) => {
+      try {
+        return Promise.resolve(task());
+      } catch {
+        return Promise.resolve();
+      }
+    });
+    if (tasks.length === 0) return;
+
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        Promise.allSettled(tasks).then(() => undefined),
+        new Promise<void>((resolve) => {
+          timeout = setTimeout(resolve, backgroundDrainTimeoutMilliseconds);
+        }),
+      ]);
+    } finally {
+      if (timeout !== null) clearTimeout(timeout);
+    }
+  }
+
+  function handleLifecycleState(state: 'foreground' | 'background'): void {
+    if (closed) return;
+    const nextForeground = state === 'foreground';
+    if (nextForeground === foreground) return;
+
+    foreground = nextForeground;
+    const transitionEpoch = ++epoch;
+
+    if (!nextForeground) {
+      const drain = drainBackgroundTasks();
+      void enqueueTransition(async () => {
+        await drain;
+        if (closed || foreground || transitionEpoch !== epoch) return;
+        closeGate();
+        await dependencies.signalR.close();
+      }).catch(() => undefined);
+      return;
+    }
+
+    closeGate();
+    void enqueueTransition(() => recoverForeground(transitionEpoch)).catch(() => undefined);
+  }
+
+  const transport: SignalRTransport = Object.freeze({
+    async connect() {
+      await gate.promise;
+      await dependencies.signalR.connect();
+    },
+    async invoke<T>(methodName: string, args: readonly unknown[]): Promise<T> {
+      await gate.promise;
+      return dependencies.signalR.invoke<T>(methodName, args);
+    },
+    close() {
+      return dependencies.signalR.close();
+    },
+  });
+
   return Object.freeze({
+    transport,
+    registerBeforeBackground(task: () => void | Promise<void>) {
+      backgroundTasks.add(task);
+      return () => {
+        backgroundTasks.delete(task);
+      };
+    },
+    start() {
+      if (startupPromise) return startupPromise;
+      if (closed) {
+        return Promise.resolve({
+          status: 'degraded' as const,
+          error: new Error('The client session is closed.'),
+        });
+      }
+
+      if (!lifecycleUnsubscribe) {
+        lifecycleUnsubscribe = dependencies.lifecycle.subscribe(handleLifecycleState);
+        foreground = dependencies.lifecycle.getCurrentState() === 'foreground';
+      }
+
+      const startupEpoch = ++epoch;
+      closeGate();
+      startupPromise = enqueueTransition(async () => {
+        let startupError: unknown | null = null;
+
+        try {
+          await dependencies.bootstrapAuthentication();
+        } catch (error) {
+          startupError = error;
+        }
+
+        if (!closed && foreground && startupEpoch === epoch) {
+          try {
+            await connectSignalR();
+          } catch (error) {
+            startupError ??= error;
+          } finally {
+            if (!closed && foreground && startupEpoch === epoch) openGate();
+          }
+        }
+
+        return {
+          status: startupError === null && foreground ? 'ready' : 'degraded',
+          error: startupError,
+        } satisfies ClientStartupResult;
+      });
+      return startupPromise;
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+      foreground = false;
+      epoch += 1;
+      closeGate();
+      lifecycleUnsubscribe?.();
+      lifecycleUnsubscribe = null;
+      backgroundTasks.clear();
+      await enqueueTransition(() => dependencies.signalR.close());
+    },
+  });
+}
+
+function createClosedInvocationGate(): {
+  promise: Promise<void>;
+  open: boolean;
+  openGate(): void;
+} {
+  let resolveGate: (() => void) | null = null;
+  const gate = {
+    promise: new Promise<void>((resolve) => {
+      resolveGate = resolve;
+    }),
+    open: false,
+    openGate() {
+      if (gate.open) return;
+      gate.open = true;
+      resolveGate?.();
+      resolveGate = null;
+    },
+  };
+  return gate;
+}
+
+export function createDiscoveryUseCase(api: ApiClient): DiscoveryUseCase {
+  const useCase: DiscoveryUseCase = {
     async load() {
       const [latestBooks, announcements, onlineInfo] = await Promise.all([
-        api.getLatestBookList({ size: 6 }),
-        api.getAnnouncementList({ page: 1, size: 5 }),
-        api.getOnlineInfo(),
+        useCase.loadLatestBooks(),
+        useCase.loadAnnouncements(),
+        useCase.loadOnlineInfo(),
       ]);
       return { announcements, latestBooks, onlineInfo };
     },
-  });
+    loadAnnouncements() {
+      return api.getAnnouncementList({ page: 1, size: 5 });
+    },
+    loadLatestBooks() {
+      return api.getLatestBookList({ size: 6 });
+    },
+    loadLatestBooksPage(request) {
+      assertPositiveInteger(request.page, 'A valid page is required.');
+      return api.getBookList({
+        page: request.page,
+        size: request.size ?? 24,
+        order: 'latest',
+        ...(request.ignoreAI === undefined ? {} : { ignoreAI: request.ignoreAI }),
+        ...(request.ignoreJapanese === undefined
+          ? {}
+          : { ignoreJapanese: request.ignoreJapanese }),
+      });
+    },
+    loadOnlineInfo() {
+      return api.getOnlineInfo();
+    },
+    loadRank(period) {
+      const days = RANK_PERIOD_DAYS[period];
+      if (days === undefined) {
+        return Promise.reject(new Error('An unknown ranking period was requested.'));
+      }
+      return api.getRank(days);
+    },
+  };
+  return Object.freeze(useCase);
 }
 
 export function createBookDetailUseCase(api: ApiClient): BookDetailUseCase {
@@ -165,12 +506,101 @@ export function createBookDetailUseCase(api: ApiClient): BookDetailUseCase {
   });
 }
 
+export function createBookSearchUseCase(api: ApiClient): BookSearchUseCase {
+  function validate(request: BookSearchRequest): void {
+    if (!request.keywords.trim()) throw new Error('A search query is required.');
+    assertPositiveInteger(request.page, 'A valid search page is required.');
+    assertPageSize(request.size);
+  }
+
+  return Object.freeze({
+    searchNovels(request: BookSearchRequest, signal?: AbortSignal) {
+      validate(request);
+      return api.searchNovelBooks(request, signal ? { signal } : {});
+    },
+    searchComics(request: BookSearchRequest, signal?: AbortSignal) {
+      validate(request);
+      return api.searchComicSeries(request, signal ? { signal } : {});
+    },
+  });
+}
+
+export function createHistoryUseCase(api: ApiClient): HistoryUseCase {
+  function pageIds(ids: number[], page: number, pageSize: number): number[] {
+    assertPositiveInteger(page, 'A valid history page is required.');
+    assertPageSize(pageSize);
+    const start = (page - 1) * pageSize;
+    return ids.slice(start, start + pageSize);
+  }
+
+  return Object.freeze({
+    clear() {
+      return api.clearReadHistory();
+    },
+    loadIndex() {
+      return api.getReadHistory();
+    },
+    async loadNovelPage(ids: number[], page: number, pageSize = 24) {
+      const selectedIds = pageIds(ids, page, pageSize);
+      const items = await api.getBookListByIds(selectedIds);
+      const byId = new Map(items.map((item) => [item.id, item]));
+      return {
+        page,
+        totalPages: Math.ceil(ids.length / pageSize),
+        items: selectedIds.flatMap((id) => {
+          const item = byId.get(id);
+          return item ? [item] : [];
+        }),
+      };
+    },
+    async loadComicPage(ids: number[], page: number, pageSize = 24) {
+      const selectedIds = pageIds(ids, page, pageSize);
+      const response = await api.getComicSeriesByIds(selectedIds);
+      const seenTitles = new Set<string>();
+      const items = response.items.filter((item) => {
+        if (seenTitles.has(item.title)) return false;
+        seenTitles.add(item.title);
+        return true;
+      });
+      return {
+        page,
+        totalPages: Math.ceil(ids.length / pageSize),
+        items,
+      };
+    },
+  });
+}
+
 export function createReaderUseCase(api: ApiClient): ReaderUseCase {
+  const loadChapter = (
+    request: NovelContentRequest,
+    priority: 'interactive' | 'preload',
+    signal?: AbortSignal,
+  ) => {
+    assertValidBookId(request.bookId);
+    assertPositiveInteger(request.sortNum, 'A valid chapter number is required.');
+    return api.getNovelContent(request, {
+      priority,
+      ...(signal === undefined ? {} : { signal }),
+    });
+  };
+
   return Object.freeze({
     loadChapter(request: NovelContentRequest) {
-      assertValidBookId(request.bookId);
-      assertPositiveInteger(request.sortNum, 'A valid chapter number is required.');
-      return api.getNovelContent(request);
+      return loadChapter(request, 'interactive');
+    },
+    preloadChapter(request: NovelContentRequest, signal?: AbortSignal) {
+      return loadChapter(request, 'preload', signal);
+    },
+    loadComicInfo(bookId: number) {
+      assertValidBookId(bookId);
+      return api.getComicInfo(bookId);
+    },
+    loadComicContent(request: ComicContentRequest) {
+      assertPositiveInteger(request.chapterId, 'A valid comic chapter id is required.');
+      if (request.skip !== undefined) assertNonNegativeInteger(request.skip, 'A valid image offset is required.');
+      if (request.take !== undefined) assertPositiveInteger(request.take, 'A valid image batch size is required.');
+      return api.getComicContent(request);
     },
     savePosition(request: SaveReadPositionRequest) {
       assertValidBookId(request.bookId);
@@ -208,27 +638,174 @@ export function createCommentsUseCase(api: ApiClient): CommentsUseCase {
   });
 }
 
+const HTTPS_IMAGE_URL_PATTERN = /^https:\/\/[\w-]+(?:\.[\w-]+)+(?:[\w\-.,@?^=%&:/~+#]*[\w\-@?^=%&/~+#])?$/i;
+const QQ_AVATAR_URL = 'https://q.qlogo.cn/headimg_dl?spec=100&dst_uin=';
+const QQ_GROUP_AVATAR_PATTERN = /^https:\/\/p\.qlogo\.cn\/gh\/([0-9]+)\/\1\/100$/;
+const QQ_GROUP_AVATAR_URL = 'https://p.qlogo.cn/gh/{group}/{group}/100';
+const QQ_NUMBER_PATTERN = /^[1-9]\d{4,}$/;
+
+export function parseAvatarSource(url: string): AvatarSourceValue {
+  const normalized = url.trim();
+  if (normalized.startsWith(QQ_AVATAR_URL)) {
+    return { source: 'qq', value: normalized.slice(QQ_AVATAR_URL.length) };
+  }
+  const groupMatch = QQ_GROUP_AVATAR_PATTERN.exec(normalized);
+  if (groupMatch) return { source: 'qqGroup', value: groupMatch[1] ?? '' };
+  return { source: 'url', value: normalized };
+}
+
+export function resolveAvatarUrl(source: AvatarSource, value: string): string {
+  const normalized = value.trim();
+  if (source === 'qq' || source === 'qqGroup') {
+    if (!QQ_NUMBER_PATTERN.test(normalized)) {
+      throw new Error(source === 'qq' ? 'Enter a valid QQ number.' : 'Enter a valid QQ group number.');
+    }
+    return source === 'qq'
+      ? `${QQ_AVATAR_URL}${normalized}`
+      : QQ_GROUP_AVATAR_URL.replaceAll('{group}', normalized);
+  }
+  if (!HTTPS_IMAGE_URL_PATTERN.test(normalized)) {
+    throw new Error('Enter a valid HTTPS image URL.');
+  }
+  return normalized;
+}
+
+export function createProfileUseCase(api: ApiClient): ProfileUseCase {
+  let latest: UserProfile | null = null;
+  let generation = 0;
+  let mutationQueue = Promise.resolve();
+  const listeners = new Set<(profile: UserProfile) => void>();
+
+  function publish(profile: UserProfile): UserProfile {
+    latest = profile;
+    for (const listener of listeners) listener(profile);
+    return profile;
+  }
+
+  function enqueueMutation<T>(
+    mutate: () => Promise<T>,
+  ): Promise<{ result: T; profile: UserProfile }> {
+    const mutationGeneration = ++generation;
+    const operation = mutationQueue.then(async () => {
+      const result = await mutate();
+      const profile = await api.getMyProfile();
+      if (mutationGeneration === generation) publish(profile);
+      return { profile, result };
+    });
+    mutationQueue = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
+  return Object.freeze({
+    checkIn() {
+      return enqueueMutation(() => api.checkIn());
+    },
+    getSnapshot() {
+      return latest;
+    },
+    async load() {
+      await mutationQueue;
+      const requestGeneration = ++generation;
+      const profile = await api.getMyProfile();
+      if (requestGeneration !== generation) return latest ?? profile;
+      return publish(profile);
+    },
+    async setAvatar(url: string) {
+      const normalized = url.trim();
+      if (!/^https:\/\//i.test(normalized)) {
+        throw new Error('Avatar URL must use HTTPS.');
+      }
+      const { profile } = await enqueueMutation(() => api.setAvatar(normalized));
+      return profile;
+    },
+    subscribe(listener: (profile: UserProfile) => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  });
+}
+
 export function createShelfUseCase(api: ApiClient): ShelfUseCase {
+  let latest: ShelfSnapshot | null = null;
+  let mutationGeneration = 0;
+  let saveQueue = Promise.resolve();
+  const listeners = new Set<(snapshot: ShelfSnapshot) => void>();
+
+  function publish(snapshot: ShelfSnapshot): ShelfSnapshot {
+    latest = snapshot;
+    for (const listener of listeners) listener(snapshot);
+    return snapshot;
+  }
+
+  async function hydrate(items: ShelfItem[], version: string | null): Promise<ShelfSnapshot> {
+    const bookIds = items
+      .filter((item): item is Extract<ShelfItem, { type: 'BOOK' }> => item.type === 'BOOK')
+      .map((item) => item.id);
+    const books: BookListItem[] = [];
+    for (let index = 0; index < bookIds.length; index += 24) {
+      books.push(...(await api.getBookListByIds(bookIds.slice(index, index + 24))));
+    }
+    return { books, items: sortShelfItems(items), version };
+  }
+
+  function enqueueSave(draft: ShelfDraft): Promise<ShelfSnapshot> {
+    const generation = ++mutationGeneration;
+    const normalized: ShelfDraft = {
+      items: normalizeShelfIndexes(draft.items),
+      version: draft.version,
+    };
+    const operation = saveQueue.then(async () => {
+      await api.saveBookShelf(normalized);
+      const knownBooks = new Map((latest?.books ?? []).map((book) => [book.id, book]));
+      const missingIds = normalized.items
+        .filter((item): item is Extract<ShelfItem, { type: 'BOOK' }> => item.type === 'BOOK')
+        .map((item) => item.id)
+        .filter((id) => !knownBooks.has(id));
+      for (let index = 0; index < missingIds.length; index += 24) {
+        for (const book of await api.getBookListByIds(missingIds.slice(index, index + 24))) {
+          knownBooks.set(book.id, book);
+        }
+      }
+      const nextIds = new Set(normalized.items.flatMap((item) =>
+        item.type === 'BOOK' ? [item.id] : [],
+      ));
+      const snapshot: ShelfSnapshot = {
+        books: [...knownBooks.values()].filter((book) => nextIds.has(book.id)),
+        items: normalized.items,
+        version: normalized.version,
+      };
+      return generation === mutationGeneration ? publish(snapshot) : snapshot;
+    });
+    saveQueue = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
   return Object.freeze({
     async contains(bookId: number) {
       assertValidBookId(bookId);
+      if (latest) {
+        return latest.items.some((item) => item.type === 'BOOK' && item.id === bookId);
+      }
       const shelf = await api.getBookShelf();
       return shelf.items.some((item) => item.type === 'BOOK' && item.id === bookId);
     },
+    getSnapshot() {
+      return latest;
+    },
     async load() {
+      await saveQueue;
+      const generation = mutationGeneration;
       const shelf = await api.getBookShelf();
-      const bookIds = shelf.items
-        .filter((item): item is Extract<ShelfItem, { type: 'BOOK' }> => item.type === 'BOOK')
-        .map((item) => item.id);
-      const books = [] as BookListItem[];
-      for (let index = 0; index < bookIds.length; index += 24) {
-        books.push(...(await api.getBookListByIds(bookIds.slice(index, index + 24))));
-      }
-      return {
-        books,
-        items: sortShelfItems(shelf.items),
-        version: shelf.version,
-      };
+      const snapshot = await hydrate(shelf.items, shelf.version);
+      if (generation !== mutationGeneration) return latest ?? snapshot;
+      return publish(snapshot);
+    },
+    save(draft: ShelfDraft) {
+      return enqueueSave(draft);
+    },
+    subscribe(listener: (snapshot: ShelfSnapshot) => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
     async toggleBook(bookId: number) {
       assertValidBookId(bookId);
@@ -248,13 +825,252 @@ export function createShelfUseCase(api: ApiClient): ShelfUseCase {
             },
             ...shelf.items,
           ];
-      await api.saveBookShelf({
-        items: normalizeShelfIndexes(items),
-        version: shelf.version,
-      });
+      await enqueueSave({ items, version: shelf.version });
       return !isInShelf;
     },
   });
+}
+
+export function createShelfDraft(snapshot: ShelfSnapshot): ShelfDraft {
+  return {
+    items: snapshot.items.map((item) => ({ ...item, parents: [...item.parents] })),
+    version: snapshot.version,
+  };
+}
+
+export function shelfItemKey(item: ShelfItem): ShelfItemKey {
+  return item.type === 'BOOK' ? `BOOK:${item.id}` : `FOLDER:${item.id}`;
+}
+
+export function shelfDraftHasChanges(
+  snapshot: ShelfSnapshot,
+  draft: ShelfDraft,
+): boolean {
+  if (snapshot.version !== draft.version || snapshot.items.length !== draft.items.length) {
+    return true;
+  }
+  return snapshot.items.some((item, index) => {
+    const next = draft.items[index];
+    return next === undefined ||
+      item.type !== next.type ||
+      item.id !== next.id ||
+      item.index !== next.index ||
+      !sameParents(item.parents, next.parents) ||
+      (item.type === 'FOLDER' && (next.type !== 'FOLDER' || item.title !== next.title));
+  });
+}
+
+export function getShelfItemsAtPath(
+  draft: ShelfDraft,
+  parents: readonly string[],
+): ShelfItem[] {
+  return sortShelfItems(draft.items.filter((item) => sameParents(item.parents, parents)));
+}
+
+export function getShelfFolderPaths(draft: ShelfDraft): ShelfFolderPath[] {
+  const folders = draft.items.filter(
+    (item): item is Extract<ShelfItem, { type: 'FOLDER' }> => item.type === 'FOLDER',
+  );
+  const titles = new Map(folders.map((folder) => [
+    folder.id,
+    folder.title.trim() || 'Unnamed folder',
+  ]));
+  const sortedFolders = sortShelfItems(folders).filter(
+    (item): item is Extract<ShelfItem, { type: 'FOLDER' }> => item.type === 'FOLDER',
+  );
+  return sortedFolders.map((folder) => {
+    const path = [...folder.parents, folder.id];
+    return {
+      id: folder.id,
+      label: path.map((id) => titles.get(id) ?? 'Unavailable folder').join(' / '),
+      path,
+    };
+  });
+}
+
+export function getShelfSelectionBookCount(
+  draft: ShelfDraft,
+  keys: ReadonlySet<ShelfItemKey>,
+): number {
+  const selectedFolders = new Set(draft.items.flatMap((item) =>
+    item.type === 'FOLDER' && keys.has(shelfItemKey(item)) ? [item.id] : [],
+  ));
+  return draft.items.filter((item) =>
+    item.type === 'BOOK' && (
+      keys.has(shelfItemKey(item)) ||
+      item.parents.some((parent) => selectedFolders.has(parent))
+    ),
+  ).length;
+}
+
+export function createShelfFolder(
+  draft: ShelfDraft,
+  input: { id: string; title: string; now: string },
+): ShelfDraft {
+  const title = input.title.trim();
+  if (!input.id || !title || title === '根文件夹') {
+    throw new Error('A valid folder name is required.');
+  }
+  if (draft.items.some((item) => item.type === 'FOLDER' && item.id === input.id)) {
+    throw new Error('A folder with this id already exists.');
+  }
+  if (draft.items.some((item) => item.type === 'FOLDER' && item.title === title)) {
+    throw new Error('A folder with this name already exists.');
+  }
+  return {
+    ...draft,
+    items: normalizeShelfIndexes([
+      {
+        id: input.id,
+        index: -1,
+        parents: [],
+        title,
+        type: 'FOLDER',
+        updatedAt: input.now,
+      },
+      ...draft.items,
+    ]),
+  };
+}
+
+export function renameShelfFolder(
+  draft: ShelfDraft,
+  input: { id: string; title: string; now: string },
+): ShelfDraft {
+  const title = input.title.trim();
+  if (!title || title === '根文件夹') throw new Error('A valid folder name is required.');
+  if (draft.items.some((item) =>
+    item.type === 'FOLDER' && item.id !== input.id && item.title === title,
+  )) {
+    throw new Error('A folder with this name already exists.');
+  }
+  let found = false;
+  const items = draft.items.map((item) => {
+    if (item.type !== 'FOLDER' || item.id !== input.id) return item;
+    found = true;
+    return { ...item, title, updatedAt: input.now };
+  });
+  if (!found) throw new Error('The folder no longer exists.');
+  return { ...draft, items };
+}
+
+export function deleteShelfFolder(
+  draft: ShelfDraft,
+  input: { id: string; now: string },
+): ShelfDraft {
+  if (!draft.items.some((item) => item.type === 'FOLDER' && item.id === input.id)) {
+    throw new Error('The folder no longer exists.');
+  }
+  let rootIndex = draft.items.reduce(
+    (maximum, item) => sameParents(item.parents, []) ? Math.max(maximum, item.index) : maximum,
+    -1,
+  );
+  const items = draft.items.flatMap((item) => {
+    if (item.type === 'FOLDER' && item.id === input.id) return [];
+    if (!item.parents.includes(input.id)) return [item];
+    if (item.type === 'BOOK') {
+      rootIndex += 1;
+      return [{
+        ...item,
+        index: rootIndex,
+        parents: [],
+        updatedAt: input.now,
+      }];
+    }
+    return [{
+      ...item,
+      parents: item.parents.filter((parent) => parent !== input.id),
+      updatedAt: input.now,
+    }];
+  });
+  return { ...draft, items: normalizeShelfIndexes(items) };
+}
+
+export function removeShelfItems(
+  draft: ShelfDraft,
+  input: { keys: ReadonlySet<ShelfItemKey>; now: string },
+): ShelfDraft {
+  let next = draft;
+  const folderIds = draft.items.flatMap((item) =>
+    item.type === 'FOLDER' && input.keys.has(shelfItemKey(item)) ? [item.id] : [],
+  );
+  const bookKeys = new Set([...input.keys].filter((key) => key.startsWith('BOOK:')));
+  next = {
+    ...next,
+    items: next.items.filter((item) => !bookKeys.has(shelfItemKey(item))),
+  };
+  for (const id of folderIds) {
+    if (next.items.some((item) => item.type === 'FOLDER' && item.id === id)) {
+      next = deleteShelfFolder(next, { id, now: input.now });
+    }
+  }
+  return { ...next, items: normalizeShelfIndexes(next.items) };
+}
+
+export function moveShelfBooks(
+  draft: ShelfDraft,
+  input: { bookIds: readonly number[]; destination: readonly string[]; now: string },
+): ShelfDraft {
+  assertShelfPath(draft.items, input.destination);
+  const ids = new Set(input.bookIds);
+  if (ids.size === 0) throw new Error('Select at least one book to move.');
+  const selected = sortShelfItems(draft.items.filter(
+    (item): item is Extract<ShelfItem, { type: 'BOOK' }> =>
+      item.type === 'BOOK' && ids.has(item.id),
+  ));
+  if (selected.length !== ids.size) throw new Error('A selected book no longer exists.');
+  const position = new Map(selected.map((item, index) => [item.id, index - selected.length]));
+  const items = draft.items.map((item) => {
+    const index = item.type === 'BOOK' ? position.get(item.id) : undefined;
+    return index === undefined
+      ? item
+      : {
+          ...item,
+          index,
+          parents: [...input.destination],
+          updatedAt: input.now,
+        };
+  });
+  return { ...draft, items: normalizeShelfIndexes(items) };
+}
+
+export function reorderShelfSiblings(
+  draft: ShelfDraft,
+  input: { parents: readonly string[]; orderedKeys: readonly ShelfItemKey[]; now: string },
+): ShelfDraft {
+  const siblings = getShelfItemsAtPath(draft, input.parents);
+  const expected = new Set(siblings.map(shelfItemKey));
+  const ordered = new Set(input.orderedKeys);
+  if (
+    expected.size !== input.orderedKeys.length ||
+    ordered.size !== input.orderedKeys.length ||
+    [...expected].some((key) => !ordered.has(key))
+  ) {
+    throw new Error('Reordering must contain every sibling exactly once.');
+  }
+  const indexes = new Map(input.orderedKeys.map((key, index) => [key, index]));
+  return {
+    ...draft,
+    items: draft.items.map((item) => {
+      if (!sameParents(item.parents, input.parents)) return item;
+      return { ...item, index: indexes.get(shelfItemKey(item)) ?? item.index, updatedAt: input.now };
+    }),
+  };
+}
+
+function assertShelfPath(items: ShelfItem[], parents: readonly string[]): void {
+  parents.forEach((id, index) => {
+    const expectedParents = parents.slice(0, index);
+    if (!items.some((item) =>
+      item.type === 'FOLDER' && item.id === id && sameParents(item.parents, expectedParents),
+    )) {
+      throw new Error('The destination folder no longer exists.');
+    }
+  });
+}
+
+function sameParents(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function assertValidBookId(bookId: number): void {
@@ -265,6 +1081,16 @@ function assertValidBookId(bookId: number): void {
 
 function assertPositiveInteger(value: number, message: string): void {
   if (!Number.isInteger(value) || value <= 0) throw new Error(message);
+}
+
+function assertNonNegativeInteger(value: number, message: string): void {
+  if (!Number.isInteger(value) || value < 0) throw new Error(message);
+}
+
+function assertPageSize(value: number): void {
+  if (!Number.isInteger(value) || value < 1 || value > 24) {
+    throw new Error('Page size must be between 1 and 24.');
+  }
 }
 
 function assertCommentRequest(request: PostCommentRequest): void {
@@ -400,9 +1226,11 @@ export function createAuthenticationUseCase(
     }
   }
 
-  async function bootstrap(): Promise<void> {
-    if (snapshot.status === 'authenticated' || snapshot.status === 'refreshing') return;
-    await refresh();
+  async function bootstrap(): Promise<boolean> {
+    if (snapshot.status === 'authenticated') return true;
+    const restored = await refresh();
+    if (!restored && snapshot.error) throw new Error(snapshot.error);
+    return restored;
   }
 
   async function signIn(email: string, password: string) {
