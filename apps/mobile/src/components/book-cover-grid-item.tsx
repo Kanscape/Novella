@@ -1,10 +1,10 @@
-import { Image } from 'expo-image';
 import {
   IconArrowBackUp,
   IconBook2,
   IconFilePencil,
   IconHexagon,
   IconHistory,
+  IconGripVertical,
   IconLanguage,
   IconNumber1,
   IconNumber2,
@@ -13,27 +13,52 @@ import {
   IconNumber5,
   IconNumber6,
   IconRobot,
+  IconCheck,
   type Icon,
 } from '@tabler/icons-react-native';
-import { Pressable, StyleSheet, Text as NativeText, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text as NativeText,
+  View,
+  type AccessibilityActionEvent,
+  type AccessibilityActionInfo,
+  type GestureResponderEvent,
+} from 'react-native';
 
 import type { BookCategory, BookListItem } from '@novella/api-client';
 
+import { BookCoverImage } from '@/components/book-cover-image';
 import { colors } from '@/theme/colors';
 
 type BadgeIcon = Icon;
 
+export const BOOK_COVER_ASPECT_RATIO = 2 / 3;
+
 interface BookCoverGridItemProps {
+  accessibilityActions?: readonly AccessibilityActionInfo[];
+  animateCachedImage?: boolean;
   book: BookListItem;
-  imageHeight: number;
-  tileWidth: number;
+  interactionState?: 'default' | 'selected' | 'sorting';
+  onAccessibilityAction?: (event: AccessibilityActionEvent) => void;
+  onLongPress?: (event: GestureResponderEvent) => void;
   onPress?: () => void;
+  onPressOut?: () => void;
+  /** Leaderboard position; renders a gold/silver/bronze badge for ranks 1-3. */
+  rank?: number;
+  tileWidth: number;
 }
 
 export function BookCoverGridItem({
+  accessibilityActions,
+  animateCachedImage,
   book,
-  imageHeight,
+  interactionState = 'default',
+  onAccessibilityAction,
+  onLongPress,
   onPress,
+  onPressOut,
+  rank,
   tileWidth,
 }: BookCoverGridItemProps) {
   const categoryBadge = resolveCategoryBadge(book.category);
@@ -41,23 +66,48 @@ export function BookCoverGridItem({
 
   return (
     <Pressable
+      {...(accessibilityActions ? { accessibilityActions: [...accessibilityActions] } : {})}
       accessibilityLabel={book.title}
       accessibilityRole="button"
+      accessibilityState={{ selected: interactionState === 'selected' }}
+      delayLongPress={180}
+      onAccessibilityAction={onAccessibilityAction}
+      onLongPress={onLongPress}
       onPress={onPress}
+      onPressOut={onPressOut}
       style={[styles.item, { width: tileWidth }]}
     >
-      <View style={[styles.coverFrame, { height: imageHeight, width: tileWidth }]}>
-        <Image
+      <View
+        style={[
+          styles.coverFrame,
+          { aspectRatio: BOOK_COVER_ASPECT_RATIO, width: tileWidth },
+        ]}
+      >
+        <BookCoverImage
           accessibilityLabel={`${book.title} cover`}
-          contentFit="cover"
-          placeholder={book.coverPlaceholder}
+          {...(animateCachedImage === undefined ? {} : { animateCachedImage })}
+          blurHash={book.coverPlaceholder}
           source={book.coverUrl}
-          style={StyleSheet.absoluteFill}
-          transition={200}
         />
 
         {level > 0 ? <LevelBadge level={level} interior={Boolean(book.interiorLevel)} /> : null}
         {categoryBadge ? <CategoryBadge badge={categoryBadge} /> : null}
+        {rank !== undefined && rank > 0 && rank <= 3 ? <RankBadge rank={rank} /> : null}
+        {interactionState !== 'default' ? (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.interactionOverlay,
+              interactionState === 'selected' ? styles.selectedOverlay : styles.sortingOverlay,
+            ]}
+          >
+            {interactionState === 'selected' ? (
+              <IconCheck color="#FFFFFF" size={34} strokeWidth={2.5} />
+            ) : (
+              <IconGripVertical color="#FFFFFF" size={36} strokeWidth={2.2} />
+            )}
+          </View>
+        ) : null}
       </View>
       <View style={[styles.titleContainer, { width: tileWidth }]}>
         <NativeText numberOfLines={2} style={styles.title}>
@@ -105,6 +155,15 @@ function LevelBadge({ level, interior }: { level: number; interior: boolean }) {
         size={15}
         strokeWidth={2}
       />
+    </View>
+  );
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  const color = rank === 1 ? '#FFD700' : rank === 2 ? '#78909C' : '#CD7F32';
+  return (
+    <View style={[styles.rankBadge, { backgroundColor: color }]}>
+      <NativeText style={styles.rankLabel}>{String(rank)}</NativeText>
     </View>
   );
 }
@@ -173,6 +232,15 @@ const styles = StyleSheet.create({
     borderColor: '#E0A106',
     borderWidth: 1,
   },
+  interactionOverlay: {
+    alignItems: 'center',
+    bottom: 0,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
   item: {
     alignItems: 'center',
   },
@@ -191,6 +259,25 @@ const styles = StyleSheet.create({
   publicLevelBadge: {
     backgroundColor: '#E0A106',
   },
+  rankBadge: {
+    borderRadius: 8,
+    left: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    position: 'absolute',
+    top: 4,
+  },
+  rankLabel: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  selectedOverlay: {
+    backgroundColor: 'rgba(217, 71, 93, 0.72)',
+  },
+  sortingOverlay: {
+    backgroundColor: 'rgba(0, 0, 0, 0.48)',
+  },
   title: {
     color: colors.label as string,
     fontSize: 13,
@@ -198,7 +285,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   titleContainer: {
-    height: 36,
+    height: 40,
     justifyContent: 'center',
     paddingHorizontal: 2,
   },
