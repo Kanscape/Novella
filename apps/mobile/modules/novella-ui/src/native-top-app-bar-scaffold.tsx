@@ -24,6 +24,7 @@ export type NativeTopAppBarAction = {
     | 'folderPlus'
     | 'pencil'
     | 'sortAscending'
+    | 'trash'
     | 'userCircle';
   id: string;
   menuItems?: readonly NativeTopAppBarActionMenuItem[];

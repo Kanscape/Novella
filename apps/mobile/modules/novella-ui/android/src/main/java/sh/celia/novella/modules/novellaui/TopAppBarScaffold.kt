@@ -45,6 +45,7 @@ enum class TopAppBarActionIcon(val value: String) : Enumerable {
   FOLDER_PLUS("folderPlus"),
   PENCIL("pencil"),
   SORT_ASCENDING("sortAscending"),
+  TRASH("trash"),
   USER_CIRCLE("userCircle");
 
   val resourceId: Int
@@ -55,6 +56,7 @@ enum class TopAppBarActionIcon(val value: String) : Enumerable {
       FOLDER_PLUS -> R.drawable.ic_tabler_folder_plus_24
       PENCIL -> R.drawable.ic_pencil_24
       SORT_ASCENDING -> R.drawable.ic_tabler_sort_ascending_24
+      TRASH -> R.drawable.ic_tabler_trash_24
       USER_CIRCLE -> R.drawable.ic_tabler_user_circle_24
     }
 }

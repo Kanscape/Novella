@@ -1,0 +1,291 @@
+import { router } from 'expo-router';
+import { IconHistory, IconRefreshOff } from '@tabler/icons-react-native';
+import { useCallback, useState } from 'react';
+import {
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+import type { BookListItem, ComicSeriesListItem } from '@novella/api-client';
+
+import { BookCoverGridItem } from '@/components/book-cover-grid-item';
+import {
+  BookCoverSkeletonTile,
+  bookGridLoadingMoreKeys,
+  bookGridSkeletonCount,
+  skeletonKeys,
+} from '@/components/book-grid-skeleton';
+import { ComicSeriesGridItem } from '@/components/comic-series-grid-item';
+import { HistoryNavigation } from '@/components/history-navigation';
+import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
+import { NativeSegmentedControl } from '@/components/native-segmented-control';
+import { useBookGridLayout } from '@/hooks/use-book-grid-layout';
+import { type HistoryTab, useReadHistory } from '@/hooks/use-read-history';
+import { colors } from '@/theme/colors';
+
+const TAB_OPTIONS = [
+  { label: 'Novels', value: 'Novel' },
+  { label: 'Comics', value: 'Comic' },
+] as const;
+
+export function HistoryScreen() {
+  const { clear, loadMore, refresh, retry, state } = useReadHistory();
+  const [tab, setTab] = useState<HistoryTab>('Novel');
+  const { columns, height, tileWidth } = useBookGridLayout(16);
+  const activeTabState = tab === 'Novel' ? state.novel : state.comic;
+  const hasAnyHistory =
+    (state.ids?.novelIds.length ?? 0) > 0 || (state.ids?.comicIds.length ?? 0) > 0;
+
+  const confirmClearHistory = useCallback(() => {
+    if (state.clearing) return;
+    Alert.alert(
+      'Clear reading history',
+      'This action cannot be undone. All novels and comics will be removed.',
+      [
+        { style: 'cancel', text: 'Cancel' },
+        {
+          onPress: () => void performClear(),
+          style: 'destructive',
+          text: 'Clear',
+        },
+      ],
+    );
+  }, [state.clearing]);
+
+  const performClear = useCallback(async () => {
+    const cleared = await clear();
+    if (!cleared) {
+      Alert.alert(
+        'Clear failed',
+        'Unable to clear your reading history right now. Please try again.',
+      );
+    }
+  }, [clear]);
+
+  const openBook = useCallback((item: BookListItem) => {
+    router.push({
+      pathname: '/book/[id]',
+      params: {
+        cover: item.coverUrl,
+        id: String(item.id),
+        placeholder: item.coverPlaceholder ?? '',
+        title: item.title,
+        type: 'Novel',
+      },
+    });
+  }, []);
+
+  const openComic = useCallback((item: ComicSeriesListItem) => {
+    router.push({
+      pathname: '/book/[id]',
+      params: {
+        cover: item.coverUrl,
+        id: String(item.id),
+        placeholder: item.coverPlaceholder ?? '',
+        title: item.title,
+        type: 'Comic',
+      },
+    });
+  }, []);
+
+  const skeletonCount =
+    (state.initialLoading || activeTabState.status === 'loading') &&
+    activeTabState.items.length === 0
+      ? bookGridSkeletonCount({ columns, headerOffset: 150, height, tileWidth })
+      : 0;
+  const loadingMoreKeys =
+    activeTabState.status === 'loadingMore'
+      ? bookGridLoadingMoreKeys(activeTabState.items.length, columns)
+      : [];
+  const data: (number | BookListItem | ComicSeriesListItem)[] = [
+    ...(skeletonCount > 0 ? skeletonKeys(skeletonCount) : activeTabState.items),
+    ...loadingMoreKeys,
+  ];
+
+  return (
+    <>
+      <NativeScreenScaffold
+        {...(hasAnyHistory
+          ? {
+              actions: [
+                {
+                  accessibilityLabel: 'Clear reading history',
+                  icon: 'trash',
+                  id: 'clear-history',
+                },
+              ],
+              onActionPress: (actionId: string) => {
+                if (actionId === 'clear-history') confirmClearHistory();
+              },
+            }
+          : {})}
+        title="History"
+      >
+        <View style={styles.root}>
+          <FlatList
+            ListEmptyComponent={
+              state.initialError !== null ? (
+                <InitialErrorState error={state.initialError} onRetry={() => retry(tab)} />
+              ) : activeTabState.status === 'error' ? (
+                <TabErrorState error={activeTabState.error ?? ''} onRetry={() => retry(tab)} />
+              ) : (
+                <EmptyState tab={tab} />
+              )
+            }
+            // The segmented control rides inside the list (like the ranking
+            // page) so it stays clear of the large-title header / status bar
+            // and scrolls with the content instead of being pinned to the top.
+            ListHeaderComponent={
+              <View style={styles.tabs}>
+                <NativeSegmentedControl
+                  enabled={!state.clearing}
+                  onValueChange={(nextTab) => setTab(nextTab as HistoryTab)}
+                  options={TAB_OPTIONS}
+                  selectedValue={tab}
+                />
+              </View>
+            }
+            columnWrapperStyle={styles.row}
+            contentContainerStyle={styles.content}
+            contentInsetAdjustmentBehavior="automatic"
+            data={data}
+            keyExtractor={(item) =>
+              typeof item === 'number'
+                ? `skeleton-${item}`
+                : `${tab === 'Novel' ? 'Novel' : 'Comic'}-${item.id}`
+            }
+            numColumns={columns}
+            // Inside the Android Compose top-bar host the list must
+            // participate in the nested scrolling coordinator.
+            nestedScrollEnabled={process.env.EXPO_OS === 'android'}
+            onEndReached={() => loadMore(tab)}
+            onEndReachedThreshold={0.6}
+            refreshControl={
+              <RefreshControl
+                colors={[colors.accent as string]}
+                onRefresh={refresh}
+                refreshing={state.refreshing}
+                tintColor={colors.accent as string}
+              />
+            }
+            renderItem={({ item }) => {
+              if (typeof item === 'number') {
+                return <BookCoverSkeletonTile tileWidth={tileWidth} />;
+              }
+              return tab === 'Novel' ? (
+                <BookCoverGridItem book={item as BookListItem} onPress={() => openBook(item as BookListItem)} tileWidth={tileWidth} />
+              ) : (
+                <ComicSeriesGridItem item={item as ComicSeriesListItem} onPress={() => openComic(item as ComicSeriesListItem)} tileWidth={tileWidth} />
+              );
+            }}
+            showsVerticalScrollIndicator={false}
+          />
+        </View>
+      </NativeScreenScaffold>
+      <HistoryNavigation onClear={confirmClearHistory} showClear={hasAnyHistory} />
+    </>
+  );
+}
+
+function EmptyState({ tab }: { tab: HistoryTab }) {
+  const isNovel = tab === 'Novel';
+  return (
+    <View style={styles.stateBlock}>
+      <IconHistory color={colors.secondaryLabel as string} size={44} strokeWidth={1.5} />
+      <Text style={styles.stateTitle}>No reading history</Text>
+      <Text style={styles.stateDescription}>
+        {isNovel
+          ? 'Novels you read will appear here so you can pick up where you left off.'
+          : 'Comics you read will appear here so you can pick up where you left off.'}
+      </Text>
+    </View>
+  );
+}
+
+function InitialErrorState({ error, onRetry }: { error: string; onRetry(): void }) {
+  return (
+    <View style={styles.stateBlock}>
+      <IconRefreshOff color={colors.secondaryLabel as string} size={44} strokeWidth={1.5} />
+      <Text style={styles.stateTitle}>Unable to load history</Text>
+      <Text selectable style={styles.stateDescription}>{error}</Text>
+      <Pressable
+        accessibilityLabel="Try again"
+        accessibilityRole="button"
+        onPress={onRetry}
+        style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+      >
+        <Text style={styles.retryLabel}>Try again</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function TabErrorState({ error, onRetry }: { error: string; onRetry(): void }) {
+  return (
+    <View style={styles.stateBlock}>
+      <IconRefreshOff color={colors.secondaryLabel as string} size={44} strokeWidth={1.5} />
+      <Text style={styles.stateTitle}>Unable to load this tab</Text>
+      <Text selectable style={styles.stateDescription}>{error}</Text>
+      <Pressable
+        accessibilityLabel="Try again"
+        accessibilityRole="button"
+        onPress={onRetry}
+        style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+      >
+        <Text style={styles.retryLabel}>Try again</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: {
+    gap: 12,
+    paddingBottom: 40,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  pressed: { opacity: 0.72 },
+  retryButton: {
+    alignItems: 'center',
+    borderColor: colors.separator as string,
+    borderCurve: 'continuous',
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  retryLabel: {
+    color: colors.accent as string,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  root: { flex: 1 },
+  row: { gap: 12 },
+  stateBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    paddingTop: 96,
+  },
+  stateDescription: {
+    color: colors.secondaryLabel as string,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  stateTitle: {
+    color: colors.label as string,
+    fontSize: 17,
+    fontWeight: '600',
+    marginTop: 16,
+  },
+  tabs: { paddingBottom: 4 },
+});
