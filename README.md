@@ -22,10 +22,21 @@ Expo Go are not part of the development workflow.
 
 ```bash
 npm run prebuild --workspace @novella/mobile
-npm run android --workspace @novella/mobile
-npm run ios --workspace @novella/mobile
+npm run android
+npm run ios
 npm run dev:mobile
 ```
+
+Run Expo CLI commands from `apps/mobile`, not the workspace root. For example:
+
+```bash
+cd apps/mobile
+npx expo start --dev-client --clear
+```
+
+Starting Expo from the repository root makes Expo treat `novella-workspace` as
+the app and falls back to `expo/AppEntry`, which cannot resolve the mobile
+Expo Router entry.
 
 ## License
 
