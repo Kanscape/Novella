@@ -33,7 +33,6 @@ import type {
   PasswordHasher,
   SignalRTransport,
 } from '@novella/platform-contracts';
-import { Telemetry, type TelemetrySink } from '@novella/telemetry';
 
 export const APP_DISPLAY_NAME = 'Novella';
 
@@ -50,13 +49,11 @@ export interface ClientRuntimeDependencies {
   lifecycle: AppLifecycle;
   logger: Logger;
   storage: KeyValueStore;
-  telemetry: TelemetrySink;
 }
 
 export interface ClientRuntime {
   api: ApiClient;
   dependencies: Readonly<ClientRuntimeDependencies>;
-  telemetry: Telemetry;
 }
 
 export interface ClientSessionDependencies {
@@ -236,7 +233,6 @@ export function createClientRuntime(
   return Object.freeze({
     api: new ApiClient(dependencies.http, dependencies.signalR),
     dependencies: Object.freeze(dependencies),
-    telemetry: new Telemetry(dependencies.telemetry),
   });
 }
 

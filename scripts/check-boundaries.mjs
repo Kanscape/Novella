@@ -17,13 +17,9 @@ const allowedWorkspaceDependencies = {
     'api-client',
     'platform-contracts',
     'reader-engine',
-    'sync',
-    'telemetry',
   ]),
   'platform-contracts': new Set(),
   'reader-engine': new Set(),
-  sync: new Set(['platform-contracts']),
-  telemetry: new Set(),
 };
 
 async function sourceFiles(directory) {

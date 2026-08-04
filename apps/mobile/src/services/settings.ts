@@ -72,7 +72,6 @@ export interface AppSettings {
   useSystemColor: boolean;
   convertType: TranslationMode;
   autoCheckUpdate: boolean;
-  telemetryDiagnosticsEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -100,7 +99,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   useSystemColor: process.env.EXPO_OS === 'android',
   convertType: 'none',
   autoCheckUpdate: true,
-  telemetryDiagnosticsEnabled: true,
 };
 
 const SETTINGS_KEY = 'novella.settings.v1';
@@ -247,9 +245,6 @@ function decodeSettings(value: unknown): AppSettings {
       : {}),
     ...(typeof candidate.autoCheckUpdate === 'boolean'
       ? { autoCheckUpdate: candidate.autoCheckUpdate }
-      : {}),
-    ...(typeof candidate.telemetryDiagnosticsEnabled === 'boolean'
-      ? { telemetryDiagnosticsEnabled: candidate.telemetryDiagnosticsEnabled }
       : {}),
   };
 }
