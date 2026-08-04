@@ -21,6 +21,9 @@ export function usePlatformAppColors(_options: {
     secondaryLabel: Color.ios.secondaryLabel,
     separator: Color.ios.separator,
     surface: Color.ios.systemBackground,
-    surfaceContainerHighest: Color.ios.tertiarySystemGroupedBackground,
+    // systemGray5 (not tertiarySystemGroupedBackground) so placeholder/skeleton
+    // surfaces stay one step darker than the grouped page background in light
+    // mode instead of blending into it.
+    surfaceContainerHighest: Color.ios.systemGray5,
   }), []);
 }

@@ -656,7 +656,10 @@ const useHomeScreenStyles = createThemedStyles((colors) => ({
     fontWeight: '700',
   },
   rankPeriodBadge: {
-    backgroundColor: colors.surfaceContainerHighest,
+    // card (not surfaceContainerHighest) so the pill stays visible on the
+    // grouped background in light mode — same treatment as search history
+    // chips on the search page.
+    backgroundColor: colors.card,
     borderRadius: 8,
     marginLeft: 8,
     paddingHorizontal: 8,
