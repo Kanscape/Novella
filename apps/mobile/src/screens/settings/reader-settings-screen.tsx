@@ -26,6 +26,17 @@ export function ReaderSettingsScreen() {
       testID="reader-settings"
       title="Reading"
     >
+      <ReaderSettingsContent />
+    </NativeGroupedList>
+  );
+}
+
+/** Shared settings rows, also rendered inside the reader settings sheet. */
+export function ReaderSettingsContent() {
+  const settings = useAppSettings();
+
+  return (
+    <>
       <NativeGroupedListSection title="Typography">
         <NativeSliderRow
           description="Text size used by the novel reader"
@@ -139,6 +150,6 @@ export function ReaderSettingsScreen() {
           value={settings.readerImagePreviewOpenOnLongPress}
         />
       </NativeGroupedListSection>
-    </NativeGroupedList>
+    </>
   );
 }

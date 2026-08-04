@@ -222,6 +222,24 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="reader/[bookId]/settings"
+            options={{
+              ...(usesComposeBottomSheets
+                ? {
+                    animation: 'none',
+                    contentStyle: { backgroundColor: 'transparent' },
+                  }
+                : {
+                    sheetAllowedDetents: [0.5, 1],
+                    sheetGrabberVisible: true,
+                    sheetInitialDetentIndex: 0,
+                  }),
+              headerShown: false,
+              presentation: usesComposeBottomSheets ? 'transparentModal' : 'formSheet',
+              title: 'Reading',
+            }}
+          />
+          <Stack.Screen
             name="reader/[bookId]/footnote"
             options={{
               ...(usesComposeBottomSheets

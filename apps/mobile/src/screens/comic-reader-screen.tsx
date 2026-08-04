@@ -329,7 +329,10 @@ export function ComicReaderScreen({ bookId, sortNum, openPosition = 'saved' }: C
         mode={mode}
         onModeChange={changeMode}
         onOpenChapters={openChapters}
-        onOpenSettings={() => router.push('/settings/reader')}
+        onOpenSettings={() => router.push({
+          pathname: '/reader/[bookId]/settings',
+          params: { bookId: String(bookId), readerKey: route.key, sortNum: String(selectedChapterIndex + 1), type: 'Comic' },
+        })}
         title={activeChapter?.chapter.title ?? 'Comic reader'}
       />
       <ReaderChapterNavigation

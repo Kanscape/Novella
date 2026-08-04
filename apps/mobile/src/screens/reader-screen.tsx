@@ -279,7 +279,10 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
         mode={mode}
         onModeChange={changeMode}
         onOpenChapters={openChapters}
-        onOpenSettings={() => router.push('/settings/reader')}
+        onOpenSettings={() => router.push({
+          pathname: '/reader/[bookId]/settings',
+          params: { bookId: String(bookId), readerKey: route.key, sortNum: String(sortNum), type: 'Novel' },
+        })}
         title={readerTitle || 'Reader'}
       />
       <ReaderChapterNavigation
