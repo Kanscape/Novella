@@ -1,0 +1,178 @@
+import { router } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import {
+  IconBooks,
+  IconCheck,
+  IconRefresh,
+  IconUserCircle,
+} from '@tabler/icons-react-native';
+
+import type { ComicSeriesDetail } from '@novella/api-client';
+
+import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider';
+import { reader } from '@/services/client';
+import type { BookDetailPalette } from '@/theme/book-detail-theme';
+
+export interface BookVersionsScreenProps {
+  /** Id of the version currently open in the detail page below. */
+  bookId: number;
+  seriesTitle: string;
+}
+
+export function BookVersionsScreen({ bookId, seriesTitle }: BookVersionsScreenProps) {
+  const { palette } = useBookDetailRouteTheme(bookId, null, null, true);
+  const [detail, setDetail] = useState<ComicSeriesDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setDetail(await reader.loadComicSeriesInfo(seriesTitle));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The versions could not be loaded.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [seriesTitle]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const openVersion = (versionId: number, coverUrl: string, coverPlaceholder: string | null) => {
+    router.replace({
+      pathname: '/book/[id]',
+      params: {
+        cover: coverUrl,
+        id: String(versionId),
+        placeholder: coverPlaceholder ?? '',
+        title: seriesTitle,
+        type: 'Comic',
+      },
+    });
+  };
+
+  return (
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={styles.content}
+      nestedScrollEnabled={process.env.EXPO_OS === 'android'}
+      showsVerticalScrollIndicator={false}
+      style={[styles.scroll, { backgroundColor: palette.surface }]}
+    >
+      {isLoading ? (
+        <View style={styles.state}>
+          <ActivityIndicator color={palette.primary} />
+        </View>
+      ) : null}
+      {error ? (
+        <View style={styles.state}>
+          <Text style={[styles.errorText, { color: palette.error }]}>{error}</Text>
+          <Pressable
+            accessibilityLabel="Try again"
+            accessibilityRole="button"
+            onPress={load}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+          >
+            <IconRefresh color={palette.primary} size={18} strokeWidth={2} />
+            <Text style={[styles.retryLabel, { color: palette.primary }]}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {detail ? (
+        <View style={styles.sheetSection}>
+          <View style={styles.sheetHeading}>
+            <IconBooks color={palette.primary} size={22} strokeWidth={2} />
+            <Text style={[styles.sheetTitle, { color: palette.onSurface }]}>Versions</Text>
+          </View>
+          <Text style={[styles.description, { color: palette.onSurfaceVariant }]}>
+            {detail.title} · {detail.volumes.length}{' '}
+            {detail.volumes.length === 1 ? 'version' : 'versions'}
+          </Text>
+          <View style={styles.versionList}>
+            {detail.volumes.map((version) => {
+              const isCurrent = version.id === bookId;
+              return (
+                <Pressable
+                  accessibilityLabel={`${version.title}${isCurrent ? ', current version' : ''}`}
+                  accessibilityRole="button"
+                  key={version.id}
+                  onPress={() => openVersion(version.id, version.coverUrl, version.coverPlaceholder)}
+                  style={({ pressed }) => [
+                    styles.versionRow,
+                    { backgroundColor: palette.surfaceContainerHighest },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={styles.versionIcon}>
+                    <IconUserCircle color={palette.onSurfaceVariant} size={22} strokeWidth={1.8} />
+                  </View>
+                  <View style={styles.versionText}>
+                    <Text numberOfLines={2} style={[styles.versionTitle, { color: palette.onSurface }]}>
+                      {version.title}
+                    </Text>
+                    <Text style={[styles.versionMeta, { color: palette.onSurfaceVariant }]}>
+                      {version.uploader.userName.trim() || 'Unknown uploader'} ·{' '}
+                      {version.chapters.length} chapters
+                    </Text>
+                  </View>
+                  {isCurrent ? (
+                    <View
+                      style={[
+                        styles.currentBadge,
+                        { backgroundColor: palette.primaryContainer },
+                      ]}
+                    >
+                      <IconCheck color={palette.onPrimaryContainer} size={16} strokeWidth={2.4} />
+                      <Text style={[styles.currentLabel, { color: palette.onPrimaryContainer }]}>
+                        Current
+                      </Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { paddingBottom: 48, paddingHorizontal: 24, paddingTop: process.env.EXPO_OS === 'android' ? 8 : 28 },
+  currentBadge: { alignItems: 'center', borderRadius: 8, flexDirection: 'row', gap: 4, paddingHorizontal: 8, paddingVertical: 4 },
+  currentLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4, lineHeight: 15 },
+  description: { fontSize: 13, lineHeight: 18 },
+  errorText: { fontSize: 15, lineHeight: 21, textAlign: 'center' },
+  pressed: { opacity: 0.68 },
+  retryButton: { alignItems: 'center', flexDirection: 'row', gap: 7, padding: 8 },
+  retryLabel: { fontSize: 15, fontWeight: '600' },
+  scroll: {},
+  sheetHeading: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  sheetSection: { gap: 16 },
+  sheetTitle: { fontSize: 17, fontWeight: '700', lineHeight: 22 },
+  state: { alignItems: 'center', gap: 12, paddingVertical: 48 },
+  versionIcon: { alignItems: 'center', height: 40, justifyContent: 'center', width: 40 },
+  versionList: { borderRadius: 16, overflow: 'hidden' },
+  versionMeta: { fontSize: 13, lineHeight: 18 },
+  versionRow: {
+    alignItems: 'center',
+    borderBottomColor: 'transparent',
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 64,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  versionText: { flex: 1, gap: 3 },
+  versionTitle: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
+});

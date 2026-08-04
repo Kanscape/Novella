@@ -1,5 +1,6 @@
 export type NativeSelectionMenuIcon =
   | 'books'
+  | 'dots'
   | 'equal'
   | 'sparkles'
   | 'tag'
@@ -19,6 +20,8 @@ export interface NativeSelectionMenuProps {
   onExpandedChange?: (expanded: boolean) => void;
   onItemSelected?: (index: number) => void;
   selectedIndex: number;
+  /** Renders the trigger as an icon button instead of the selected-label row. */
+  triggerIcon?: NativeSelectionMenuIcon;
 }
 
 export function NativeSelectionMenu(_props: NativeSelectionMenuProps): null {

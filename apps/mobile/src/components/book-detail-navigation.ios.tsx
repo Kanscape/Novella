@@ -1,7 +1,16 @@
 import { Stack, router } from 'expo-router';
 
 import type { BookDetailNavigationProps } from '@/components/book-detail-navigation.types';
-export function BookDetailNavigation({ book, palette }: BookDetailNavigationProps) {
+
+const openVersions = (bookId: number, seriesTitle: string) => {
+  router.push({
+    pathname: '/book/[id]/versions',
+    params: { id: String(bookId), title: seriesTitle },
+  });
+};
+
+export function BookDetailNavigation({ book, palette, seriesTitle }: BookDetailNavigationProps) {
+  const isComic = book?.type === 'Comic';
   return (
     <>
       <Stack.Screen
@@ -42,16 +51,42 @@ export function BookDetailNavigation({ book, palette }: BookDetailNavigationProp
               router.push({ pathname: '/book/[id]/comments', params: { id: String(book.id) } })
             }
           />
-          <Stack.Toolbar.Button
-            icon="person.crop.rectangle"
-            tintColor={palette.primary}
-            onPress={() =>
-              router.push({
-                pathname: '/book/[id]/uploader',
-                params: { id: String(book.id), ...(book.type ? { type: book.type } : {}) },
-              })
-            }
-          />
+          {isComic ? (
+            <Stack.Toolbar.Menu
+              accessibilityLabel="More actions"
+              icon="ellipsis"
+              tintColor={palette.primary}
+            >
+              <Stack.Toolbar.MenuAction
+                icon="person.crop.rectangle"
+                onPress={() =>
+                  router.push({
+                    pathname: '/book/[id]/uploader',
+                    params: { id: String(book.id), type: 'Comic' },
+                  })
+                }
+              >
+                Uploader
+              </Stack.Toolbar.MenuAction>
+              <Stack.Toolbar.MenuAction
+                icon="books.vertical"
+                onPress={() => openVersions(book.id, seriesTitle ?? book.title)}
+              >
+                Switch version
+              </Stack.Toolbar.MenuAction>
+            </Stack.Toolbar.Menu>
+          ) : (
+            <Stack.Toolbar.Button
+              icon="person.crop.rectangle"
+              tintColor={palette.primary}
+              onPress={() =>
+                router.push({
+                  pathname: '/book/[id]/uploader',
+                  params: { id: String(book.id), ...(book.type ? { type: book.type } : {}) },
+                })
+              }
+            />
+          )}
         </Stack.Toolbar>
       ) : null}
     </>

@@ -9,6 +9,7 @@ import {
   type ComicContent,
   type ComicContentRequest,
   type ComicInfo,
+  type ComicSeriesDetail,
   type ComicSeriesListItem,
   type ComicSeriesListPage,
   type CommentPage,
@@ -129,6 +130,7 @@ export interface ReaderUseCase {
   loadChapter(request: NovelContentRequest): Promise<NovelContent>;
   preloadChapter(request: NovelContentRequest, signal?: AbortSignal): Promise<NovelContent>;
   loadComicInfo(bookId: number): Promise<ComicInfo>;
+  loadComicSeriesInfo(seriesTitle: string): Promise<ComicSeriesDetail>;
   loadComicContent(request: ComicContentRequest): Promise<ComicContent>;
   savePosition(request: SaveReadPositionRequest): Promise<void>;
 }
@@ -631,6 +633,12 @@ export function createReaderUseCase(api: ApiClient): ReaderUseCase {
     loadComicInfo(bookId: number) {
       assertValidBookId(bookId);
       return api.getComicInfo(bookId);
+    },
+    loadComicSeriesInfo(seriesTitle: string) {
+      if (!seriesTitle.trim()) {
+        return Promise.reject(new Error('A comic series title is required.'));
+      }
+      return api.getComicSeriesInfo(seriesTitle);
     },
     loadComicContent(request: ComicContentRequest) {
       assertPositiveInteger(request.chapterId, 'A valid comic chapter id is required.');

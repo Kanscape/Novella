@@ -11,6 +11,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenuPopup
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
@@ -35,7 +36,8 @@ enum class SelectionMenuIcon(val value: String) : Enumerable {
   SPARKLES("sparkles"),
   TAG("tag"),
   TEXT_SIZE("textSize"),
-  USER("user");
+  USER("user"),
+  DOTS("dots");
 
   val resourceId: Int
     get() = when (this) {
@@ -45,6 +47,7 @@ enum class SelectionMenuIcon(val value: String) : Enumerable {
       TAG -> R.drawable.ic_tabler_tag_24
       TEXT_SIZE -> R.drawable.ic_tabler_text_size_24
       USER -> R.drawable.ic_tabler_user_24
+      DOTS -> R.drawable.ic_tabler_dots_24
     }
 }
 
@@ -71,6 +74,9 @@ data class SelectionMenuProps(
   val selectedIndex: Int = -1,
   val expanded: Boolean = false,
   val enabled: Boolean = true,
+  /** When set, the trigger renders as a plain icon button instead of the
+   *  selected-label row (header menu pattern). */
+  val triggerIcon: SelectionMenuIcon? = null,
   val modifiers: ModifierList = emptyList()
 ) : ComposeProps
 
@@ -91,28 +97,42 @@ fun FunctionalComposableScope.SelectionMenuContent(
 ) {
   val modifier = ModifierRegistry
     .applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
-    .width(168.dp)
+    .width(if (props.triggerIcon != null) 48.dp else 168.dp)
 
   Box(modifier = modifier) {
-    val selectedLabel = props.items.getOrNull(props.selectedIndex)?.label.orEmpty()
+    val triggerIcon = props.triggerIcon
+    if (triggerIcon != null) {
+      IconButton(
+        enabled = props.enabled,
+        onClick = { onExpandedChange(!props.expanded) }
+      ) {
+        Icon(
+          contentDescription = null,
+          painter = painterResource(triggerIcon.resourceId),
+          tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+      }
+    } else {
+      val selectedLabel = props.items.getOrNull(props.selectedIndex)?.label.orEmpty()
 
-    Row(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(start = 8.dp, top = 8.dp, end = 0.dp, bottom = 8.dp),
-      horizontalArrangement = Arrangement.End,
-      verticalAlignment = Alignment.CenterVertically
-    ) {
-      Text(
-        text = selectedLabel,
-        color = MaterialTheme.colorScheme.onSurface,
-        style = MaterialTheme.typography.bodyLarge
-      )
-      Icon(
-        contentDescription = null,
-        painter = painterResource(R.drawable.ic_keyboard_arrow_down_24),
-        tint = MaterialTheme.colorScheme.onSurfaceVariant
-      )
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(start = 8.dp, top = 8.dp, end = 0.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(
+          text = selectedLabel,
+          color = MaterialTheme.colorScheme.onSurface,
+          style = MaterialTheme.typography.bodyLarge
+        )
+        Icon(
+          contentDescription = null,
+          painter = painterResource(R.drawable.ic_keyboard_arrow_down_24),
+          tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+      }
     }
 
     SelectionDropdownMenu(

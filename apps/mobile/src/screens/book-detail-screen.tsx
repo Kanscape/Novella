@@ -95,11 +95,16 @@ export function BookDetailScreen({
     : book?.coverPlaceholder ?? null;
   const detailTheme = useBookDetailRouteTheme(bookId, coverUrl, coverPlaceholder);
   const [usesSoftScrollEdge, setUsesSoftScrollEdge] = useState(false);
+  const seriesTitle = (initialTitle?.trim() || book?.title) ?? null;
 
   return (
     <PaperProvider theme={detailTheme.paperTheme}>
       <View style={[styles.root, { backgroundColor: detailTheme.palette.surface }]}>
-        <BookDetailNavigation book={book} palette={detailTheme.palette} />
+        <BookDetailNavigation
+          book={book}
+          palette={detailTheme.palette}
+          {...(seriesTitle === null ? {} : { seriesTitle })}
+        />
         {isLoading ? (
           <BookDetailLoading
             coverPlaceholder={coverPlaceholder}

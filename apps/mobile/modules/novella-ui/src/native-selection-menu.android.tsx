@@ -4,6 +4,7 @@ import { requireNativeView } from 'expo';
 
 export type NativeSelectionMenuIcon =
   | 'books'
+  | 'dots'
   | 'equal'
   | 'sparkles'
   | 'tag'
@@ -23,6 +24,8 @@ export interface NativeSelectionMenuProps extends PrimitiveBaseProps {
   onExpandedChange?: (expanded: boolean) => void;
   onItemSelected?: (index: number) => void;
   selectedIndex: number;
+  /** Renders the trigger as an icon button instead of the selected-label row. */
+  triggerIcon?: NativeSelectionMenuIcon;
 }
 
 type NativeViewProps = Omit<

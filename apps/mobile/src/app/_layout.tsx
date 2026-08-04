@@ -182,6 +182,24 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="book/[id]/versions"
+            options={{
+              ...(usesComposeBottomSheets
+                ? {
+                    animation: 'none',
+                    contentStyle: { backgroundColor: 'transparent' },
+                  }
+                : {
+                    sheetAllowedDetents: [0.6, 1],
+                    sheetGrabberVisible: true,
+                    sheetInitialDetentIndex: 0,
+                  }),
+              headerShown: false,
+              presentation: usesComposeBottomSheets ? 'transparentModal' : 'formSheet',
+              title: '',
+            }}
+          />
+          <Stack.Screen
             name="reader/[bookId]/[sortNum]"
             options={{ headerShown: false }}
           />
