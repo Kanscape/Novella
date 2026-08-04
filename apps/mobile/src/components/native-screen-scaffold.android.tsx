@@ -1,11 +1,12 @@
 import { Host } from '@expo/ui';
 import { RNHostView } from '@expo/ui/jetpack-compose';
 import { fillMaxSize } from '@expo/ui/jetpack-compose/modifiers';
-import { StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { NativeTopAppBarScaffold } from '../../modules/novella-ui';
 
 import type { NativeScreenScaffoldProps } from '@/components/native-screen-scaffold.types';
+import { useAppColorScheme, useAppTheme } from '@/theme/app-theme';
 
 export function NativeScreenScaffold({
   actions,
@@ -18,14 +19,19 @@ export function NativeScreenScaffold({
   showBackButton = false,
   title,
 }: NativeScreenScaffoldProps) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppColorScheme();
+  const { isOledDark } = useAppTheme();
+  // OLED dark renders the Compose top bar on a pure-black container so the
+  // chrome matches the RN content below it.
+  const resolvedContainerColor = containerColor ?? (isOledDark ? '#000000' : undefined);
+  const resolvedContentColor = contentColor ?? (isOledDark ? '#EFEFEF' : undefined);
 
   return (
     <Host colorScheme={colorScheme} style={styles.host} useViewportSizeMeasurement>
       <NativeTopAppBarScaffold
         {...(actions ? { actions } : {})}
-        {...(containerColor ? { containerColor } : {})}
-        {...(contentColor ? { contentColor } : {})}
+        {...(resolvedContainerColor ? { containerColor: resolvedContainerColor } : {})}
+        {...(resolvedContentColor ? { contentColor: resolvedContentColor } : {})}
         largeTitle={largeTitle}
         {...(onActionPress ? { onActionPress } : {})}
         {...(onBackPress ? { onBackPress } : {})}

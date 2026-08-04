@@ -18,7 +18,7 @@ import type { BookListItem } from '@novella/api-client';
 
 import { BookCoverImage } from '@/components/book-cover-image';
 import { BOOK_COVER_ASPECT_RATIO } from '@/components/book-cover-grid-item';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 interface ShelfFolderGridItemProps {
   accessibilityActions?: readonly AccessibilityActionInfo[];
@@ -45,6 +45,8 @@ export function ShelfFolderGridItem({
   tileWidth,
   title,
 }: ShelfFolderGridItemProps) {
+  const styles = useShelfFolderGridItemStyles();
+  const { colors } = useAppTheme();
   const previewWidth = Math.max(1, Math.floor((tileWidth - 28) / 2));
   const previewHeight = Math.round(previewWidth * 1.5);
   const firstBook = previewBooks[0];
@@ -127,22 +129,22 @@ export function ShelfFolderGridItem({
   );
 }
 
-const styles = StyleSheet.create({
+const useShelfFolderGridItemStyles = createThemedStyles((colors) => ({
   coverFrame: {
-    backgroundColor: colors.card as string,
+    backgroundColor: colors.card,
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
   },
   emptyFolder: {
     alignItems: 'center',
-    backgroundColor: colors.card as string,
+    backgroundColor: colors.card,
     flex: 1,
     justifyContent: 'center',
   },
   folderBadge: {
     alignItems: 'center',
-    backgroundColor: colors.accent as string,
+    backgroundColor: colors.accent,
     borderRadius: 8,
     bottom: 4,
     justifyContent: 'center',
@@ -173,7 +175,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   previewSlot: {
-    backgroundColor: colors.card as string,
+    backgroundColor: colors.card,
     borderRadius: 6,
     overflow: 'hidden',
     position: 'relative',
@@ -185,7 +187,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.48)',
   },
   title: {
-    color: colors.label as string,
+    color: colors.label,
     fontSize: 13,
     lineHeight: 16,
     textAlign: 'center',
@@ -196,4 +198,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
     width: '100%',
   },
-});
+}));

@@ -12,7 +12,7 @@ import { createReaderFootnoteRenderer } from '@/components/reader-footnote-rende
 import { createReaderHtmlImageRenderer } from '@/components/reader-html-image';
 import { createHtmlRubyRenderers } from '@/components/html-ruby-renderer';
 import type { ReaderImageDimensions } from '@/services/reader-image-dimensions';
-import { colors } from '@/theme/colors';
+import { useAppTheme } from '@/theme/app-theme';
 
 const selectableHtmlRenderers = createHtmlRubyRenderers({ selectable: true });
 const previewHtmlRenderers = createHtmlRubyRenderers({ preview: true, selectable: false });
@@ -73,6 +73,7 @@ export function BookHtmlContent({
   preview = false,
   textColor,
 }: BookHtmlContentProps) {
+  const { colors } = useAppTheme();
   const sourceHtml = useMemo(() => {
     const source = preview ? createHtmlPreviewSource(html) : html;
     return firstLineIndent && !preview ? addReaderFirstLineIndent(source) : source;
@@ -122,7 +123,7 @@ export function BookHtmlContent({
     fontSize: bodyFontSize,
     lineHeight: bodyLineHeight,
     ...(fontFamily ? { fontFamily } : {}),
-  }), [bodyFontSize, bodyLineHeight, fontFamily, preview, textColor]);
+  }), [bodyFontSize, bodyLineHeight, colors, fontFamily, preview, textColor]);
   const defaultTextProps = useMemo(() => ({ selectable: !preview }), [preview]);
   const source = useMemo(
     () => ({ html: sourceHtml, baseUrl: `${SERVICE_ENDPOINTS.apiOrigin}/` }),
@@ -178,7 +179,7 @@ export function BookHtmlContent({
       marginTop: 0,
     },
     ul: { paddingLeft: bodyFontSize * 1.5 },
-  }), [bodyFontSize, bodyLineHeight, preview]);
+  }), [bodyFontSize, colors, preview]);
 
   return (
     <RenderHTML

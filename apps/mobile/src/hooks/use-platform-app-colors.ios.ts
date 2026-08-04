@@ -1,0 +1,26 @@
+import { Color } from 'expo-router';
+import { useMemo } from 'react';
+
+import type { AppColors } from '@/theme/app-colors';
+import type { AppColorScheme } from '@/theme/theme-mode';
+
+export function usePlatformAppColors(_options: {
+  colorScheme: AppColorScheme;
+  seedColor: string;
+  useSystemColor: boolean;
+  oledBlack: boolean;
+}): AppColors {
+  return useMemo(() => ({
+    accent: Color.ios.systemPink,
+    background: Color.ios.systemGroupedBackground,
+    card: Color.ios.secondarySystemGroupedBackground,
+    error: Color.ios.systemRed,
+    label: Color.ios.label,
+    onPrimaryContainer: '#FFFFFF',
+    primaryContainer: Color.ios.systemPink,
+    secondaryLabel: Color.ios.secondaryLabel,
+    separator: Color.ios.separator,
+    surface: Color.ios.systemBackground,
+    surfaceContainerHighest: Color.ios.tertiarySystemGroupedBackground,
+  }), []);
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useColorScheme } from 'react-native';
-import { AlertDialog, Button, Host, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { AlertDialog, Button, Host, Text } from '@expo/ui/jetpack-compose';
+
+import { useAppTheme } from '@/theme/app-theme';
 
 /**
  * Android alert dialogs rendered with the Material 3 `AlertDialog`
@@ -46,8 +47,7 @@ function close(): void {
 
 export function NativeAlertHost(): React.JSX.Element | null {
   const [, setTick] = useState(0);
-  const colorScheme = useColorScheme();
-  const materialColors = useMaterialColors();
+  const { colorScheme, colors, isOledDark } = useAppTheme();
 
   useEffect(() => {
     const listener = () => setTick((tick) => tick + 1);
@@ -78,7 +78,7 @@ export function NativeAlertHost(): React.JSX.Element | null {
         colors={{
           // TextButton look: no container fill, label in the theme color.
           containerColor: 'transparent',
-          contentColor: destructive ? materialColors.error : materialColors.primary,
+          contentColor: destructive ? colors.error as string : colors.accent as string,
         }}>
         <Text style={{ fontSize: 14, fontWeight: '500' }}>{button.text}</Text>
       </Button>
@@ -86,14 +86,17 @@ export function NativeAlertHost(): React.JSX.Element | null {
   };
 
   return (
-    <Host colorScheme={colorScheme}>
-      <AlertDialog onDismissRequest={close}>
+    <Host colorScheme={colorScheme} seedColor={colors.accent}>
+      <AlertDialog
+        onDismissRequest={close}
+        {...(isOledDark ? { containerColor: colors.card as string } : {})}
+      >
         <AlertDialog.Title>
           <Text style={{ fontSize: 22, lineHeight: 28 }}>{title}</Text>
         </AlertDialog.Title>
         {message ? (
           <AlertDialog.Text>
-            <Text style={{ fontSize: 14, lineHeight: 20 }} color={materialColors.onSurfaceVariant}>
+            <Text style={{ fontSize: 14, lineHeight: 20 }} color={colors.secondaryLabel as string}>
               {message}
             </Text>
           </AlertDialog.Text>

@@ -1,9 +1,9 @@
 import { Host } from '@expo/ui';
-import { useColorScheme } from 'react-native';
 
 import { NativeSegmentedControl as NativeSegmentedControlView } from '../../modules/novella-ui';
 
 import type { NativeSegmentedControlProps } from '@/components/native-segmented-control';
+import { useAppColorScheme } from '@/theme/app-theme';
 
 export function NativeSegmentedControl<T extends string>({
   enabled = true,
@@ -11,7 +11,7 @@ export function NativeSegmentedControl<T extends string>({
   options,
   selectedValue,
 }: NativeSegmentedControlProps<T>) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppColorScheme();
   return (
     <Host
       colorScheme={colorScheme}

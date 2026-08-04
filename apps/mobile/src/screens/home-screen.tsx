@@ -31,9 +31,11 @@ import {
   useDiscovery,
   type DiscoverySectionState,
 } from '@/hooks/use-discovery';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 export function HomeScreen() {
+  const styles = useHomeScreenStyles();
+  const { colors } = useAppTheme();
   const {
     announcements,
     latestBooks,
@@ -99,6 +101,8 @@ const RANK_PERIOD_LABELS: Record<RankPeriod, string> = {
 };
 
 function RankingSection() {
+  const styles = useHomeScreenStyles();
+  const { colors } = useAppTheme();
   const { books, error, period, reload, retry, status } = useHomeRanking();
   const { columns, contentWidth, tileWidth } = useBookGridLayout(20);
   const previewBooks = books.slice(0, columns * 2);
@@ -168,6 +172,7 @@ function LatestBooksSection({
   onRetry(): void;
   state: DiscoverySectionState<BookListPage>;
 }) {
+  const styles = useHomeScreenStyles();
   const { columns, contentWidth, tileWidth } = useBookGridLayout(20);
 
   if (state.data === null && state.status === 'loading') {
@@ -216,6 +221,8 @@ function LatestBooksSection({
 }
 
 function ComicsSection() {
+  const styles = useHomeScreenStyles();
+  const { colors } = useAppTheme();
   const { books, error, reload, retry, status } = useHomeComicPreview();
   const { columns, contentWidth, tileWidth } = useBookGridLayout(20);
 
@@ -276,6 +283,8 @@ function AnnouncementsSection({
   onRetry(): void;
   state: DiscoverySectionState<AnnouncementPage>;
 }) {
+  const styles = useHomeScreenStyles();
+  const { colors } = useAppTheme();
   return (
     <SectionCard>
       <Text style={styles.sectionTitle}>Announcements</Text>
@@ -323,6 +332,7 @@ function OnlineInfoSection({
   onRetry(): void;
   state: DiscoverySectionState<OnlineInfo>;
 }) {
+  const styles = useHomeScreenStyles();
   return (
     <SectionCard>
       <Text style={styles.sectionTitle}>Service status</Text>
@@ -368,6 +378,7 @@ function BookGrid({
   tileWidth: number;
   width: number;
 }) {
+  const styles = useHomeScreenStyles();
   const rows = [];
   for (let index = 0; index < books.length; index += columns) {
     rows.push(books.slice(index, index + columns));
@@ -417,6 +428,7 @@ function BookGridPlaceholder({
   tileWidth: number;
   width: number;
 }) {
+  const styles = useHomeScreenStyles();
   return (
     <View
       accessibilityElementsHidden
@@ -446,6 +458,7 @@ function BookGridPlaceholder({
 }
 
 function MetricPlaceholder() {
+  const styles = useHomeScreenStyles();
   return (
     <View style={styles.metric}>
       <Skeleton
@@ -463,6 +476,7 @@ function MetricPlaceholder() {
 }
 
 function SkeletonLine({ width }: { width: `${number}%` }) {
+  const styles = useHomeScreenStyles();
   return (
     <Skeleton
       animation={{ entering: false, exiting: false }}
@@ -481,6 +495,7 @@ function SectionError({
   onRetry(): void;
   title: string;
 }) {
+  const styles = useHomeScreenStyles();
   return (
     <SectionCard>
       <Text style={styles.cardTitle}>{title}</Text>
@@ -491,6 +506,7 @@ function SectionError({
 }
 
 function InlineSectionError({ message, onRetry }: { message: string; onRetry(): void }) {
+  const styles = useHomeScreenStyles();
   return (
     <View style={styles.inlineError}>
       <Text selectable style={styles.cardDescription}>{message}</Text>
@@ -500,6 +516,7 @@ function InlineSectionError({ message, onRetry }: { message: string; onRetry(): 
 }
 
 function StaleError({ message, onRetry }: { message: string; onRetry(): void }) {
+  const styles = useHomeScreenStyles();
   return (
     <Pressable
       accessibilityLabel="Refresh this section"
@@ -513,6 +530,7 @@ function StaleError({ message, onRetry }: { message: string; onRetry(): void }) 
 }
 
 function RetryButton({ onPress }: { onPress(): void }) {
+  const styles = useHomeScreenStyles();
   return (
     <Pressable
       accessibilityLabel="Try again"
@@ -526,6 +544,7 @@ function RetryButton({ onPress }: { onPress(): void }) {
 }
 
 function StatusMetric({ label, value }: { label: string; value: number }) {
+  const styles = useHomeScreenStyles();
   return (
     <View style={styles.metric}>
       <Text style={styles.metricValue}>{String(value)}</Text>
@@ -534,7 +553,7 @@ function StatusMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useHomeScreenStyles = createThemedStyles((colors) => ({
   announcementRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -550,12 +569,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cardDescription: {
-    color: colors.secondaryLabel as string,
+    color: colors.secondaryLabel,
     fontSize: 15,
     lineHeight: 21,
   },
   cardTitle: {
-    color: colors.label as string,
+    color: colors.label,
     fontSize: 17,
     fontWeight: '700',
     lineHeight: 22,
@@ -574,7 +593,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   metadata: {
-    color: colors.secondaryLabel as string,
+    color: colors.secondaryLabel,
     fontSize: 13,
   },
   metric: {
@@ -586,7 +605,7 @@ const styles = StyleSheet.create({
     width: '58%',
   },
   metricValue: {
-    color: colors.label as string,
+    color: colors.label,
     fontSize: 20,
     fontVariant: ['tabular-nums'],
     fontWeight: '700',
@@ -601,7 +620,7 @@ const styles = StyleSheet.create({
   },
   outlinedButton: {
     alignItems: 'center',
-    borderColor: colors.separator as string,
+    borderColor: colors.separator,
     borderCurve: 'continuous',
     borderRadius: 10,
     borderWidth: 1,
@@ -609,7 +628,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   outlinedButtonLabel: {
-    color: colors.accent as string,
+    color: colors.accent,
     fontSize: 15,
     fontWeight: '600',
   },
@@ -620,7 +639,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   root: {
-    backgroundColor: colors.background as string,
+    backgroundColor: colors.background,
     flex: 1,
   },
   sectionBody: {
@@ -632,19 +651,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   sectionTitle: {
-    color: colors.label as string,
+    color: colors.label,
     fontSize: 21,
     fontWeight: '700',
   },
   rankPeriodBadge: {
-    backgroundColor: colors.surfaceContainerHighest as string,
+    backgroundColor: colors.surfaceContainerHighest,
     borderRadius: 8,
     marginLeft: 8,
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
   rankPeriodLabel: {
-    color: colors.secondaryLabel as string,
+    color: colors.secondaryLabel,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -660,12 +679,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   seeAllLabel: {
-    color: colors.accent as string,
+    color: colors.accent,
     fontSize: 15,
     fontWeight: '600',
   },
   skeletonBlock: {
-    backgroundColor: colors.surfaceContainerHighest as string,
+    backgroundColor: colors.surfaceContainerHighest,
     borderCurve: 'continuous',
     borderRadius: 8,
     overflow: 'hidden',
@@ -674,15 +693,15 @@ const styles = StyleSheet.create({
     height: 13,
   },
   staleError: {
-    backgroundColor: colors.surfaceContainerHighest as string,
+    backgroundColor: colors.surfaceContainerHighest,
     borderCurve: 'continuous',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
   staleErrorText: {
-    color: colors.secondaryLabel as string,
+    color: colors.secondaryLabel,
     fontSize: 13,
     lineHeight: 18,
   },
-});
+}));

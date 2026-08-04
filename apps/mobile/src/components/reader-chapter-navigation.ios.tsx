@@ -1,8 +1,8 @@
 import { Stack } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import type { ReaderChapterNavigationProps } from '@/components/reader-navigation.types';
-import { colors } from '@/theme/colors';
+import { createThemedStyles } from '@/theme/app-theme';
 
 export function ReaderChapterNavigation({
   bottomInset,
@@ -11,6 +11,7 @@ export function ReaderChapterNavigation({
   onPrevious,
   total,
 }: ReaderChapterNavigationProps) {
+  const styles = useReaderChapterNavigationStyles();
   return (
     <>
       <Stack.Toolbar placement="bottom">
@@ -43,7 +44,7 @@ export function ReaderChapterNavigation({
   );
 }
 
-const styles = StyleSheet.create({
+const useReaderChapterNavigationStyles = createThemedStyles((colors) => ({
   pageCounter: {
     alignItems: 'center',
     height: 44,
@@ -53,8 +54,8 @@ const styles = StyleSheet.create({
     right: 0,
   },
   pageCounterText: {
-    color: colors.secondaryLabel as string,
+    color: colors.secondaryLabel,
     fontSize: 13,
     fontVariant: ['tabular-nums'],
   },
-});
+}));

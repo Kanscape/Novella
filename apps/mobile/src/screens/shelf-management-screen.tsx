@@ -17,7 +17,7 @@ import {
   useShelfManagementSession,
   type ShelfManagementCommand,
 } from '@/services/shelf-management-session';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 const icons: Record<ShelfManagementCommand['icon'], React.ComponentType<{ color: string; size: number; strokeWidth: number }>> = {
   check: IconCheck,
@@ -29,6 +29,8 @@ const icons: Record<ShelfManagementCommand['icon'], React.ComponentType<{ color:
 };
 
 export function ShelfManagementScreen() {
+  const styles = useShelfManagementScreenStyles();
+  const { colors } = useAppTheme();
   const session = useShelfManagementSession();
 
   const selectCommand = (id: string) => {
@@ -76,9 +78,9 @@ export function ShelfManagementScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useShelfManagementScreenStyles = createThemedStyles((colors) => ({
   commandGroup: {
-    backgroundColor: colors.surfaceContainerHighest as string,
+    backgroundColor: colors.surfaceContainerHighest,
     borderRadius: 20,
     overflow: 'hidden',
   },
@@ -87,8 +89,8 @@ const styles = StyleSheet.create({
   commandRow: { alignItems: 'center', flexDirection: 'row', gap: 12, minHeight: 56, paddingHorizontal: 16 },
   content: { paddingBottom: 32, paddingHorizontal: 24, paddingTop: process.env.EXPO_OS === 'android' ? 8 : 28 },
   pressed: { opacity: 0.68 },
-  scroll: { backgroundColor: colors.surface as string },
+  scroll: { backgroundColor: colors.surface },
   sheetHeading: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   sheetSection: { gap: 16 },
-  sheetTitle: { color: colors.label as string, fontSize: 17, fontWeight: '700', lineHeight: 22 },
-});
+  sheetTitle: { color: colors.label, fontSize: 17, fontWeight: '700', lineHeight: 22 },
+}));

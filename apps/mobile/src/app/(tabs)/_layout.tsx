@@ -1,8 +1,10 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
-import { colors } from '@/theme/colors';
+import { useAppTheme } from '@/theme/app-theme';
 
 export default function TabsLayout() {
+  const { colors } = useAppTheme();
+
   return (
     <NativeTabs
       iconColor={{ default: colors.secondaryLabel, selected: colors.accent }}

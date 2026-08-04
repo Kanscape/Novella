@@ -15,7 +15,7 @@ import {
   resolveReaderImageUrl,
   type ReaderImageDimensions,
 } from '@/services/reader-image-dimensions';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 export interface ReaderHtmlImageRendererOptions {
   contentWidth: number;
@@ -104,6 +104,8 @@ function ReaderHtmlImage({
   pageFrame: boolean;
   source: string;
 }) {
+  const styles = useReaderHtmlImageStyles();
+  const { colors } = useAppTheme();
   const uri = resolveReaderImageUrl(source);
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -327,9 +329,9 @@ function getNodeText(tnode: TNode): string {
   return tnode.children.map(getNodeText).join('');
 }
 
-const styles = StyleSheet.create({
+const useReaderHtmlImageStyles = createThemedStyles((colors) => ({
   errorText: {
-    color: colors.secondaryLabel as string,
+    color: colors.secondaryLabel,
     fontSize: 13,
     paddingHorizontal: 16,
     textAlign: 'center',
@@ -338,12 +340,12 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   image: {
-    backgroundColor: colors.surfaceContainerHighest as string,
+    backgroundColor: colors.surfaceContainerHighest,
     borderRadius: 4,
   },
   imageClip: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceContainerHighest as string,
+    backgroundColor: colors.surfaceContainerHighest,
     borderCurve: 'continuous',
     borderRadius: 4,
     justifyContent: 'center',
@@ -354,7 +356,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceContainerHighest as string,
+    backgroundColor: colors.surfaceContainerHighest,
     borderCurve: 'continuous',
     borderRadius: 4,
     justifyContent: 'center',
@@ -363,4 +365,4 @@ const styles = StyleSheet.create({
   fullOverlay: {
     ...StyleSheet.absoluteFill,
   },
-});
+}));

@@ -86,7 +86,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   ignoreAI: false,
   ignoreJapanese: false,
   ignoreLevel6: true,
-  oledBlack: false,
+  oledBlack: process.env.EXPO_OS === 'ios',
   readerFirstLineIndent: false,
   readerImagePreviewOpenOnLongPress: false,
   readerLineHeight: 1.6,
@@ -202,7 +202,11 @@ function decodeSettings(value: unknown): AppSettings {
     ...(typeof candidate.ignoreLevel6 === 'boolean'
       ? { ignoreLevel6: candidate.ignoreLevel6 }
       : {}),
-    ...(typeof candidate.oledBlack === 'boolean' ? { oledBlack: candidate.oledBlack } : {}),
+    ...(process.env.EXPO_OS === 'ios'
+      ? { oledBlack: true }
+      : typeof candidate.oledBlack === 'boolean'
+        ? { oledBlack: candidate.oledBlack }
+        : {}),
     ...(typeof candidate.readerFirstLineIndent === 'boolean'
       ? { readerFirstLineIndent: candidate.readerFirstLineIndent }
       : {}),

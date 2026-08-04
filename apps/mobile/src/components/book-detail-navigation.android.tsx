@@ -1,6 +1,6 @@
 import { Stack, router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { IconMessage, IconTag, IconUserScreen } from '@tabler/icons-react-native';
 import { Host } from '@expo/ui';
 
@@ -8,6 +8,7 @@ import type { BookDetail } from '@novella/api-client';
 
 import { NativeSelectionMenu } from '../../modules/novella-ui';
 import type { BookDetailNavigationProps } from '@/components/book-detail-navigation.types';
+import { useAppColorScheme } from '@/theme/app-theme';
 
 const COMIC_MENU_ITEMS = [
   { icon: 'user', label: 'Uploader' },
@@ -42,7 +43,7 @@ function AndroidHeaderActions({
   showTags: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppColorScheme();
   const isComic = book.type === 'Comic';
   const typeParam = book.type ? { type: book.type } : {};
   const openUploader = () =>

@@ -1,7 +1,8 @@
 import { Host } from '@expo/ui';
-import { StyleSheet, useColorScheme } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import type { ReaderChapterNavigationProps } from '@/components/reader-navigation.types';
+import { useAppColorScheme } from '@/theme/app-theme';
 import { NativeBottomAppBar } from '../../modules/novella-ui';
 
 /**
@@ -17,7 +18,7 @@ export function ReaderChapterNavigation({
   onPrevious,
   total,
 }: ReaderChapterNavigationProps) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppColorScheme();
   const contentColor = colorScheme === 'dark' ? '#FFFFFF' : '#111827';
   return (
     <Host colorScheme={colorScheme} matchContents={{ vertical: true }} style={styles.host}>

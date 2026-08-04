@@ -1,10 +1,11 @@
 import { Host } from '@expo/ui';
-import { StyleSheet, View, useColorScheme } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { NativeSearchBar } from '../../modules/novella-ui';
 
 import { NativeSegmentedControl } from '@/components/native-segmented-control';
 import type { NativeSearchControlsProps } from '@/components/native-search-controls.types';
+import { useAppColorScheme } from '@/theme/app-theme';
 
 const FORMAT_OPTIONS = [
   { label: 'Novel', value: 'Novel' },
@@ -18,7 +19,7 @@ export function NativeSearchControls({
   onSubmit,
   query,
 }: NativeSearchControlsProps) {
-  const colorScheme = useColorScheme();
+  const colorScheme = useAppColorScheme();
   return (
     <View style={styles.root}>
       <Host colorScheme={colorScheme} style={styles.searchHost} useViewportSizeMeasurement>

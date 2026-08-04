@@ -30,7 +30,7 @@ import {
 import { useReaderLifecycleSave } from '@/hooks/use-reader-lifecycle-save';
 import { useReaderPositionSaver } from '@/hooks/use-reader-position-saver';
 import { updateAppSettings, useAppSettings } from '@/services/settings';
-import { colors } from '@/theme/colors';
+import { useAppTheme } from '@/theme/app-theme';
 
 const PAGE_BATCH = 12;
 const EMPTY_COMIC_SLOTS: readonly ComicPageSlot[] = [];
@@ -49,6 +49,7 @@ export interface ComicReaderScreenProps {
 }
 
 export function ComicReaderScreen({ bookId, sortNum, openPosition = 'saved' }: ComicReaderScreenProps) {
+  const { colors } = useAppTheme();
   const { height: windowHeight, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // The iOS reader floats glass toolbars over the top and bottom of the
@@ -347,6 +348,7 @@ export function ComicReaderScreen({ bookId, sortNum, openPosition = 'saved' }: C
 }
 
 function ComicPage({ maxHeight, priority, slot, width }: { maxHeight?: number; priority: 'high' | 'normal'; slot: ComicPageSlot; width: number }) {
+  const { colors } = useAppTheme();
   const image = slot.image;
   const ratio = image ? Math.max(0.2, image.height / image.width) : 1.5;
   const naturalHeight = width * ratio;
@@ -403,6 +405,6 @@ function createComicPageLayouts(
 
 const styles = StyleSheet.create({
   centeredPage: { alignItems: 'center', justifyContent: 'center' },
-  root: { backgroundColor: colors.background as string, flex: 1 },
+  root: { flex: 1 },
   centered: { alignItems: 'center', flex: 1, justifyContent: 'center' },
 });

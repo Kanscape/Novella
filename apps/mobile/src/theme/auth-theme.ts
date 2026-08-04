@@ -1,4 +1,6 @@
-import { useColorScheme, type ColorSchemeName } from 'react-native';
+import type { ColorSchemeName } from 'react-native';
+
+import { useAppColorScheme } from '@/theme/app-theme';
 
 export type AuthPalette = {
   accent: string;
@@ -53,5 +55,5 @@ export function getAuthPalette(colorScheme: ColorSchemeName): AuthPalette {
 }
 
 export function useAuthPalette(): AuthPalette {
-  return getAuthPalette(useColorScheme());
+  return getAuthPalette(useAppColorScheme());
 }

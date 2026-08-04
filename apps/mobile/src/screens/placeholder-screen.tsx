@@ -2,7 +2,7 @@ import { Column, Host, ScrollView, Text } from '@expo/ui';
 
 import { NativeIcon, type NativeIconName } from '@/components/native-icon';
 import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 interface PlaceholderScreenProps {
   description: string;
@@ -15,6 +15,8 @@ export function PlaceholderScreen({
   icon,
   title,
 }: PlaceholderScreenProps) {
+  const styles = usePlaceholderScreenStyles();
+  const { colors } = useAppTheme();
   return (
     <NativeScreenScaffold title={title}>
       <Host seedColor={colors.accent} style={{ flex: 1, width: '100%' }}>
@@ -41,7 +43,7 @@ export function PlaceholderScreen({
   );
 }
 
-const styles = {
+const usePlaceholderScreenStyles = createThemedStyles((colors) => ({
   content: {
     padding: 28,
     paddingBottom: 120,
@@ -73,4 +75,4 @@ const styles = {
     fontWeight: '800',
     textAlign: 'center',
   },
-} as const;
+}));

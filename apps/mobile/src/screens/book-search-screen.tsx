@@ -31,7 +31,7 @@ import {
 import { BOOK_SEARCH_MODE_OPTIONS } from '@/components/native-search-controls.types';
 import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
 import { useBookSearch, type BookSearchFormat } from '@/hooks/use-book-search';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 type SearchResult =
   | { key: string; kind: 'Novel'; item: BookListItem }
@@ -48,6 +48,8 @@ export function BookSearchScreen({
   initialMode = 'fuzzy',
   initialQuery = '',
 }: BookSearchScreenProps) {
+  const styles = useBookSearchScreenStyles();
+  const { colors } = useAppTheme();
   const search = useBookSearch();
   const [query, setQuery] = useState(initialQuery);
   const submittedInitial = useRef(false);
@@ -226,6 +228,8 @@ function SearchEmpty({
   onRetry(): void;
   status: string;
 }) {
+  const styles = useBookSearchScreenStyles();
+  const { colors } = useAppTheme();
   if (status === 'error') {
     return (
       <View style={styles.empty}>
@@ -255,20 +259,20 @@ function SearchEmpty({
   );
 }
 
-const styles = StyleSheet.create({
+const useBookSearchScreenStyles = createThemedStyles((colors) => ({
   content: { gap: 14, paddingBottom: 100, paddingHorizontal: 16 },
   empty: { alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 56 },
-  emptyText: { color: colors.secondaryLabel as string, fontSize: 14, lineHeight: 20, textAlign: 'center' },
-  emptyTitle: { color: colors.label as string, fontSize: 17, fontWeight: '700' },
+  emptyText: { color: colors.secondaryLabel, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  emptyTitle: { color: colors.label, fontSize: 17, fontWeight: '700' },
   header: { gap: 14, paddingTop: 8 },
-  historyChip: { backgroundColor: colors.card as string, borderCurve: 'continuous', borderRadius: 10, maxWidth: '100%', paddingHorizontal: 12, paddingVertical: 8 },
+  historyChip: { backgroundColor: colors.card, borderCurve: 'continuous', borderRadius: 10, maxWidth: '100%', paddingHorizontal: 12, paddingVertical: 8 },
   historyHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  historyLabel: { color: colors.label as string, fontSize: 14 },
+  historyLabel: { color: colors.label, fontSize: 14 },
   historySection: { gap: 10 },
   historyWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  resultSummary: { color: colors.secondaryLabel as string, fontSize: 13, fontVariant: ['tabular-nums'] },
-  retryButton: { backgroundColor: colors.accent as string, borderCurve: 'continuous', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
-  retryLabel: { color: colors.onPrimaryContainer as string, fontWeight: '700' },
+  resultSummary: { color: colors.secondaryLabel, fontSize: 13, fontVariant: ['tabular-nums'] },
+  retryButton: { backgroundColor: colors.accent, borderCurve: 'continuous', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  retryLabel: { color: colors.onPrimaryContainer, fontWeight: '700' },
   row: { gap: 10 },
-  sectionTitle: { color: colors.label as string, fontSize: 16, fontWeight: '700' },
-});
+  sectionTitle: { color: colors.label, fontSize: 16, fontWeight: '700' },
+}));

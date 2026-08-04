@@ -27,7 +27,7 @@ import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
 import { NativeSegmentedControl } from '@/components/native-segmented-control';
 import { useBookGridLayout } from '@/hooks/use-book-grid-layout';
 import { type HistoryTab, useReadHistory } from '@/hooks/use-read-history';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 const TAB_OPTIONS = [
   { label: 'Novels', value: 'Novel' },
@@ -35,6 +35,8 @@ const TAB_OPTIONS = [
 ] as const;
 
 export function HistoryScreen() {
+  const styles = useHistoryScreenStyles();
+  const { colors } = useAppTheme();
   const { clear, loadMore, refresh, retry, state } = useReadHistory();
   const [tab, setTab] = useState<HistoryTab>('Novel');
   const { columns, height, tileWidth } = useBookGridLayout(16);
@@ -198,6 +200,8 @@ export function HistoryScreen() {
 }
 
 function EmptyState({ tab }: { tab: HistoryTab }) {
+  const styles = useHistoryScreenStyles();
+  const { colors } = useAppTheme();
   const isNovel = tab === 'Novel';
   return (
     <View style={styles.stateBlock}>
@@ -213,6 +217,8 @@ function EmptyState({ tab }: { tab: HistoryTab }) {
 }
 
 function InitialErrorState({ error, onRetry }: { error: string; onRetry(): void }) {
+  const styles = useHistoryScreenStyles();
+  const { colors } = useAppTheme();
   return (
     <View style={styles.stateBlock}>
       <IconRefreshOff color={colors.secondaryLabel as string} size={44} strokeWidth={1.5} />
@@ -231,6 +237,8 @@ function InitialErrorState({ error, onRetry }: { error: string; onRetry(): void 
 }
 
 function TabErrorState({ error, onRetry }: { error: string; onRetry(): void }) {
+  const styles = useHistoryScreenStyles();
+  const { colors } = useAppTheme();
   return (
     <View style={styles.stateBlock}>
       <IconRefreshOff color={colors.secondaryLabel as string} size={44} strokeWidth={1.5} />
@@ -248,7 +256,7 @@ function TabErrorState({ error, onRetry }: { error: string; onRetry(): void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useHistoryScreenStyles = createThemedStyles((colors) => ({
   content: {
     gap: 12,
     paddingBottom: 40,
@@ -258,7 +266,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.72 },
   retryButton: {
     alignItems: 'center',
-    borderColor: colors.separator as string,
+    borderColor: colors.separator,
     borderCurve: 'continuous',
     borderRadius: 10,
     borderWidth: 1,
@@ -267,7 +275,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   retryLabel: {
-    color: colors.accent as string,
+    color: colors.accent,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -280,17 +288,17 @@ const styles = StyleSheet.create({
     paddingTop: 96,
   },
   stateDescription: {
-    color: colors.secondaryLabel as string,
+    color: colors.secondaryLabel,
     fontSize: 14,
     lineHeight: 20,
     marginTop: 8,
     textAlign: 'center',
   },
   stateTitle: {
-    color: colors.label as string,
+    color: colors.label,
     fontSize: 17,
     fontWeight: '600',
     marginTop: 16,
   },
   tabs: { paddingBottom: 4 },
-});
+}));

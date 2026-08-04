@@ -11,7 +11,7 @@ import {
 
 import { BookCoverBlurHash } from '@/components/book-cover-blur-hash';
 import { createBookCoverBlurHashPlaceholder } from '@/services/blurhash';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 const MINIMUM_PLACEHOLDER_DURATION_MS = 120;
 const COVER_FADE_DURATION_MS = 200;
@@ -48,6 +48,8 @@ function BookCoverImageLayer({
   showLoading = true,
   source,
 }: BookCoverImageProps) {
+  const styles = useBookCoverImageStyles();
+  const { colors } = useAppTheme();
   const placeholder = createBookCoverBlurHashPlaceholder(blurHash);
   const wasRevealed = source.length > 0 && revealedCoverUrls.has(source);
   const opacity = useRef(new Animated.Value(wasRevealed ? 1 : 0)).current;
@@ -211,7 +213,7 @@ function rememberRevealedCover(source: string): void {
   }
 }
 
-const styles = StyleSheet.create({
+const useBookCoverImageStyles = createThemedStyles((colors) => ({
   blurHashErrorOverlay: {
     backgroundColor: 'rgba(0, 0, 0, 0.15)',
   },
@@ -223,10 +225,10 @@ const styles = StyleSheet.create({
   fallback: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
-    backgroundColor: colors.surfaceContainerHighest as string,
+    backgroundColor: colors.surfaceContainerHighest,
     justifyContent: 'center',
   },
   root: {
     ...StyleSheet.absoluteFill,
   },
-});
+}));

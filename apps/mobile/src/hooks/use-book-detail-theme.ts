@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useColorScheme } from 'react-native';
-
 import { useAppSettings } from '@/services/settings';
 import {
   createBookDetailTheme,
@@ -8,14 +6,11 @@ import {
   type BookDetailTheme,
 } from '@/theme/book-detail-theme';
 import { useSystemThemeSeed } from '@/hooks/use-system-theme-seed';
+import { useAppColorScheme } from '@/theme/app-theme';
 
 export function useBookDetailTheme(coverUrl: string | null, coverPlaceholder: string | null) {
-  const colorScheme = useColorScheme();
+  const effectiveColorScheme = useAppColorScheme();
   const settings = useAppSettings();
-  const systemColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
-  const effectiveColorScheme = settings.theme === 'system'
-    ? systemColorScheme
-    : settings.theme;
   const systemThemeSeed = useSystemThemeSeed(effectiveColorScheme);
   const useSystemThemeSeedValue = settings.useSystemColor && systemThemeSeed !== null;
   const colorProfile = effectiveColorScheme === 'dark'

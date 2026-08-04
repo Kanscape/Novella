@@ -1,9 +1,11 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { IconRefresh } from '@tabler/icons-react-native';
 
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 export function ReaderPreparationState({ label, progress }: { label: string; progress?: string }) {
+  const styles = useReaderChromeStyles();
+  const { colors } = useAppTheme();
   return (
     <View style={styles.centered}>
       <ActivityIndicator color={colors.accent as string} />
@@ -14,6 +16,8 @@ export function ReaderPreparationState({ label, progress }: { label: string; pro
 }
 
 export function ReaderErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const styles = useReaderChromeStyles();
+  const { colors } = useAppTheme();
   return (
     <View style={styles.centered}>
       <Text style={styles.errorText}>{message}</Text>
@@ -25,11 +29,11 @@ export function ReaderErrorState({ message, onRetry }: { message: string; onRetr
   );
 }
 
-const styles = StyleSheet.create({
+const useReaderChromeStyles = createThemedStyles((colors) => ({
   centered: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 24 },
-  errorText: { color: colors.secondaryLabel as string, fontSize: 15, marginBottom: 14, textAlign: 'center' },
+  errorText: { color: colors.secondaryLabel, fontSize: 15, marginBottom: 14, textAlign: 'center' },
   retry: { alignItems: 'center', flexDirection: 'row', gap: 6, padding: 10 },
-  retryText: { color: colors.accent as string, fontSize: 15, fontWeight: '600' },
-  preparationLabel: { color: colors.label as string, fontSize: 15, fontWeight: '600', marginTop: 14 },
-  preparationProgress: { color: colors.secondaryLabel as string, fontSize: 13, fontVariant: ['tabular-nums'], marginTop: 4 },
-});
+  retryText: { color: colors.accent, fontSize: 15, fontWeight: '600' },
+  preparationLabel: { color: colors.label, fontSize: 15, fontWeight: '600', marginTop: 14 },
+  preparationProgress: { color: colors.secondaryLabel, fontSize: 13, fontVariant: ['tabular-nums'], marginTop: 4 },
+}));

@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { Skeleton } from 'heroui-native';
 
 import { BOOK_GRID_ROW_GAP } from '@/services/book-grid-layout';
-import { colors } from '@/theme/colors';
+import { createThemedStyles } from '@/theme/app-theme';
 
 /** Height of one skeleton tile column (cover 2:3 + gap + two title lines). */
 export function bookGridTileHeight(tileWidth: number): number {
@@ -46,6 +46,7 @@ export function bookGridLoadingMoreKeys(
 }
 
 export function BookCoverSkeletonTile({ tileWidth }: { tileWidth: number }) {
+  const styles = useBookCoverSkeletonTileStyles();
   return (
     <View
       accessibilityElementsHidden
@@ -71,9 +72,9 @@ export function BookCoverSkeletonTile({ tileWidth }: { tileWidth: number }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useBookCoverSkeletonTileStyles = createThemedStyles((colors) => ({
   skeletonBlock: {
-    backgroundColor: colors.surfaceContainerHighest as string,
+    backgroundColor: colors.surfaceContainerHighest,
     borderCurve: 'continuous',
     borderRadius: 8,
     overflow: 'hidden',
@@ -84,4 +85,4 @@ const styles = StyleSheet.create({
   tile: {
     gap: 7,
   },
-});
+}));

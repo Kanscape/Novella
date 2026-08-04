@@ -29,7 +29,7 @@ import {
 import type { BookCategory, BookListItem } from '@novella/api-client';
 
 import { BookCoverImage } from '@/components/book-cover-image';
-import { colors } from '@/theme/colors';
+import { createThemedStyles } from '@/theme/app-theme';
 
 type BadgeIcon = Icon;
 
@@ -61,6 +61,7 @@ export function BookCoverGridItem({
   rank,
   tileWidth,
 }: BookCoverGridItemProps) {
+  const styles = useBookCoverGridItemStyles();
   const categoryBadge = resolveCategoryBadge(book.category);
   const level = book.interiorLevel || book.level || 0;
 
@@ -119,6 +120,7 @@ export function BookCoverGridItem({
 }
 
 function CategoryBadge({ badge }: { badge: CategoryBadge }) {
+  const styles = useBookCoverGridItemStyles();
   const BadgeIcon = badge.icon;
   return (
     <View style={[styles.categoryBadge, { backgroundColor: badge.backgroundColor }]}>
@@ -133,6 +135,7 @@ function CategoryBadge({ badge }: { badge: CategoryBadge }) {
 }
 
 function LevelBadge({ level, interior }: { level: number; interior: boolean }) {
+  const styles = useBookCoverGridItemStyles();
   const safeLevel = Math.min(6, Math.max(1, Math.trunc(level))) as 1 | 2 | 3 | 4 | 5 | 6;
   const LevelIcon = levelIcons[safeLevel];
   const color = interior ? '#E0A106' : '#FFFFFF';
@@ -160,6 +163,7 @@ function LevelBadge({ level, interior }: { level: number; interior: boolean }) {
 }
 
 function RankBadge({ rank }: { rank: number }) {
+  const styles = useBookCoverGridItemStyles();
   const color = rank === 1 ? '#FFD700' : rank === 2 ? '#78909C' : '#CD7F32';
   return (
     <View style={[styles.rankBadge, { backgroundColor: color }]}>
@@ -211,7 +215,7 @@ const levelIcons: Record<1 | 2 | 3 | 4 | 5 | 6, BadgeIcon> = {
   6: IconNumber6,
 };
 
-const styles = StyleSheet.create({
+const useBookCoverGridItemStyles = createThemedStyles((colors) => ({
   categoryBadge: {
     alignItems: 'center',
     borderRadius: 8,
@@ -222,7 +226,7 @@ const styles = StyleSheet.create({
     right: 0,
   },
   coverFrame: {
-    backgroundColor: colors.card as string,
+    backgroundColor: colors.card,
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
@@ -279,7 +283,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.48)',
   },
   title: {
-    color: colors.label as string,
+    color: colors.label,
     fontSize: 13,
     lineHeight: 16,
     textAlign: 'center',
@@ -289,4 +293,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 2,
   },
-});
+}));

@@ -56,9 +56,11 @@ import { SectionCard } from '@/components/section-card';
 import { useBookGridLayout, BOOK_GRID_COLUMN_GAP } from '@/hooks/use-book-grid-layout';
 import { useShelf, type ShelfMode } from '@/hooks/use-shelf';
 import { closeShelfManagementSession, openShelfManagementSession } from '@/services/shelf-management-session';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 export function ShelfScreen({ parents = [] }: { parents?: string[] }) {
+  const styles = useShelfScreenStyles();
+  const { colors } = useAppTheme();
   const navigation = useNavigation();
   const {
     beginEdit,
@@ -380,6 +382,7 @@ function ShelfScrollRoot({
   children: React.ReactElement;
   nested: boolean;
 }) {
+  const styles = useShelfScreenStyles();
   return nested ? <View style={styles.root}>{children}</View> : children;
 }
 
@@ -412,6 +415,7 @@ function ShelfContent({
   viewportHeightRef: React.MutableRefObject<number>;
   visibleItems: ShelfItem[];
 }) {
+  const styles = useShelfScreenStyles();
   const { columns, contentWidth, tileWidth } = useBookGridLayout(20);
   const booksById = new Map(snapshot.books.map((book) => [book.id, book]));
 
@@ -536,6 +540,8 @@ function ShelfContent({
 }
 
 function ModeBanner({ isDirty, isSaving, mode }: { isDirty: boolean; isSaving: boolean; mode: ShelfMode }) {
+  const styles = useShelfScreenStyles();
+  const { colors } = useAppTheme();
   return (
     <View style={styles.modeBanner}>
       {isSaving ? (
@@ -555,6 +561,7 @@ function ModeBanner({ isDirty, isSaving, mode }: { isDirty: boolean; isSaving: b
 }
 
 function LoadingState() {
+  const styles = useShelfScreenStyles();
   const { columns, contentWidth, height, tileWidth } = useBookGridLayout(20);
   const count = bookGridSkeletonCount({
     columns,
@@ -594,6 +601,7 @@ function ErrorState({
   error: string;
   onRetry: () => void;
 }) {
+  const styles = useShelfScreenStyles();
   return (
     <View style={styles.errorBlock}>
       <Text selectable style={styles.errorTitle}>
@@ -613,6 +621,8 @@ function ErrorState({
 }
 
 function InlineError({ error, onDismiss }: { error: string; onDismiss: () => void }) {
+  const styles = useShelfScreenStyles();
+  const { colors } = useAppTheme();
   return (
     <View style={styles.inlineError}>
       <IconAlertTriangle color={colors.error as string} size={20} strokeWidth={2} />
@@ -625,6 +635,8 @@ function InlineError({ error, onDismiss }: { error: string; onDismiss: () => voi
 }
 
 function EmptyShelfState({ nested }: { nested: boolean }) {
+  const styles = useShelfScreenStyles();
+  const { colors } = useAppTheme();
   return (
     <SectionCard>
       <View style={styles.emptyState}>
@@ -649,6 +661,8 @@ function UnavailableBookGridItem({
   onPress: () => void;
   tileWidth: number;
 }) {
+  const styles = useShelfScreenStyles();
+  const { colors } = useAppTheme();
   return (
     <Pressable
       accessibilityLabel="Unavailable book"
@@ -729,38 +743,38 @@ function setsEqual<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
   return left.size === right.size && [...left].every((value) => right.has(value));
 }
 
-const styles = StyleSheet.create({
-  breadcrumb: { color: colors.secondaryLabel as string, fontSize: 14, lineHeight: 19 },
-  cardDescription: { color: colors.secondaryLabel as string, fontSize: 15, lineHeight: 21 },
-  cardTitle: { color: colors.label as string, flex: 1, fontSize: 17, fontWeight: '700', lineHeight: 22 },
+const useShelfScreenStyles = createThemedStyles((colors) => ({
+  breadcrumb: { color: colors.secondaryLabel, fontSize: 14, lineHeight: 19 },
+  cardDescription: { color: colors.secondaryLabel, fontSize: 15, lineHeight: 21 },
+  cardTitle: { color: colors.label, flex: 1, fontSize: 17, fontWeight: '700', lineHeight: 22 },
   content: { gap: 16, paddingBottom: 120, paddingHorizontal: 20, paddingTop: 20 },
   emptyState: { alignItems: 'center', gap: 10, paddingVertical: 18 },
   errorBlock: { alignItems: 'center', gap: 12, paddingHorizontal: 28, paddingVertical: 56 },
-  errorText: { color: colors.secondaryLabel as string, fontSize: 14, lineHeight: 20, textAlign: 'center' },
-  errorTitle: { color: colors.label as string, fontSize: 17, fontWeight: '700' },
+  errorText: { color: colors.secondaryLabel, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  errorTitle: { color: colors.label, fontSize: 17, fontWeight: '700' },
   grid: { gap: 12 },
   gridRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 10, justifyContent: 'space-between' },
-  inlineError: { alignItems: 'center', backgroundColor: colors.card as string, borderColor: colors.error as string, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 10, padding: 12 },
-  inlineErrorLabel: { color: colors.label as string, flex: 1, fontSize: 14, lineHeight: 19 },
-  modeBanner: { alignItems: 'center', backgroundColor: colors.card as string, borderRadius: 14, flexDirection: 'row', gap: 9, paddingHorizontal: 12, paddingVertical: 10 },
-  modeLabel: { color: colors.secondaryLabel as string, flex: 1, fontSize: 14, lineHeight: 19 },
+  inlineError: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.error, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 10, padding: 12 },
+  inlineErrorLabel: { color: colors.label, flex: 1, fontSize: 14, lineHeight: 19 },
+  modeBanner: { alignItems: 'center', backgroundColor: colors.card, borderRadius: 14, flexDirection: 'row', gap: 9, paddingHorizontal: 12, paddingVertical: 10 },
+  modeLabel: { color: colors.secondaryLabel, flex: 1, fontSize: 14, lineHeight: 19 },
   pressed: { opacity: 0.7 },
   retryButton: {
     alignItems: 'center',
-    borderColor: colors.separator as string,
+    borderColor: colors.separator,
     borderCurve: 'continuous',
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 9,
   },
-  retryLabel: { color: colors.accent as string, fontSize: 15, fontWeight: '600' },
-  root: { backgroundColor: colors.background as string, flex: 1 },
-  scrollView: { backgroundColor: colors.background as string, flex: 1 },
+  retryLabel: { color: colors.accent, fontSize: 15, fontWeight: '600' },
+  root: { backgroundColor: colors.background, flex: 1 },
+  scrollView: { backgroundColor: colors.background, flex: 1 },
   selectedOverlay: { backgroundColor: 'rgba(217, 71, 93, 0.72)' },
   sortingOverlay: { backgroundColor: 'rgba(0, 0, 0, 0.48)' },
-  unavailableCover: { alignItems: 'center', backgroundColor: colors.card as string, borderColor: colors.separator as string, borderRadius: 12, borderWidth: 0.5, justifyContent: 'center', overflow: 'hidden' },
+  unavailableCover: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.separator, borderRadius: 12, borderWidth: 0.5, justifyContent: 'center', overflow: 'hidden' },
   unavailableItem: { alignItems: 'center' },
   unavailableOverlay: { alignItems: 'center', bottom: 0, justifyContent: 'center', left: 0, position: 'absolute', right: 0, top: 0 },
-  unavailableTitle: { color: colors.secondaryLabel as string, fontSize: 13, lineHeight: 16, paddingHorizontal: 2, paddingTop: 8, textAlign: 'center' },
-});
+  unavailableTitle: { color: colors.secondaryLabel, fontSize: 13, lineHeight: 16, paddingHorizontal: 2, paddingTop: 8, textAlign: 'center' },
+}));

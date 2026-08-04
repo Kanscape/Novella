@@ -1,7 +1,6 @@
-import { StyleSheet } from 'react-native';
 import type { CustomTextualRenderer } from 'react-native-render-html';
 
-import { colors } from '@/theme/colors';
+import { createThemedStyles } from '@/theme/app-theme';
 
 export function createReaderFootnoteRenderer(
   notesById: Readonly<Record<string, string>>,
@@ -9,6 +8,7 @@ export function createReaderFootnoteRenderer(
   onOpenFootnote?: (id: string) => void,
 ): CustomTextualRenderer {
   return function ReaderFootnoteRenderer({ TDefaultRenderer, tnode, ...props }) {
+    const styles = useReaderFootnoteRendererStyles();
     const id = tnode.attributes['data-reader-footnote-id'];
     const note = id ? notesById[id] : undefined;
     if (!id || note === undefined) {
@@ -38,10 +38,10 @@ export function createReaderFootnoteRenderer(
   };
 }
 
-const styles = StyleSheet.create({
+const useReaderFootnoteRendererStyles = createThemedStyles((colors) => ({
   marker: {
-    color: colors.accent as string,
+    color: colors.accent,
     fontWeight: '800',
     textDecorationLine: 'none',
   },
-});
+}));

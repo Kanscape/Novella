@@ -1,7 +1,7 @@
 import { router, useNavigation } from 'expo-router';
 import { useRoute } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SERVICE_ENDPOINTS } from '@novella/api-client';
 import {
@@ -11,6 +11,7 @@ import {
   type ReaderMode,
   type ReaderOpenPosition,
 } from '@novella/reader-engine';
+import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider';
 import { ReaderChapterNavigation } from '@/components/reader-chapter-navigation';
 import { ReaderWebView, type ReaderWebViewPosition, type ReaderWebViewTheme } from '@/components/reader-web-view';
 import { ReaderErrorState } from '@/components/reader-chrome';
@@ -35,7 +36,8 @@ import {
 } from '@/services/reader-locator-mapping';
 import { updateAppSettings, useAppSettings } from '@/services/settings';
 import { useReaderLifecycleSave } from '@/hooks/use-reader-lifecycle-save';
-import { colors } from '@/theme/colors';
+import { useAppColorScheme, useAppTheme } from '@/theme/app-theme';
+import { resolveReaderColors } from '@/theme/theme-mode';
 
 interface NovelProgressInput {
   chapterId: number;
@@ -58,6 +60,7 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
     setParams(params: { position: ReaderOpenPosition; sortNum: string }): void;
   }>();
   const route = useRoute();
+  const { colors } = useAppTheme();
   const [mode, setMode] = useState<ReaderMode>(settings.readerViewMode);
   const conversion = settings.convertType === 'none' ? undefined : settings.convertType;
   const { content, error, isLoading, reload } = useReaderChapter(
@@ -205,13 +208,37 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
       : rawChapterTitle
     : '';
 
-  const colorScheme = useColorScheme();
-  const isDarkReader = colorScheme === 'dark';
   // The reader WebView needs literal hex colors; the semantic dynamic colors
-  // (PlatformColor) cannot be serialized. Mirror systemGroupedBackground
-  // / label explicitly for light and dark appearances.
-  const readerTextColor = settings.oledBlack ? '#FFFFFF' : isDarkReader ? '#FFFFFF' : '#111827';
-  const readerBackground = settings.oledBlack ? '#000000' : isDarkReader ? '#000000' : '#F2F2F7';
+  // (PlatformColor) cannot be serialized, so the page colors are resolved to
+  // hex here. The effective app scheme (settings.theme resolved against the
+  // system) drives the reader, so a forced light/dark appearance applies too.
+  //
+  // Platform conventions:
+  // - iOS: the dark reader is deep black by default (the OLED-black option is
+  //   hidden on iOS and always on).
+  // - Android: follow the book-comments page colors — the cover-extracted
+  //   Material palette when cover color extraction is enabled, otherwise the
+  //   system palette. OLED black (pure #000) is applied by
+  //   resolveReaderColors only when the effective scheme is dark.
+  const colorScheme = useAppColorScheme();
+  const isDarkReader = colorScheme === 'dark';
+  const useCoverPalette = process.env.EXPO_OS === 'android' && settings.coverColorExtraction;
+  const detailTheme = useBookDetailRouteTheme(bookId, null, null, useCoverPalette);
+  let readerBackground: string;
+  let readerTextColor: string;
+  if (process.env.EXPO_OS === 'ios') {
+    readerBackground = isDarkReader ? '#000000' : '#F2F2F7';
+    readerTextColor = isDarkReader ? '#FFFFFF' : '#111827';
+  } else {
+    const resolvedReaderColors = resolveReaderColors({
+      backgroundColor: useCoverPalette ? detailTheme.palette.surface : colors.surface as string,
+      colorScheme,
+      oledBlack: settings.oledBlack,
+      textColor: useCoverPalette ? detailTheme.palette.onSurface : colors.label as string,
+    });
+    readerBackground = resolvedReaderColors.backgroundColor;
+    readerTextColor = resolvedReaderColors.textColor;
+  }
   // The native top/bottom bars float over the reader content (Liquid Glass
   // overlay header on iOS, bottom toolbar), so the document area must be
   // inset by their heights — same scheme as the previous renderer. The extra
@@ -298,7 +325,7 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
 }
 
 const styles = StyleSheet.create({
-  root: { backgroundColor: colors.background as string, flex: 1 },
+  root: { flex: 1 },
   centered: { alignItems: 'center', flex: 1, justifyContent: 'center' },
   reader: { flex: 1 },
 });

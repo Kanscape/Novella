@@ -1,13 +1,14 @@
 import type { PropsWithChildren } from 'react';
 import { View } from 'react-native';
 
-import { colors } from '@/theme/colors';
+import { createThemedStyles } from '@/theme/app-theme';
 
 export function SectionCard({ children }: PropsWithChildren) {
+  const styles = useSectionCardStyles();
   return <View style={styles.card}>{children}</View>;
 }
 
-const styles = {
+const useSectionCardStyles = createThemedStyles((colors) => ({
   card: {
     backgroundColor: colors.card as string,
     borderColor: colors.separator as string,
@@ -17,4 +18,4 @@ const styles = {
     padding: 18,
     width: '100%',
   },
-} as const;
+}));

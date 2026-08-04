@@ -24,7 +24,7 @@ import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { useProfile } from '@/hooks/use-profile';
 import { profile as profileUseCase } from '@/services/client';
-import { colors } from '@/theme/colors';
+import { createThemedStyles, useAppTheme } from '@/theme/app-theme';
 
 const SOURCE_OPTIONS = [
   { label: 'Image URL', value: 'url' },
@@ -36,6 +36,8 @@ type AvatarDrafts = Record<AvatarSource, string>;
 
 export function AvatarSettingsScreen() {
   const insets = useSafeAreaInsets();
+  const styles = useAvatarSettingsScreenStyles();
+  const { colors } = useAppTheme();
   const { error: loadError, profile, reload, status } = useProfile();
   const hydratedProfileId = useRef<number | null>(null);
   const [source, setSource] = useState<AvatarSource>('url');
@@ -208,24 +210,24 @@ function getSourceHint(source: AvatarSource): string {
   }
 }
 
-const styles = StyleSheet.create({
+const useAvatarSettingsScreenStyles = createThemedStyles((colors) => ({
   content: { gap: 22, paddingHorizontal: 20, paddingTop: 24 },
-  description: { color: colors.secondaryLabel as string, fontSize: 16, lineHeight: 23 },
+  description: { color: colors.secondaryLabel, fontSize: 16, lineHeight: 23 },
   disabled: { opacity: 0.55 },
   fieldGroup: { gap: 8 },
-  fieldHint: { color: colors.secondaryLabel as string, fontSize: 13, lineHeight: 18, paddingHorizontal: 2 },
+  fieldHint: { color: colors.secondaryLabel, fontSize: 13, lineHeight: 18, paddingHorizontal: 2 },
   introduction: { gap: 7 },
-  loadingRoot: { alignItems: 'center', backgroundColor: colors.background as string, flex: 1, gap: 14, justifyContent: 'center', padding: 24 },
-  loadingTitle: { color: colors.secondaryLabel as string, fontSize: 15, textAlign: 'center' },
+  loadingRoot: { alignItems: 'center', backgroundColor: colors.background, flex: 1, gap: 14, justifyContent: 'center', padding: 24 },
+  loadingTitle: { color: colors.secondaryLabel, fontSize: 15, textAlign: 'center' },
   pressed: { opacity: 0.72 },
-  previewCard: { alignItems: 'center', backgroundColor: colors.card as string, borderRadius: 20, flexDirection: 'row', gap: 14, padding: 16 },
+  previewCard: { alignItems: 'center', backgroundColor: colors.card, borderRadius: 20, flexDirection: 'row', gap: 14, padding: 16 },
   previewCopy: { flex: 1, gap: 3 },
-  previewDescription: { color: colors.secondaryLabel as string, fontSize: 14 },
-  previewName: { color: colors.label as string, fontSize: 17, fontWeight: '700' },
+  previewDescription: { color: colors.secondaryLabel, fontSize: 14 },
+  previewName: { color: colors.label, fontSize: 17, fontWeight: '700' },
   retryButton: { padding: 10 },
-  retryLabel: { color: colors.accent as string, fontSize: 16, fontWeight: '600' },
-  root: { backgroundColor: colors.background as string, flex: 1 },
-  saveButton: { alignItems: 'center', backgroundColor: colors.accent as string, borderRadius: 14, flexDirection: 'row', gap: 8, justifyContent: 'center', minHeight: 52, paddingHorizontal: 18 },
+  retryLabel: { color: colors.accent, fontSize: 16, fontWeight: '600' },
+  root: { backgroundColor: colors.background, flex: 1 },
+  saveButton: { alignItems: 'center', backgroundColor: colors.accent, borderRadius: 14, flexDirection: 'row', gap: 8, justifyContent: 'center', minHeight: 52, paddingHorizontal: 18 },
   saveLabel: { color: '#FFFFFF', fontSize: 17, fontWeight: '600' },
-  title: { color: colors.label as string, fontSize: 30, fontWeight: '700', letterSpacing: -0.6, lineHeight: 36 },
-});
+  title: { color: colors.label, fontSize: 30, fontWeight: '700', letterSpacing: -0.6, lineHeight: 36 },
+}));

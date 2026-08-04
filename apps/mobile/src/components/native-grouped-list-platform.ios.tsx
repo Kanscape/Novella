@@ -12,9 +12,10 @@ import { isValidElement, type PropsWithChildren, type ReactNode } from 'react';
 
 import { NativeIcon } from '@/components/native-icon';
 import type { NativeGroupedListProps, NativeGroupedListRowProps } from '@/components/native-grouped-list';
-import { colors } from '@/theme/colors';
+import { useAppTheme } from '@/theme/app-theme';
 
 export function NativeGroupedListPlatform({ children, testID }: NativeGroupedListProps) {
+  const { colors } = useAppTheme();
   return (
     <Host seedColor={colors.accent} style={{ flex: 1, width: '100%' }}>
       <List
@@ -39,6 +40,7 @@ export function NativeGroupedListRowPlatform({
   title,
   trailing,
 }: NativeGroupedListRowProps) {
+  const { colors } = useAppTheme();
   const modifiers = [buttonStyle('plain'), ...(disabled ? [disabledModifier(true)] : [])];
   const buttonProps = onPress ? { onPress } : {};
 

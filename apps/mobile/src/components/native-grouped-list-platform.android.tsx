@@ -8,7 +8,6 @@ import {
   useMaterialColors,
 } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, padding, Shapes, clip, clickable } from '@expo/ui/jetpack-compose/modifiers';
-import { useColorScheme } from 'react-native';
 import type { PropsWithChildren } from 'react';
 
 import { NativeTopAppBarScaffold } from '../../modules/novella-ui';
@@ -16,7 +15,7 @@ import { NativeTopAppBarScaffold } from '../../modules/novella-ui';
 import { NativeIcon } from '@/components/native-icon';
 import type { NativeGroupedListProps, NativeGroupedListRowProps } from '@/components/native-grouped-list';
 import { DisclosureIcon } from '@/components/settings-row-accessories';
-import { colors } from '@/theme/colors';
+import { useAppTheme } from '@/theme/app-theme';
 
 export function NativeGroupedListPlatform({
   children,
@@ -26,7 +25,11 @@ export function NativeGroupedListPlatform({
   testID,
   title,
 }: NativeGroupedListProps) {
-  const colorScheme = useColorScheme();
+  const { colorScheme, colors, isOledDark } = useAppTheme();
+  // OLED dark renders the Compose top bar on a pure-black container so the
+  // chrome matches the RN pages behind the settings list.
+  const oledContainerColor = isOledDark ? '#000000' : null;
+  const oledContentColor = isOledDark ? '#EFEFEF' : null;
   const list = (
     <LazyColumn
       contentPadding={{ start: 16, top: 8, end: 16, bottom: 112 }}
@@ -51,6 +54,8 @@ export function NativeGroupedListPlatform({
           {...(onBackPress ? { onBackPress } : {})}
           showBackButton={showBackButton}
           title={title}
+          {...(oledContainerColor ? { containerColor: oledContainerColor } : {})}
+          {...(oledContentColor ? { contentColor: oledContentColor } : {})}
         >
           {list}
         </NativeTopAppBarScaffold>
@@ -60,13 +65,17 @@ export function NativeGroupedListPlatform({
 }
 
 export function NativeGroupedListSectionPlatform({ children, title }: PropsWithChildren<{ title: string }>) {
+  const { colors, isOledDark } = useAppTheme();
   const materialColors = useMaterialColors();
+  // OLED dark swaps the Material surface roles for the pure-black app palette.
+  const sectionColor = isOledDark ? colors.secondaryLabel as string : materialColors.onSurfaceVariant;
+  const dividerColor = isOledDark ? colors.separator as string : materialColors.outlineVariant;
   const rows = Array.isArray(children) ? children : [children];
 
   return (
     <Column modifiers={[fillMaxWidth()]} verticalArrangement={{ spacedBy: 6 }}>
       <Text
-        color={materialColors.onSurfaceVariant}
+        color={sectionColor}
         modifiers={[padding(8, 0, 8, 0)]}
         style={{ typography: 'titleMedium' }}
       >
@@ -80,7 +89,7 @@ export function NativeGroupedListSectionPlatform({ children, title }: PropsWithC
           <Column key={index} modifiers={[fillMaxWidth()]}>
             {row}
             {index < rows.length - 1 ? (
-              <HorizontalDivider color={materialColors.outlineVariant} />
+              <HorizontalDivider color={dividerColor} />
             ) : null}
           </Column>
         ))}
@@ -97,7 +106,12 @@ export function NativeGroupedListRowPlatform({
   title,
   trailing,
 }: NativeGroupedListRowProps) {
+  const { colors, isOledDark } = useAppTheme();
   const materialColors = useMaterialColors();
+  // OLED dark swaps the Material surface roles for the pure-black app palette.
+  const containerColor = isOledDark ? colors.card as string : materialColors.surfaceContainer;
+  const contentColor = isOledDark ? colors.label as string : materialColors.onSurface;
+  const supportingContentColor = isOledDark ? colors.secondaryLabel as string : materialColors.onSurfaceVariant;
   const modifiers = [
     fillMaxWidth(),
     ...(onPress && !disabled ? [clickable(onPress)] : []),
@@ -106,22 +120,22 @@ export function NativeGroupedListRowPlatform({
   return (
     <ListItem
       colors={{
-        containerColor: materialColors.surfaceContainer,
-        contentColor: materialColors.onSurface,
+        containerColor,
+        contentColor,
         leadingContentColor: colors.accent as string,
-        supportingContentColor: materialColors.onSurfaceVariant,
-        trailingContentColor: materialColors.onSurfaceVariant,
+        supportingContentColor,
+        trailingContentColor: supportingContentColor,
       }}
       modifiers={modifiers}
     >
       <ListItem.HeadlineContent>
-        <Text color={materialColors.onSurface} style={{ typography: 'bodyLarge' }}>
+        <Text color={contentColor} style={{ typography: 'bodyLarge' }}>
           {title}
         </Text>
       </ListItem.HeadlineContent>
       {description ? (
         <ListItem.SupportingContent>
-          <Text color={materialColors.onSurfaceVariant} style={{ typography: 'bodyMedium' }}>
+          <Text color={supportingContentColor} style={{ typography: 'bodyMedium' }}>
             {description}
           </Text>
         </ListItem.SupportingContent>

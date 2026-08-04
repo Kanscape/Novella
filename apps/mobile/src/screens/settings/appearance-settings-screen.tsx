@@ -43,13 +43,15 @@ export function AppearanceSettingsScreen() {
             value={settings.useSystemColor}
           />
         ) : null}
-        <NativeToggleRow
-          description="Use a pure black background in dark mode"
-          icon="oledBlack"
-          onValueChange={(value) => void updateAppSettings({ oledBlack: value })}
-          title="OLED black"
-          value={settings.oledBlack}
-        />
+        {process.env.EXPO_OS === 'android' ? (
+          <NativeToggleRow
+            description="Use a pure black background in dark mode"
+            icon="oledBlack"
+            onValueChange={(value) => void updateAppSettings({ oledBlack: value })}
+            title="OLED black"
+            value={settings.oledBlack}
+          />
+        ) : null}
       </NativeGroupedListSection>
     </NativeGroupedList>
   );

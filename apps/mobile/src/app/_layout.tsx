@@ -10,25 +10,35 @@ import { Stack } from 'expo-router/stack';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View, useColorScheme } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { BookDetailThemeProvider } from '@/components/book-detail-theme-provider';
 import { NativeAlertHost } from '@/components/native-alert-dialog';
 import { useAuthentication } from '@/hooks/use-authentication';
 import { hasStoredSession, startClient } from '@/services/client';
-import { colors } from '@/theme/colors';
-import { systemScreenStackPreset } from '@/theme/stack-preset';
+import { loadAppSettings } from '@/services/settings';
+import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
+import { useSystemScreenStackPreset } from '@/theme/stack-preset';
 
 // The session probe is a local SecureStore read (no network). It is kicked off
 // at module scope so the route decision (app vs sign-in welcome) is typically
 // ready before the first frame paints. The splash shows the logo normally and
 // auto-hides; it is never used to cover up a routing transition.
 
-const sessionProbe = hasStoredSession();
+const sessionProbe = Promise.all([hasStoredSession(), loadAppSettings()]);
 
 export default function RootLayout() {
+  return (
+    <AppThemeProvider>
+      <RootLayoutContent />
+    </AppThemeProvider>
+  );
+}
+
+function RootLayoutContent() {
   const authentication = useAuthentication();
-  const colorScheme = useColorScheme();
+  const { colorScheme, colors } = useAppTheme();
+  const systemScreenStackPreset = useSystemScreenStackPreset();
   const usesComposeBottomSheets = process.env.EXPO_OS === 'android';
   // False until the local session probe resolves. The probe decides the very
   // first rendered screen, so a logged-in user never passes through the
@@ -38,7 +48,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     let mounted = true;
-    void sessionProbe.then((stored) => {
+    void sessionProbe.then(([stored]) => {
       if (!mounted) return;
       setHadAuthenticatedSession(stored);
       setSessionDecided(true);
@@ -73,7 +83,7 @@ export default function RootLayout() {
     // no spinner, no wrong-screen flash); it visually continues the splash.
     return (
       <GestureHandlerRootView style={styles.gestureRoot}>
-        <View style={styles.blankRoot} />
+        <View style={[styles.blankRoot, { backgroundColor: colors.background }]} />
       </GestureHandlerRootView>
     );
   }
@@ -283,8 +293,5 @@ const heroUIConfig = {
 
 const styles = StyleSheet.create({
   gestureRoot: { flex: 1 },
-  blankRoot: {
-    backgroundColor: colors.background as string,
-    flex: 1,
-  },
+  blankRoot: { flex: 1 },
 });

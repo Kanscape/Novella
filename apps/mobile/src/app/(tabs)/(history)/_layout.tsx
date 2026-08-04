@@ -1,9 +1,10 @@
 import Stack from 'expo-router/stack';
 
-import { systemScreenStackPreset } from '@/theme/stack-preset';
+import { useSystemScreenStackPreset } from '@/theme/stack-preset';
 
 export default function HistoryStackLayout() {
   const isAndroid = process.env.EXPO_OS === 'android';
+  const systemScreenStackPreset = useSystemScreenStackPreset();
 
   return (
     <Stack screenOptions={systemScreenStackPreset}>
