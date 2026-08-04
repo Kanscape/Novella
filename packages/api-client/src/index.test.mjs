@@ -227,10 +227,13 @@ test('maps novel and comic search to their Web-Master Hub contracts', async () =
     size: 24,
     ignoreAI: true,
   });
+  const comicList = await client.getComicList({ page: 1, size: 24, order: 'view' });
 
   assert.equal(novels.items[0].title, 'Novel result');
   assert.equal(comics.items[0].title, 'Comic series');
   assert.equal(comics.items[0].originalTitle, null);
+  assert.equal(comicList.items[0].chapterCount, 2);
+  assert.equal(comicList.totalPages, 3);
   assert.deepEqual(calls, [
     {
       method: 'GetBookList',
@@ -252,6 +255,10 @@ test('maps novel and comic search to their Web-Master Hub contracts', async () =
         IgnoreAI: true,
         Mode: 'tags',
       }, { UseGzip: true }],
+    },
+    {
+      method: 'GetComicList',
+      args: [{ Page: 1, Size: 24, Order: 'view' }, { UseGzip: true }],
     },
   ]);
 });

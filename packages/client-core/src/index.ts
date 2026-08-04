@@ -4,14 +4,16 @@ import {
   type AnnouncementPage,
   type BookDetail,
   type BookListItem,
+  type BookListOrder,
   type BookListPage,
   type BookSearchRequest,
   type ComicContent,
   type ComicContentRequest,
   type ComicInfo,
+  type ComicOrder,
   type ComicSeriesDetail,
-  type ComicSeriesListItem,
   type ComicSeriesListPage,
+  type ComicSeriesListItem,
   type CommentPage,
   type DailyCheckInResult,
   type GetCommentsRequest,
@@ -88,12 +90,21 @@ export interface DiscoveryUseCase {
   load(): Promise<DiscoverySnapshot>;
   loadAnnouncements(): Promise<AnnouncementPage>;
   loadLatestBooks(): Promise<BookListPage>;
-  loadLatestBooksPage(request: {
+  /** Paged novel catalog (the web 全部小说 page); `order` selects the
+   * latest-updates / new-releases / total-views sorting. */
+  loadBookListPage(request: {
     page: number;
     size?: number;
+    order: BookListOrder;
     ignoreAI?: boolean;
     ignoreJapanese?: boolean;
   }): Promise<BookListPage>;
+  /** Paged comic series catalog (the web 全部漫画 page). */
+  loadComicListPage(request: {
+    page: number;
+    size?: number;
+    order: ComicOrder;
+  }): Promise<ComicSeriesListPage>;
   loadOnlineInfo(): Promise<OnlineInfo>;
   loadRank(period: RankPeriod): Promise<BookListItem[]>;
 }
@@ -471,16 +482,24 @@ export function createDiscoveryUseCase(api: ApiClient): DiscoveryUseCase {
     loadLatestBooks() {
       return api.getLatestBookList({ size: 6 });
     },
-    loadLatestBooksPage(request) {
+    loadBookListPage(request) {
       assertPositiveInteger(request.page, 'A valid page is required.');
       return api.getBookList({
         page: request.page,
         size: request.size ?? 24,
-        order: 'latest',
+        order: request.order,
         ...(request.ignoreAI === undefined ? {} : { ignoreAI: request.ignoreAI }),
         ...(request.ignoreJapanese === undefined
           ? {}
           : { ignoreJapanese: request.ignoreJapanese }),
+      });
+    },
+    loadComicListPage(request) {
+      assertPositiveInteger(request.page, 'A valid page is required.');
+      return api.getComicList({
+        page: request.page,
+        size: request.size ?? 24,
+        order: request.order,
       });
     },
     loadOnlineInfo() {

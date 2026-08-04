@@ -576,6 +576,12 @@ export interface BookListRequest {
   ignoreAI?: boolean;
 }
 
+export interface ComicListRequest {
+  page: number;
+  size?: number;
+  order: ComicOrder;
+}
+
 export interface AnnouncementListRequest {
   page: number;
   size: number;
@@ -724,6 +730,20 @@ export class ApiClient {
       },
       decodeComicSeriesListPage,
       options,
+    );
+  }
+
+  /** Paged comic series list with an explicit order (the web 全部漫画
+   * discover contract). */
+  getComicList(request: ComicListRequest): Promise<ComicSeriesListPage> {
+    return this.invoke(
+      'GetComicList',
+      {
+        Page: request.page,
+        Size: request.size ?? 24,
+        Order: request.order,
+      },
+      decodeComicSeriesListPage,
     );
   }
 

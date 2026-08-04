@@ -290,7 +290,7 @@ test('discovery exposes independently loadable home sections', async () => {
   ]);
 });
 
-test('discovery loads paged recent updates through GetBookList latest order', async () => {
+test('discovery loads paged novel catalog with the requested order', async () => {
   const calls = [];
   const useCase = createDiscoveryUseCase({
     async getBookList(request) {
@@ -299,16 +299,35 @@ test('discovery loads paged recent updates through GetBookList latest order', as
     },
   });
 
-  const page = await useCase.loadLatestBooksPage({
+  const page = await useCase.loadBookListPage({
     page: 3,
+    order: 'view',
     ignoreAI: true,
     ignoreJapanese: false,
   });
 
   assert.equal(page.totalPages, 4);
   assert.deepEqual(calls, [
-    { page: 3, size: 24, order: 'latest', ignoreAI: true, ignoreJapanese: false },
+    { page: 3, size: 24, order: 'view', ignoreAI: true, ignoreJapanese: false },
   ]);
+
+  await useCase.loadBookListPage({ page: 1, order: 'new' });
+  await useCase.loadBookListPage({ page: 1, order: 'latest' });
+  assert.deepEqual(calls.slice(1).map((call) => call.order), ['new', 'latest']);
+});
+
+test('discovery loads the paged comic catalog through GetComicList', async () => {
+  const calls = [];
+  const useCase = createDiscoveryUseCase({
+    async getComicList(request) {
+      calls.push(request);
+      return { items: [], page: request.page, totalPages: 3 };
+    },
+  });
+
+  const page = await useCase.loadComicListPage({ page: 2, order: 'new' });
+  assert.equal(page.totalPages, 3);
+  assert.deepEqual(calls, [{ page: 2, size: 24, order: 'new' }]);
 });
 
 test('discovery maps ranking periods to GetRank days', async () => {

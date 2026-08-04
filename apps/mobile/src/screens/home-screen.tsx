@@ -25,6 +25,7 @@ import { DiscoverNavigation } from '@/components/discover-navigation';
 import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
 import { SectionCard } from '@/components/section-card';
 import { useBookGridLayout, BOOK_GRID_COLUMN_GAP } from '@/hooks/use-book-grid-layout';
+import { useHomeComicPreview } from '@/hooks/use-comic-list';
 import { useHomeRanking } from '@/hooks/use-ranking';
 import {
   useDiscovery,
@@ -68,11 +69,11 @@ export function HomeScreen() {
         >
           <RankingSection />
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recently updated</Text>
+            <Text style={styles.sectionTitle}>All novels</Text>
             <Pressable
-              accessibilityLabel="See all recently updated books"
+              accessibilityLabel="See all novels"
               accessibilityRole="button"
-              onPress={() => router.push('/recent-updates')}
+              onPress={() => router.push('/books')}
               style={({ pressed }) => [styles.seeAllButton, pressed && styles.pressed]}
             >
               <Text style={styles.seeAllLabel}>See all</Text>
@@ -81,6 +82,7 @@ export function HomeScreen() {
           </View>
 
           <LatestBooksSection onRetry={retryLatestBooks} state={latestBooks} />
+          <ComicsSection />
           <AnnouncementsSection onRetry={retryAnnouncements} state={announcements} />
           <OnlineInfoSection onRetry={retryOnlineInfo} state={onlineInfo} />
         </ScrollView>
@@ -183,7 +185,7 @@ function LatestBooksSection({
       <SectionError
         description={state.error ?? 'The catalog is unavailable.'}
         onRetry={onRetry}
-        title="Unable to load recent updates"
+        title="Unable to load novels"
       />
     );
   }
@@ -191,9 +193,9 @@ function LatestBooksSection({
   if (state.data.items.length === 0) {
     return (
       <SectionCard>
-        <Text style={styles.cardTitle}>No recent updates</Text>
+        <Text style={styles.cardTitle}>No novels</Text>
         <Text style={styles.cardDescription}>
-          The catalog has no new books to show right now.
+          The catalog has no novels to show right now.
         </Text>
         {state.status === 'error' ? <StaleError message={state.error} onRetry={onRetry} /> : null}
       </SectionCard>
@@ -210,6 +212,60 @@ function LatestBooksSection({
       />
       {state.status === 'error' ? <StaleError message={state.error} onRetry={onRetry} /> : null}
     </View>
+  );
+}
+
+function ComicsSection() {
+  const { books, error, reload, retry, status } = useHomeComicPreview();
+  const { columns, contentWidth, tileWidth } = useBookGridLayout(20);
+
+  return (
+    <>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>All comics</Text>
+        <Pressable
+          accessibilityLabel="See all comics"
+          accessibilityRole="button"
+          onPress={() => router.push('/comics')}
+          style={({ pressed }) => [styles.seeAllButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.seeAllLabel}>See all</Text>
+          <IconChevronRight color={colors.accent as string} size={18} strokeWidth={2.2} />
+        </Pressable>
+      </View>
+
+      {status === 'loading' && books.length === 0 ? (
+        <BookGridPlaceholder
+          columns={columns}
+          tileWidth={tileWidth}
+          width={contentWidth}
+        />
+      ) : status === 'error' && books.length === 0 ? (
+        <SectionError
+          description={error ?? 'The comic catalog is unavailable.'}
+          onRetry={retry}
+          title="Unable to load comics"
+        />
+      ) : books.length === 0 ? (
+        <SectionCard>
+          <Text style={styles.cardTitle}>No comics</Text>
+          <Text style={styles.cardDescription}>
+            The catalog has no comics to show right now.
+          </Text>
+          {status === 'error' && error ? <StaleError message={error} onRetry={reload} /> : null}
+        </SectionCard>
+      ) : (
+        <View style={styles.sectionBody}>
+          <BookGrid
+            books={books}
+            columns={columns}
+            tileWidth={tileWidth}
+            width={contentWidth}
+          />
+          {status === 'error' && error ? <StaleError message={error} onRetry={reload} /> : null}
+        </View>
+      )}
+    </>
   );
 }
 

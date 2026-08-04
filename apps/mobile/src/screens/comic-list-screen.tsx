@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { IconRefreshOff } from '@tabler/icons-react-native';
+import { IconPhotoOff } from '@tabler/icons-react-native';
 import {
   FlatList,
   Pressable,
@@ -10,11 +10,9 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
-import type { BookListItem } from '@novella/api-client';
+import type { BookListItem, ComicOrder } from '@novella/api-client';
 
-import {
-  BookCoverGridItem,
-} from '@/components/book-cover-grid-item';
+import { BookCoverGridItem } from '@/components/book-cover-grid-item';
 import {
   BookCoverSkeletonTile,
   bookGridLoadingMoreKeys,
@@ -22,27 +20,33 @@ import {
   skeletonKeys,
 } from '@/components/book-grid-skeleton';
 import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
+import { NativeSegmentedControl } from '@/components/native-segmented-control';
 import { useBookGridLayout } from '@/hooks/use-book-grid-layout';
-import { useRecentUpdates } from '@/hooks/use-recent-updates';
+import { useComicListPage } from '@/hooks/use-comic-list';
 import { colors } from '@/theme/colors';
 
-export function RecentUpdatesScreen() {
+const ORDER_OPTIONS: readonly { label: string; value: ComicOrder }[] = [
+  { label: 'Latest', value: 'latest' },
+  { label: 'New', value: 'new' },
+  { label: 'Views', value: 'view' },
+];
+
+export function ComicListScreen() {
   const {
     books,
+    changeOrder,
     error,
     loadMore,
+    order,
     refresh,
     retry,
     status,
-  } = useRecentUpdates();
+  } = useComicListPage('latest');
   const { columns, contentWidth, height, tileWidth } = useBookGridLayout(20);
   const skeletonCount =
     status === 'loading' && books.length === 0
       ? bookGridSkeletonCount({ columns, headerOffset: 110, height, tileWidth })
       : 0;
-  // While loading more, complete the current last row (missing slots) and add
-  // one full skeleton row, as list items so the FlatList's own layout
-  // arranges them exactly like the real grid.
   const loadingMoreKeys =
     status === 'loadingMore'
       ? bookGridLoadingMoreKeys(books.length, columns)
@@ -57,7 +61,7 @@ export function RecentUpdatesScreen() {
       largeTitle={false}
       onBackPress={() => router.back()}
       showBackButton
-      title="Recently updated"
+      title="All comics"
     >
       <View style={styles.root}>
         <FlatList
@@ -67,6 +71,15 @@ export function RecentUpdatesScreen() {
             ) : (
               <EmptyState />
             )
+          }
+          ListHeaderComponent={
+            <View style={styles.orderBar}>
+              <NativeSegmentedControl
+                onValueChange={changeOrder}
+                options={ORDER_OPTIONS}
+                selectedValue={order}
+              />
+            </View>
           }
           columnWrapperStyle={styles.row}
           contentContainerStyle={styles.content}
@@ -102,7 +115,7 @@ export function RecentUpdatesScreen() {
                     id: String(item.id),
                     placeholder: item.coverPlaceholder ?? '',
                     title: item.title,
-                    type: item.type ?? 'Novel',
+                    type: item.type ?? 'Comic',
                   },
                 })}
                 tileWidth={tileWidth}
@@ -119,10 +132,10 @@ export function RecentUpdatesScreen() {
 function EmptyState() {
   return (
     <View style={styles.emptyState}>
-      <IconRefreshOff color={colors.secondaryLabel as string} size={44} strokeWidth={1.5} />
-      <Text style={styles.emptyTitle}>No recent updates</Text>
+      <IconPhotoOff color={colors.secondaryLabel as string} size={44} strokeWidth={1.5} />
+      <Text style={styles.emptyTitle}>No comics</Text>
       <Text style={styles.emptyDescription}>
-        The catalog has no new books to show right now.
+        The catalog has no comics to show for this order right now.
       </Text>
     </View>
   );
@@ -149,7 +162,6 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingBottom: 40,
     paddingHorizontal: 20,
-    paddingTop: 16,
   },
   emptyDescription: {
     color: colors.secondaryLabel as string,
@@ -179,6 +191,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     textAlign: 'center',
+  },
+  orderBar: {
+    paddingTop: 12,
   },
   pressed: {
     opacity: 0.7,
