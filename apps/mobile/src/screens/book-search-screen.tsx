@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
   emptyText: { color: colors.secondaryLabel as string, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   emptyTitle: { color: colors.label as string, fontSize: 17, fontWeight: '700' },
   header: { gap: 14, paddingTop: 8 },
-  historyChip: { backgroundColor: colors.surfaceContainerHighest as string, borderCurve: 'continuous', borderRadius: 10, maxWidth: '100%', paddingHorizontal: 12, paddingVertical: 8 },
+  historyChip: { backgroundColor: colors.card as string, borderCurve: 'continuous', borderRadius: 10, maxWidth: '100%', paddingHorizontal: 12, paddingVertical: 8 },
   historyHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   historyLabel: { color: colors.label as string, fontSize: 14 },
   historySection: { gap: 10 },
