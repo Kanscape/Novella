@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import { IconHistory, IconRefreshOff } from '@tabler/icons-react-native';
 import { useCallback, useState } from 'react';
 import {
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -10,6 +9,8 @@ import {
   Text,
   View,
 } from 'react-native';
+
+import { showAlert } from '@/components/native-alert-dialog';
 
 import type { BookListItem, ComicSeriesListItem } from '@novella/api-client';
 
@@ -43,7 +44,7 @@ export function HistoryScreen() {
 
   const confirmClearHistory = useCallback(() => {
     if (state.clearing) return;
-    Alert.alert(
+    showAlert(
       'Clear reading history',
       'This action cannot be undone. All novels and comics will be removed.',
       [
@@ -60,7 +61,7 @@ export function HistoryScreen() {
   const performClear = useCallback(async () => {
     const cleared = await clear();
     if (!cleared) {
-      Alert.alert(
+      showAlert(
         'Clear failed',
         'Unable to clear your reading history right now. Please try again.',
       );

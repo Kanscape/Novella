@@ -21,6 +21,8 @@ import {
   View,
 } from 'react-native';
 
+import { showAlert } from '@/components/native-alert-dialog';
+
 import type { BookListItem, ShelfItem } from '@novella/api-client';
 import {
   getShelfFolderPaths,
@@ -138,7 +140,7 @@ export function ShelfScreen({ parents = [] }: { parents?: string[] }) {
       discardEdit();
       return;
     }
-    Alert.alert(
+    showAlert(
       'Discard shelf changes?',
       'Your unsaved folder, move, delete, and ordering changes will be lost.',
       [
@@ -149,7 +151,7 @@ export function ShelfScreen({ parents = [] }: { parents?: string[] }) {
   }, [discardEdit, isDirty]);
 
   usePreventRemove(isDirty, ({ data }) => {
-    Alert.alert(
+    showAlert(
       'Discard shelf changes?',
       'Save or discard your shelf draft before leaving.',
       [
@@ -198,7 +200,7 @@ export function ShelfScreen({ parents = [] }: { parents?: string[] }) {
   const handleDelete = useCallback(() => {
     const keys = new Set(selectedKeys);
     const containsFolders = selectedFolders.length > 0;
-    Alert.alert(
+    showAlert(
       'Delete selected items?',
       containsFolders
         ? 'Selected books will be removed. Books inside deleted folders will be moved to the shelf root.'

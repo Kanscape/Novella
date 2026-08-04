@@ -1,13 +1,14 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef } from 'react';
 import {
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+
+import { showAlert } from '@/components/native-alert-dialog';
 import { IconArrowBackUp, IconMessage, IconRefresh, IconTrash } from '@tabler/icons-react-native';
 import { PaperProvider } from 'react-native-paper';
 import { Skeleton } from 'heroui-native';
@@ -73,7 +74,7 @@ export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
   }, [bookId]);
 
   function confirmDelete(commentId: number) {
-    Alert.alert('Delete comment', 'This action cannot be undone.', [
+    showAlert('Delete comment', 'This action cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => void deleteComment(commentId) },
     ]);

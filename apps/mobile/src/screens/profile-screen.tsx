@@ -1,7 +1,9 @@
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+
+
+import { showAlert } from '@/components/native-alert-dialog';
 
 import {
   NativeGroupedList,
@@ -42,12 +44,12 @@ export function ProfileScreen() {
     setCheckingIn(true);
     try {
       const outcome = await profileUseCase.checkIn();
-      Alert.alert(
+      showAlert(
         'Checked in',
         `Day ${outcome.result.streak} · +${outcome.result.reward} experience`,
       );
     } catch (checkInError) {
-      Alert.alert(
+      showAlert(
         'Unable to check in',
         checkInError instanceof Error ? checkInError.message : 'Please try again.',
       );
@@ -58,7 +60,7 @@ export function ProfileScreen() {
 
   function confirmSignOut() {
     if (signingOut || auth.status === 'signingOut') return;
-    Alert.alert('Sign out?', 'Your synchronized account data will remain on the server.', [
+    showAlert('Sign out?', 'Your synchronized account data will remain on the server.', [
       { style: 'cancel', text: 'Cancel' },
       {
         style: 'destructive',
@@ -67,7 +69,7 @@ export function ProfileScreen() {
           setSigningOut(true);
           void authentication.signOut().catch((signOutError) => {
             setSigningOut(false);
-            Alert.alert(
+            showAlert(
               'Unable to sign out',
               signOutError instanceof Error ? signOutError.message : 'Please try again.',
             );

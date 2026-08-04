@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View, useColorScheme } from 'react-native';
 
 import { BookDetailThemeProvider } from '@/components/book-detail-theme-provider';
+import { NativeAlertHost } from '@/components/native-alert-dialog';
 import { useAuthentication } from '@/hooks/use-authentication';
 import { hasStoredSession, startClient } from '@/services/client';
 import { colors } from '@/theme/colors';
@@ -231,6 +232,7 @@ export default function RootLayout() {
             <Stack.Screen name="reset-password/new-password" options={{ title: 'New password' }} />
           </Stack.Protected>
         </Stack>
+      <NativeAlertHost />
       </BookDetailThemeProvider>
         </ThemeProvider>
       </HeroUINativeProvider>

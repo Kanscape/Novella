@@ -1,6 +1,8 @@
 import { Image } from 'expo-image';
 import { useState } from 'react';
-import { Alert } from 'react-native';
+
+
+import { showAlert } from '@/components/native-alert-dialog';
 import { router } from 'expo-router';
 
 import { clearBookCoverRevealCache } from '@/components/book-cover-image';
@@ -30,12 +32,12 @@ export function CacheSettingsScreen() {
       if (!memoryCleared || !diskCleared) {
         throw new Error('One or more native image caches could not be cleared.');
       }
-      Alert.alert(
+      showAlert(
         'Image cache cleared',
         'Removed downloaded images and decoded BlurHash placeholders.',
       );
     } catch (error) {
-      Alert.alert(
+      showAlert(
         'Unable to clear images',
         error instanceof Error ? error.message : 'The image cache could not be cleared.',
       );
@@ -49,14 +51,14 @@ export function CacheSettingsScreen() {
     setClearingFonts(true);
     try {
       const entryCount = clearReaderFontCache();
-      Alert.alert(
+      showAlert(
         'Reader font cache cleared',
         entryCount === 0
           ? 'There were no cached reader fonts.'
           : `Removed ${entryCount} cached font ${entryCount === 1 ? 'file' : 'files'}.`,
       );
     } catch (error) {
-      Alert.alert(
+      showAlert(
         'Unable to clear reader fonts',
         error instanceof Error ? error.message : 'The cache could not be cleared.',
       );
