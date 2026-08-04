@@ -241,7 +241,7 @@ export interface ComicSeriesListItem {
   originalTitle: string | null;
   coverUrl: string;
   coverPlaceholder: string | null;
-  volumeCount: number;
+  chapterCount: number;
   lastUpdatedAt: string;
 }
 
@@ -249,6 +249,24 @@ export interface ComicSeriesListPage {
   page: number;
   totalPages: number;
   items: ComicSeriesListItem[];
+}
+
+/** Map a comic series search/history item onto the shared book card shape so
+ * novels and comics render through the same grid card. */
+export function comicToBookListItem(comic: ComicSeriesListItem): BookListItem {
+  return {
+    id: comic.id,
+    type: 'Comic',
+    title: comic.title,
+    seriesTitle: null,
+    coverUrl: comic.coverUrl,
+    coverPlaceholder: comic.coverPlaceholder,
+    authorName: null,
+    lastUpdatedAt: comic.lastUpdatedAt,
+    level: null,
+    interiorLevel: null,
+    category: null,
+  };
 }
 
 export interface ReadHistory {
@@ -1401,7 +1419,7 @@ function decodeComicSeriesListItem(value: unknown): ComicSeriesListItem {
     originalTitle: asNullableString(comic.OriginalTitle),
     coverUrl,
     coverPlaceholder: extractBlurHashPlaceholder(coverUrl),
-    volumeCount: Math.max(0, asNumber(comic.Count, 0)),
+    chapterCount: Math.max(0, asNumber(comic.Count, 0)),
     lastUpdatedAt: asDateString(comic.LastUpdatedAt),
   };
 }

@@ -370,8 +370,8 @@ test('history hydrates novel order and comic series independently', async () => 
         page: 1,
         totalPages: 1,
         items: [
-          { id: 1, title: 'Series', volumeCount: 2 },
-          { id: 2, title: 'Series', volumeCount: 2 },
+          { id: 1, title: 'Series', chapterCount: 2 },
+          { id: 2, title: 'Series', chapterCount: 2 },
         ],
       };
     },

@@ -34,6 +34,8 @@ import { colors } from '@/theme/colors';
 
 const PAGE_BATCH = 12;
 const EMPTY_COMIC_SLOTS: readonly ComicPageSlot[] = [];
+const IOS_READER_TOP_TOOLBAR_HEIGHT = 44;
+const IOS_READER_BOTTOM_TOOLBAR_HEIGHT = 44;
 
 interface ComicProgressInput {
   chapterId: number;
@@ -47,8 +49,22 @@ export interface ComicReaderScreenProps {
 }
 
 export function ComicReaderScreen({ bookId, sortNum, openPosition = 'saved' }: ComicReaderScreenProps) {
-  const { width } = useWindowDimensions();
+  const { height: windowHeight, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  // The iOS reader floats glass toolbars over the top and bottom of the
+  // screen, so pages must be inset by their heights (plus a little extra to
+  // keep page content out of the blur zone) — same scheme as the novel
+  // reader. Android renders native bars that handle insets themselves.
+  const readerTopInset = process.env.EXPO_OS === 'ios'
+    ? insets.top + IOS_READER_TOP_TOOLBAR_HEIGHT + 16
+    : 0;
+  const readerBottomInset = process.env.EXPO_OS === 'ios'
+    ? IOS_READER_BOTTOM_TOOLBAR_HEIGHT + insets.bottom + 16
+    : 0;
+  // Height of the visible page band between the floating top/bottom bars.
+  // Paged pages are centered within this band (top-aligned only when a page
+  // is taller than the band).
+  const availablePageHeight = Math.max(1, windowHeight - readerTopInset - readerBottomInset);
   const settings = useAppSettings();
   const navigation = useNavigation<{
     setParams(params: { position: ReaderOpenPosition; sortNum: string; type: 'Comic' }): void;
@@ -270,6 +286,7 @@ export function ComicReaderScreen({ bookId, sortNum, openPosition = 'saved' }: C
       ) : loading || !activeChapter ? <ReaderPreparationState label="Loading comic" /> : mode === 'paged' ? (
         <FlatList
           contentInsetAdjustmentBehavior="never"
+          contentContainerStyle={{ paddingBottom: readerBottomInset, paddingTop: readerTopInset }}
           data={activeSlots}
           key={`paged-${activeChapter.chapter.id}`}
           horizontal
@@ -280,14 +297,14 @@ export function ComicReaderScreen({ bookId, sortNum, openPosition = 'saved' }: C
           initialNumToRender={3}
           maxToRenderPerBatch={3}
           removeClippedSubviews={process.env.EXPO_OS === 'android'}
-          renderItem={({ item }) => <ComicPage priority={Math.abs(item.index - visiblePage) <= 1 ? 'high' : 'normal'} slot={item} width={pageWidth} />}
+          renderItem={({ item }) => <ComicPage maxHeight={availablePageHeight} priority={Math.abs(item.index - visiblePage) <= 1 ? 'high' : 'normal'} slot={item} width={pageWidth} />}
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={(event) => { const index = Math.round(event.nativeEvent.contentOffset.x / Math.max(1, pageWidth)); lastVisiblePageRef.current = index; setVisiblePage(index); void loadBatch(index); scheduleActivePosition(index); }}
           windowSize={5}
         />
       ) : (
         <FlatList
-          contentInsetAdjustmentBehavior="automatic"
+          contentInsetAdjustmentBehavior="never"
           data={activeSlots}
           key={`scroll-${activeChapter.chapter.id}`}
           initialScrollIndex={Math.min(initialPageIndex, Math.max(0, activeSlots.length - 1))}
@@ -298,7 +315,7 @@ export function ComicReaderScreen({ bookId, sortNum, openPosition = 'saved' }: C
           removeClippedSubviews={process.env.EXPO_OS === 'android'}
           renderItem={({ item }) => <ComicPage priority={Math.abs(item.index - visiblePage) <= 2 ? 'high' : 'normal'} slot={item} width={pageWidth} />}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 16 }}
+          contentContainerStyle={{ paddingBottom: readerBottomInset + 16, paddingTop: readerTopInset }}
           onViewableItemsChanged={({ viewableItems }) => { const first = viewableItems.find((item) => item.isViewable)?.item as ComicPageSlot | undefined; if (first) { lastVisiblePageRef.current = first.index; setVisiblePage(first.index); void loadBatch(first.index); scheduleActivePosition(first.index); } }}
           updateCellsBatchingPeriod={32}
           viewabilityConfig={{ itemVisiblePercentThreshold: 20 }}
@@ -326,26 +343,42 @@ export function ComicReaderScreen({ bookId, sortNum, openPosition = 'saved' }: C
   );
 }
 
-function ComicPage({ priority, slot, width }: { priority: 'high' | 'normal'; slot: ComicPageSlot; width: number }) {
+function ComicPage({ maxHeight, priority, slot, width }: { maxHeight?: number; priority: 'high' | 'normal'; slot: ComicPageSlot; width: number }) {
   const image = slot.image;
   const ratio = image ? Math.max(0.2, image.height / image.width) : 1.5;
+  const naturalHeight = width * ratio;
   const placeholder = image
     ? createComicBlurHashPlaceholder(image.placeholder, image.width, image.height)
     : null;
-  return image ? (
-    <Image
-      accessibilityLabel={`Comic page ${slot.index + 1}`}
-      cachePolicy="memory-disk"
-      contentFit="contain"
-      placeholderContentFit="contain"
-      priority={priority}
-      recyclingKey={image.url}
-      {...(placeholder ? { placeholder } : {})}
-      source={{ uri: image.url }}
-      style={{ backgroundColor: colors.surfaceContainerHighest as string, height: width * ratio, width }}
-      transition={80}
-    />
-  ) : <View style={{ backgroundColor: colors.surfaceContainerHighest as string, height: width * ratio, width }} />;
+  // Paged mode constrains the page to the visible band; pages that fit are
+  // vertically centered, taller ones stay top-aligned so only the bottom
+  // clips (the top always stays visible).
+  const constrained = maxHeight !== undefined;
+  const centered = constrained && naturalHeight <= maxHeight;
+  return (
+    <View
+      style={[
+        { width },
+        constrained ? { height: maxHeight } : null,
+        centered ? styles.centeredPage : null,
+      ]}
+    >
+      {image ? (
+        <Image
+          accessibilityLabel={`Comic page ${slot.index + 1}`}
+          cachePolicy="memory-disk"
+          contentFit="contain"
+          placeholderContentFit="contain"
+          priority={priority}
+          recyclingKey={image.url}
+          {...(placeholder ? { placeholder } : {})}
+          source={{ uri: image.url }}
+          style={{ backgroundColor: colors.surfaceContainerHighest as string, height: naturalHeight, width }}
+          transition={80}
+        />
+      ) : <View style={{ backgroundColor: colors.surfaceContainerHighest as string, height: naturalHeight, width }} />}
+    </View>
+  );
 }
 
 function createComicPageLayouts(
@@ -366,6 +399,7 @@ function createComicPageLayouts(
 }
 
 const styles = StyleSheet.create({
+  centeredPage: { alignItems: 'center', justifyContent: 'center' },
   root: { backgroundColor: colors.background as string, flex: 1 },
   centered: { alignItems: 'center', flex: 1, justifyContent: 'center' },
 });

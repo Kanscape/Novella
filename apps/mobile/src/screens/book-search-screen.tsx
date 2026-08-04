@@ -15,9 +15,9 @@ import type {
   BookSearchMode,
   ComicSeriesListItem,
 } from '@novella/api-client';
+import { comicToBookListItem } from '@novella/api-client';
 
 import { BookCoverGridItem } from '@/components/book-cover-grid-item';
-import { ComicSeriesGridItem } from '@/components/comic-series-grid-item';
 import {
   BookCoverSkeletonTile,
   bookGridLoadingMoreKeys,
@@ -192,8 +192,8 @@ export function BookSearchScreen({
             tileWidth={tileWidth}
           />
         ) : (
-          <ComicSeriesGridItem
-            item={item.item}
+          <BookCoverGridItem
+            book={comicToBookListItem(item.item)}
             onPress={() => router.push({
               pathname: '/book/[id]',
               params: {

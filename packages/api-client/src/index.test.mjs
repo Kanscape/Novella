@@ -296,7 +296,7 @@ test('decodes dual-format history and comic history hydration', async () => {
     comicIds: [11, 10],
   });
   const comics = await client.getComicSeriesByIds([11, 11, 10]);
-  assert.equal(comics.items[0].volumeCount, 3);
+  assert.equal(comics.items[0].chapterCount, 3);
   await client.clearReadHistory();
 
   assert.deepEqual(calls.map(({ method }) => method), [

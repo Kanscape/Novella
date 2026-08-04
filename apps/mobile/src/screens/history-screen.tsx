@@ -13,6 +13,7 @@ import {
 import { showAlert } from '@/components/native-alert-dialog';
 
 import type { BookListItem, ComicSeriesListItem } from '@novella/api-client';
+import { comicToBookListItem } from '@novella/api-client';
 
 import { BookCoverGridItem } from '@/components/book-cover-grid-item';
 import {
@@ -21,7 +22,6 @@ import {
   bookGridSkeletonCount,
   skeletonKeys,
 } from '@/components/book-grid-skeleton';
-import { ComicSeriesGridItem } from '@/components/comic-series-grid-item';
 import { HistoryNavigation } from '@/components/history-navigation';
 import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
 import { NativeSegmentedControl } from '@/components/native-segmented-control';
@@ -181,7 +181,11 @@ export function HistoryScreen() {
               return tab === 'Novel' ? (
                 <BookCoverGridItem book={item as BookListItem} onPress={() => openBook(item as BookListItem)} tileWidth={tileWidth} />
               ) : (
-                <ComicSeriesGridItem item={item as ComicSeriesListItem} onPress={() => openComic(item as ComicSeriesListItem)} tileWidth={tileWidth} />
+                <BookCoverGridItem
+                  book={comicToBookListItem(item as ComicSeriesListItem)}
+                  onPress={() => openComic(item as ComicSeriesListItem)}
+                  tileWidth={tileWidth}
+                />
               );
             }}
             showsVerticalScrollIndicator={false}
