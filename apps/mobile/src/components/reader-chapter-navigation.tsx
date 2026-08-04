@@ -1,6 +1,42 @@
-import { ReaderChapterBar } from '@/components/reader-chrome';
-import type { ReaderChapterNavigationProps } from '@/components/reader-navigation.types';
+import { Host } from '@expo/ui';
+import { StyleSheet, useColorScheme } from 'react-native';
 
-export function ReaderChapterNavigation(props: ReaderChapterNavigationProps) {
-  return <ReaderChapterBar {...props} />;
+import type { ReaderChapterNavigationProps } from '@/components/reader-navigation.types';
+import { NativeBottomAppBar } from '../../modules/novella-ui';
+
+/**
+ * Android reader bottom bar — Material 3 (Expressive) native BottomAppBar
+ * with previous / page-counter / next, reusing the novella-ui module the same
+ * way the top bar does. Navigation-bar insets are handled natively. Must be a
+ * direct child of <Host> for the Compose composition boundary.
+ */
+export function ReaderChapterNavigation({
+  backgroundColor,
+  current,
+  onNext,
+  onPrevious,
+  total,
+}: ReaderChapterNavigationProps) {
+  const colorScheme = useColorScheme();
+  const contentColor = colorScheme === 'dark' ? '#FFFFFF' : '#111827';
+  return (
+    <Host colorScheme={colorScheme} matchContents={{ vertical: true }} style={styles.host}>
+      <NativeBottomAppBar
+        {...(backgroundColor ? { containerColor: backgroundColor } : {})}
+        height={56}
+        contentColor={contentColor}
+        counterText={total > 0 ? `${current} / ${total}` : ''}
+        nextAccessibilityLabel="Next chapter"
+        nextEnabled={onNext !== null}
+        {...(onNext ? { onNextPress: onNext } : {})}
+        {...(onPrevious ? { onPreviousPress: onPrevious } : {})}
+        previousAccessibilityLabel="Previous chapter"
+        previousEnabled={onPrevious !== null}
+      />
+    </Host>
+  );
 }
+
+const styles = StyleSheet.create({
+  host: { width: '100%' },
+});

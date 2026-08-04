@@ -11,6 +11,7 @@ export interface ReaderNavigationProps {
 }
 
 export interface ReaderChapterNavigationProps {
+  backgroundColor?: string;
   bottomInset: number;
   current: number;
   onNext: (() => void) | null;

@@ -46,6 +46,19 @@ class NovellaUiModule : Module() {
       }
     }
 
+    ExpoUIView<BottomAppBarProps>("BottomAppBar") {
+      val onPreviousPressed by Event<BottomBarPressEvent>()
+      val onNextPressed by Event<BottomBarPressEvent>()
+
+      Content { props ->
+        BottomAppBarContent(
+          props,
+          onPreviousPressed = { onPreviousPressed(BottomBarPressEvent()) },
+          onNextPressed = { onNextPressed(BottomBarPressEvent()) }
+        )
+      }
+    }
+
     ExpoUIView<SelectionMenuProps>("SelectionMenu") {
       val onExpandedChange by Event<ExpandedChangeEvent>()
       val onItemSelected by Event<DropdownItemSelectedEvent>()

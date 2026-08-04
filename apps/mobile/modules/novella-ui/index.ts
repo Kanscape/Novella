@@ -27,3 +27,8 @@ export {
   type NativeSelectionMenuItem,
   type NativeSelectionMenuProps,
 } from './src/native-selection-menu';
+
+export {
+  NativeBottomAppBar,
+  type NativeBottomAppBarProps,
+} from './src/native-bottom-app-bar';
