@@ -19,17 +19,19 @@ import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider
 import { BookHtmlContent } from '@/components/book-html-content';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { useBookInfo } from '@/hooks/use-book-info';
+import type { BookDetailKind } from '@/hooks/use-book-detail';
 import type { BookDetailPalette } from '@/theme/book-detail-theme';
 
 export type BookInfoSheetVariant = 'introduction' | 'tags' | 'uploader';
 
 export interface BookInfoSheetScreenProps {
   bookId: number;
+  kind: BookDetailKind;
   variant: BookInfoSheetVariant;
 }
 
-export function BookInfoSheetScreen({ bookId, variant }: BookInfoSheetScreenProps) {
-  const { book, error, isLoading, reload } = useBookInfo(bookId);
+export function BookInfoSheetScreen({ bookId, kind, variant }: BookInfoSheetScreenProps) {
+  const { book, error, isLoading, reload } = useBookInfo(bookId, kind);
   const { width } = useWindowDimensions();
   const { palette } = useBookDetailRouteTheme(
     bookId,

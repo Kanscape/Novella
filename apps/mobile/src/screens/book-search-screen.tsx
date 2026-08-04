@@ -195,12 +195,13 @@ export function BookSearchScreen({
           <ComicSeriesGridItem
             item={item.item}
             onPress={() => router.push({
-              pathname: '/comic/[seriesTitle]',
+              pathname: '/book/[id]',
               params: {
                 cover: item.item.coverUrl,
+                id: String(item.item.id),
                 placeholder: item.item.coverPlaceholder ?? '',
-                seriesTitle: item.item.title,
                 title: item.item.title,
+                type: 'Comic',
               },
             })}
             tileWidth={tileWidth}

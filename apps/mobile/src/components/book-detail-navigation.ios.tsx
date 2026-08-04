@@ -29,7 +29,10 @@ export function BookDetailNavigation({ book, palette }: BookDetailNavigationProp
             icon="tag"
             tintColor={palette.primary}
             onPress={() =>
-              router.push({ pathname: '/book/[id]/tags', params: { id: String(book.id) } })
+              router.push({
+                pathname: '/book/[id]/tags',
+                params: { id: String(book.id), ...(book.type ? { type: book.type } : {}) },
+              })
             }
           />
           <Stack.Toolbar.Button
@@ -43,7 +46,10 @@ export function BookDetailNavigation({ book, palette }: BookDetailNavigationProp
             icon="person.crop.rectangle"
             tintColor={palette.primary}
             onPress={() =>
-              router.push({ pathname: '/book/[id]/uploader', params: { id: String(book.id) } })
+              router.push({
+                pathname: '/book/[id]/uploader',
+                params: { id: String(book.id), ...(book.type ? { type: book.type } : {}) },
+              })
             }
           />
         </Stack.Toolbar>

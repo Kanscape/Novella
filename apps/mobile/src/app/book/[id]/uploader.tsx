@@ -2,13 +2,15 @@ import { useLocalSearchParams } from 'expo-router';
 
 import { NativeRouteBottomSheet } from '@/components/native-route-bottom-sheet';
 import { BookInfoSheetScreen } from '@/screens/book-info-sheet-screen';
+import type { BookDetailKind } from '@/hooks/use-book-detail';
 
 export default function BookUploaderRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, type } = useLocalSearchParams<{ id: string; type?: string }>();
   const bookId = Number(id);
+  const kind: BookDetailKind = type === 'Comic' ? 'Comic' : 'Novel';
   return (
     <NativeRouteBottomSheet bookId={bookId}>
-      <BookInfoSheetScreen bookId={bookId} variant="uploader" />
+      <BookInfoSheetScreen bookId={bookId} kind={kind} variant="uploader" />
     </NativeRouteBottomSheet>
   );
 }

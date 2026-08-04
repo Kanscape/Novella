@@ -87,7 +87,7 @@ export function BookDetailScreen({
     requiresAuth,
     shelfError,
     toggleShelf,
-  } = useBookDetail(bookId);
+  } = useBookDetail(bookId, bookType ?? 'Novel');
   const hintedCoverUrl = initialCoverUrl?.trim() ? initialCoverUrl : null;
   const coverUrl = hintedCoverUrl ?? book?.coverUrl ?? null;
   const coverPlaceholder = hintedCoverUrl
@@ -171,7 +171,7 @@ function BookDetailContent({
   const resumeChapter = currentSortNum ? book.chapters[currentSortNum - 1] : undefined;
   const settings = useAppSettings();
   const cleanResumeTitle = resumeChapter
-    ? settings.cleanChapterTitleScopes.includes('continueReading')
+    ? book.type !== 'Comic' && settings.cleanChapterTitleScopes.includes('continueReading')
       ? simplifyReaderChapterTitle(resumeChapter.title)
       : resumeChapter.title
     : null;
@@ -231,6 +231,7 @@ function BookDetailContent({
         </View>
 
         <View style={styles.actions}>
+          {book.type === 'Comic' ? null : (
           <IconButton
             accessibilityLabel={isInShelf ? 'Remove from shelf' : 'Add to shelf'}
             containerColor={isInShelf ? palette.primaryContainer : palette.surfaceContainerHighest}
@@ -247,6 +248,7 @@ function BookDetailContent({
             size={25}
             style={styles.shelfButton}
           />
+          )}
 
           <Button
             accessibilityLabel={resumeChapter ? `Continue reading ${resumeChapter.title}` : 'Start reading'}
@@ -280,7 +282,7 @@ function BookDetailContent({
               onPress={() =>
                 router.push({
                   pathname: '/book/[id]/introduction',
-                  params: { id: String(book.id) },
+                  params: { id: String(book.id), ...(book.type ? { type: book.type } : {}) },
                 })
               }
               rippleColor={hexWithAlpha(palette.primary, 0.08)}

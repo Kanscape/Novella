@@ -6,6 +6,7 @@ import {
   createBookSearchUseCase,
   createClientSessionController,
   createCommentsUseCase,
+  createComicDetailUseCase,
   createDiscoveryUseCase,
   createHistoryUseCase,
   createProfileUseCase,
@@ -15,6 +16,7 @@ import {
   type BookDetailUseCase,
   type BookSearchUseCase,
   type CommentsUseCase,
+  type ComicDetailUseCase,
   type DiscoveryUseCase,
   type HistoryUseCase,
   type ProfileUseCase,
@@ -49,6 +51,7 @@ const api = new ApiClient(http, session.transport, {
 
 export const discovery: DiscoveryUseCase = createDiscoveryUseCase(api);
 export const bookDetails: BookDetailUseCase = createBookDetailUseCase(api);
+export const comicDetails: ComicDetailUseCase = createComicDetailUseCase(api);
 export const bookSearch: BookSearchUseCase = createBookSearchUseCase(api);
 export const comments: CommentsUseCase = createCommentsUseCase(api);
 export const history: HistoryUseCase = createHistoryUseCase(api);

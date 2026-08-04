@@ -109,6 +109,10 @@ export interface BookDetailUseCase {
   load(bookId: number): Promise<BookDetail>;
 }
 
+export interface ComicDetailUseCase {
+  load(bookId: number): Promise<BookDetail>;
+}
+
 export interface BookSearchUseCase {
   searchNovels(request: BookSearchRequest, signal?: AbortSignal): Promise<BookListPage>;
   searchComics(request: BookSearchRequest, signal?: AbortSignal): Promise<ComicSeriesListPage>;
@@ -500,6 +504,42 @@ export function createBookDetailUseCase(api: ApiClient): BookDetailUseCase {
       return api.getBookInfo(bookId);
     },
   });
+}
+
+export function createComicDetailUseCase(api: ApiClient): ComicDetailUseCase {
+  return Object.freeze({
+    load(bookId: number) {
+      assertValidBookId(bookId);
+      return api.getComicInfo(bookId).then(toBookDetail);
+    },
+  });
+}
+
+/** Normalize the comic detail payload into the shared `BookDetail` shape so
+ * the detail page renders one UI for novels and comics alike. Comic chapters
+ * carry their own `sortNum`, but the detail page derives the sort number from
+ * the chapter order (contiguous 1..N), which the reader resolves the same way. */
+export function toBookDetail(info: ComicInfo): BookDetail {
+  return {
+    id: info.id,
+    type: 'Comic',
+    coverUrl: info.coverUrl,
+    coverPlaceholder: info.coverPlaceholder,
+    title: info.title,
+    authorName: info.authorName,
+    category: null,
+    introduction: info.introduction,
+    lastUpdatedChapter: info.lastUpdatedChapter,
+    lastUpdatedAt: info.lastUpdatedAt,
+    createdAt: info.createdAt,
+    favoriteCount: info.favoriteCount,
+    viewCount: info.views,
+    canEdit: false,
+    chapters: info.chapters.map((chapter) => ({ id: chapter.id, title: chapter.title })),
+    user: info.user,
+    classification: info.classification,
+    readPosition: info.readPosition,
+  };
 }
 
 export function createBookSearchUseCase(api: ApiClient): BookSearchUseCase {

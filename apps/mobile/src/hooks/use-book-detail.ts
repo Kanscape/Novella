@@ -4,13 +4,15 @@ import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@novella/api-client';
 import type { BookDetail } from '@novella/api-client';
 
-import { bookDetails, shelf } from '@/services/client';
+import { bookDetails, comicDetails, shelf } from '@/services/client';
 import { waitForMinimumDisplay } from '@/services/min-skeleton-display';
 import {
   getCachedReaderPosition,
   shouldUseCachedReaderPosition,
   subscribeCachedReaderPosition,
 } from '@/services/reader-position-cache';
+
+export type BookDetailKind = 'Novel' | 'Comic';
 
 type BookDetailState =
   | { status: 'loading'; book: null; error: null }
@@ -24,7 +26,7 @@ type BookDetailState =
     }
   | { status: 'error'; book: null; error: string; requiresAuth: boolean };
 
-export function useBookDetail(bookId: number) {
+export function useBookDetail(bookId: number, type: BookDetailKind = 'Novel') {
   const [state, setState] = useState<BookDetailState>({
     status: 'loading',
     book: null,
@@ -46,7 +48,7 @@ export function useBookDetail(bookId: number) {
       : { status: 'loading', book: null, error: null });
     try {
       const [serverBook, isInShelf, cachedPosition] = await Promise.all([
-        bookDetails.load(bookId),
+        (type === 'Comic' ? comicDetails : bookDetails).load(bookId),
         shelf.contains(bookId),
         getCachedReaderPosition(bookId),
       ]);
@@ -78,7 +80,7 @@ export function useBookDetail(bookId: number) {
             requiresAuth: error instanceof ApiError && error.category === 'auth',
           });
     }
-  }, [bookId]);
+  }, [bookId, type]);
 
   useFocusEffect(useCallback(() => {
     void load();

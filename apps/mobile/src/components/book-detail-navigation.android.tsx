@@ -2,6 +2,8 @@ import { Stack, router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { IconMessage, IconTag, IconUserScreen } from '@tabler/icons-react-native';
 
+import type { BookDetail } from '@novella/api-client';
+
 import type { BookDetailNavigationProps } from '@/components/book-detail-navigation.types';
 
 export function BookDetailNavigation({ book, palette }: BookDetailNavigationProps) {
@@ -13,14 +15,14 @@ export function BookDetailNavigation({ book, palette }: BookDetailNavigationProp
         headerStyle: { backgroundColor: 'transparent' },
         headerTintColor: palette.onSurface,
         headerTransparent: true,
-        ...(book ? { headerRight: () => <AndroidHeaderActions bookId={book.id} palette={palette} showTags={book.classification.tags.length > 0} /> } : {}),
+        ...(book ? { headerRight: () => <AndroidHeaderActions book={book} palette={palette} showTags={book.classification.tags.length > 0} /> } : {}),
         title: '',
       }}
     />
   );
 }
 
-function AndroidHeaderActions({ bookId, palette, showTags }: { bookId: number; palette: BookDetailNavigationProps['palette']; showTags: boolean }) {
+function AndroidHeaderActions({ book, palette, showTags }: { book: BookDetail; palette: BookDetailNavigationProps['palette']; showTags: boolean }) {
   return (
     <View style={styles.actions}>
       {showTags ? (
@@ -29,7 +31,10 @@ function AndroidHeaderActions({ bookId, palette, showTags }: { bookId: number; p
           color={palette.onSurface}
           icon={IconTag}
           onPress={() =>
-            router.push({ pathname: '/book/[id]/tags', params: { id: String(bookId) } })
+            router.push({
+              pathname: '/book/[id]/tags',
+              params: { id: String(book.id), ...(book.type ? { type: book.type } : {}) },
+            })
           }
         />
       ) : null}
@@ -38,7 +43,7 @@ function AndroidHeaderActions({ bookId, palette, showTags }: { bookId: number; p
         color={palette.onSurface}
         icon={IconMessage}
         onPress={() =>
-          router.push({ pathname: '/book/[id]/comments', params: { id: String(bookId) } })
+          router.push({ pathname: '/book/[id]/comments', params: { id: String(book.id) } })
         }
       />
       <HeaderAction
@@ -46,7 +51,10 @@ function AndroidHeaderActions({ bookId, palette, showTags }: { bookId: number; p
         color={palette.onSurface}
         icon={IconUserScreen}
         onPress={() =>
-          router.push({ pathname: '/book/[id]/uploader', params: { id: String(bookId) } })
+          router.push({
+            pathname: '/book/[id]/uploader',
+            params: { id: String(book.id), ...(book.type ? { type: book.type } : {}) },
+          })
         }
       />
     </View>
