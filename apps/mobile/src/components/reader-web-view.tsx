@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Image, Modal, Pressable, StyleProp, StyleSheet, ViewStyle } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
-import type { ChapterReadingMode } from '@/services/reader-rwpm';
+import type { ChapterReadingMode } from '@/services/reader-xhtml-builder';
 
 /** Scroll position reported by the chapter page. */
 export interface ReaderWebViewPosition {

@@ -28,7 +28,7 @@ import {
   stageReaderProgress,
   syncReaderProgress,
 } from '@/services/reader-progress-sync';
-import { buildChapterXhtml } from '@/services/reader-rwpm';
+import { buildChapterXhtml } from '@/services/reader-xhtml-builder';
 import {
   readerPositionToBlock,
   readerPositionToProgression,
@@ -283,6 +283,7 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
         title={readerTitle || 'Reader'}
       />
       <ReaderChapterNavigation
+        backgroundColor={readerBackground}
         bottomInset={insets.bottom}
         current={sortNum}
         onNext={nextSortNum === null ? null : () => openChapter(nextSortNum, 'start')}

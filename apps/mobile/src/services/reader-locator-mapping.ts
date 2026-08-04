@@ -1,6 +1,6 @@
 import type { NovelReaderBlock } from '@novella/reader-engine';
 
-import { chapterHrefFor } from '@/services/reader-rwpm';
+import { chapterHrefFor } from '@/services/reader-xhtml-builder';
 
 const MAX_ANCHOR_LENGTH = 80;
 
