@@ -1,3 +1,4 @@
+import { FieldError, Input, Label, TextField } from 'heroui-native';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -8,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +20,7 @@ import {
 } from '@novella/client-core';
 
 import { NativeSegmentedControl } from '@/components/native-segmented-control';
+import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { useProfile } from '@/hooks/use-profile';
 import { profile as profileUseCase } from '@/services/client';
@@ -52,15 +53,22 @@ export function AvatarSettingsScreen() {
 
   if (!profile) {
     return (
-      <View style={styles.loadingRoot}>
-        {status === 'loading' ? <ActivityIndicator color={colors.accent as string} /> : null}
-        <Text style={styles.loadingTitle}>{loadError ?? 'Loading profile…'}</Text>
-        {status !== 'loading' ? (
-          <Pressable onPress={() => void reload()} style={styles.retryButton}>
-            <Text style={styles.retryLabel}>Try again</Text>
-          </Pressable>
-        ) : null}
-      </View>
+      <NativeScreenScaffold
+        largeTitle={false}
+        onBackPress={() => router.back()}
+        showBackButton
+        title="Avatar"
+      >
+        <View style={styles.loadingRoot}>
+          {status === 'loading' ? <ActivityIndicator color={colors.accent as string} /> : null}
+          <Text style={styles.loadingTitle}>{loadError ?? 'Loading profile…'}</Text>
+          {status !== 'loading' ? (
+            <Pressable onPress={() => void reload()} style={styles.retryButton}>
+              <Text style={styles.retryLabel}>Try again</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </NativeScreenScaffold>
     );
   }
 
@@ -89,15 +97,21 @@ export function AvatarSettingsScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.root}
+    <NativeScreenScaffold
+      largeTitle={false}
+      onBackPress={() => router.back()}
+      showBackButton
+      title="Avatar"
     >
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(28, insets.bottom + 20) }]}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.root}
       >
+        <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={[styles.content, { paddingBottom: Math.max(28, insets.bottom + 20) }]}
+          keyboardShouldPersistTaps="handled"
+        >
         <View style={styles.introduction}>
           <Text style={styles.title}>Change avatar</Text>
           <Text style={styles.description}>Choose an image source and preview it before saving.</Text>
@@ -122,27 +136,28 @@ export function AvatarSettingsScreen() {
         />
 
         <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>{getFieldLabel(source)}</Text>
-          <TextInput
-            accessibilityLabel={getFieldLabel(source)}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!saving}
-            keyboardType={source === 'url' ? 'url' : 'number-pad'}
-            onChangeText={(nextValue) => {
-              setDrafts((current) => ({ ...current, [source]: nextValue }));
-              setError(null);
-            }}
-            onSubmitEditing={() => void save()}
-            placeholder={getPlaceholder(source)}
-            placeholderTextColor={colors.secondaryLabel}
-            returnKeyType="done"
-            style={[styles.input, error && styles.inputError]}
-            value={value}
-          />
-          <Text style={[styles.fieldHint, error && styles.errorText]}>
-            {error ?? getSourceHint(source)}
-          </Text>
+          <TextField isDisabled={saving} isInvalid={error !== null}>
+            <Label>{getFieldLabel(source)}</Label>
+            <Input
+              accessibilityLabel={getFieldLabel(source)}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType={source === 'url' ? 'url' : 'number-pad'}
+              onChangeText={(nextValue) => {
+                setDrafts((current) => ({ ...current, [source]: nextValue }));
+                setError(null);
+              }}
+              onSubmitEditing={() => void save()}
+              placeholder={getPlaceholder(source)}
+              returnKeyType="done"
+              value={value}
+            />
+            {error ? (
+              <FieldError>{error}</FieldError>
+            ) : (
+              <Text style={styles.fieldHint}>{getSourceHint(source)}</Text>
+            )}
+          </TextField>
         </View>
 
         <Pressable
@@ -154,8 +169,9 @@ export function AvatarSettingsScreen() {
           {saving ? <ActivityIndicator color="#FFFFFF" /> : null}
           <Text style={styles.saveLabel}>{saving ? 'Saving…' : 'Save avatar'}</Text>
         </Pressable>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </NativeScreenScaffold>
   );
 }
 
@@ -196,12 +212,8 @@ const styles = StyleSheet.create({
   content: { gap: 22, paddingHorizontal: 20, paddingTop: 24 },
   description: { color: colors.secondaryLabel as string, fontSize: 16, lineHeight: 23 },
   disabled: { opacity: 0.55 },
-  errorText: { color: colors.error as string },
   fieldGroup: { gap: 8 },
   fieldHint: { color: colors.secondaryLabel as string, fontSize: 13, lineHeight: 18, paddingHorizontal: 2 },
-  fieldLabel: { color: colors.label as string, fontSize: 15, fontWeight: '600' },
-  input: { backgroundColor: colors.surface as string, borderColor: colors.separator as string, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, color: colors.label as string, fontSize: 17, height: 52, paddingHorizontal: 15 },
-  inputError: { borderColor: colors.error as string },
   introduction: { gap: 7 },
   loadingRoot: { alignItems: 'center', backgroundColor: colors.background as string, flex: 1, gap: 14, justifyContent: 'center', padding: 24 },
   loadingTitle: { color: colors.secondaryLabel as string, fontSize: 15, textAlign: 'center' },
