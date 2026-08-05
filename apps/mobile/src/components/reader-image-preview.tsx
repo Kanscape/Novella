@@ -45,10 +45,10 @@ export interface ReaderImagePreviewProps {
 /** Full-screen reader image preview with Flutter-equivalent actions and zoom. */
 export function ReaderImagePreview({ source, onClose }: ReaderImagePreviewProps) {
   const { width, height } = useWindowDimensions();
-  // Read the stable app-window inset before presenting the transparent Modal.
-  // A SafeAreaView inside the modal can receive transient window metrics on
-  // its first iOS presentation and place the buttons below the Dynamic Island.
-  const { top: topInset } = useSafeAreaInsets();
+  // Read the stable app-window bottom inset before presenting the transparent
+  // Modal. The action group intentionally lives above the home indicator, away
+  // from transient Dynamic Island metrics during the first presentation.
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const imageUri = resolveReaderImageUrl(source.uri);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -207,7 +207,7 @@ export function ReaderImagePreview({ source, onClose }: ReaderImagePreviewProps)
           </GestureDetector>
           <View
             pointerEvents="box-none"
-            style={[styles.toolbarSafeArea, { top: topInset }]}
+            style={[styles.toolbarSafeArea, { bottom: bottomInset }]}
           >
             <View style={styles.toolbar}>
               <PreviewActionButton
@@ -316,6 +316,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   toolbarSafeArea: {
+    bottom: 0,
     left: 0,
     position: 'absolute',
     right: 0,
@@ -325,8 +326,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     justifyContent: 'center',
+    paddingBottom: 8,
     paddingHorizontal: 16,
-    paddingTop: 8,
   },
   actionButton: {
     alignItems: 'center',
