@@ -101,7 +101,8 @@ function RootLayoutContent() {
           <Stack.Screen name="book/[id]/comments" options={{ headerShown: !usesComposeBottomSheets, title: 'Comments' }} />
           <Stack.Screen name="books" options={{ headerShown: !usesComposeBottomSheets, title: 'All novels' }} />
           <Stack.Screen name="comics" options={{ headerShown: !usesComposeBottomSheets, title: 'All comics' }} />
-          <Stack.Screen name="ranking" options={{ headerShown: !usesComposeBottomSheets, title: 'Rankings' }} />          <Stack.Screen
+          <Stack.Screen name="ranking" options={{ headerShown: !usesComposeBottomSheets, title: 'Rankings' }} />
+          <Stack.Screen
             name="shelf/folder"
             options={{ headerShown: !usesComposeBottomSheets, title: 'Folder' }}
           />

@@ -33,6 +33,8 @@ const PAGE_SIZE = 24; // matches the web 全部小说 page size
 
 interface CachedOrder {
   books: BookListItem[];
+  /** Last backend page consumed to fill this visible page. */
+  page: number;
   totalPages: number;
 }
 
@@ -69,7 +71,7 @@ export function useBookListPage(initialOrder: BookListOrder) {
           setState({
             books: cached.books,
             error: null,
-            page: 1,
+            page: cached.page,
             status: 'ready',
             totalPages: cached.totalPages,
           });
@@ -92,26 +94,60 @@ export function useBookListPage(initialOrder: BookListOrder) {
       });
 
       try {
-        const response = await discovery.loadBookListPage({
-          page,
-          size: PAGE_SIZE,
-          order: targetOrder,
-          ignoreAI: settings.ignoreAI,
-          ignoreJapanese: settings.ignoreJapanese,
-        });
-        if (requestGeneration !== generation.current || nextController.signal.aborted) return;
-        const books = filterBooksByContentSettings(response.items, {
-          ignoreAI: settings.ignoreAI,
-          ignoreJapanese: settings.ignoreJapanese,
-          ignoreLevel6: settings.ignoreLevel6,
-        });
-        if (page === 1) cacheRef.current[targetOrder] = { books, totalPages: response.totalPages };
+        let backendPage = page;
+        let lastBackendPage = page - 1;
+        let totalPages = 0;
+        let books: BookListItem[] = [];
+
+        // Level 6 is a client-only filter. Keep consuming backend pages until
+        // this visible page is full (or the server is exhausted), matching the
+        // Flutter recently-updated flow instead of exposing short pages.
+        while (backendPage > 0) {
+          const response = await discovery.loadBookListPage({
+            page: backendPage,
+            size: PAGE_SIZE,
+            order: targetOrder,
+            ignoreAI: settings.ignoreAI,
+            ignoreJapanese: settings.ignoreJapanese,
+          });
+          if (requestGeneration !== generation.current || nextController.signal.aborted) return;
+
+          totalPages = response.totalPages;
+          books = dedupeById([
+            ...books,
+            ...filterBooksByContentSettings(response.items, {
+              ignoreAI: settings.ignoreAI,
+              ignoreJapanese: settings.ignoreJapanese,
+              ignoreLevel6: settings.ignoreLevel6,
+            }),
+          ]);
+          lastBackendPage = response.page;
+
+          const nextBackendPage = response.page + 1;
+          if (
+            books.length >= PAGE_SIZE ||
+            response.items.length === 0 ||
+            nextBackendPage > response.totalPages ||
+            nextBackendPage <= backendPage
+          ) {
+            break;
+          }
+          backendPage = nextBackendPage;
+        }
+
+        if (page === 1) {
+          cacheRef.current[targetOrder] = {
+            books,
+            page: lastBackendPage,
+            totalPages,
+          };
+        }
         setState((current) => ({
           ...current,
           books: append ? dedupeById([...current.books, ...books]) : books,
-          page: response.page,
+          page: lastBackendPage,
           status: 'ready',
-          totalPages: response.totalPages,
+          totalPages,
         }));
       } catch (error) {
         if (

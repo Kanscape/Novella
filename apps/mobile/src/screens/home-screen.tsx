@@ -195,7 +195,9 @@ function LatestBooksSection({
     );
   }
 
-  if (state.data.items.length === 0) {
+  const books = state.data.items.slice(0, 6);
+
+  if (books.length === 0) {
     return (
       <SectionCard>
         <Text style={styles.cardTitle}>No novels</Text>
@@ -210,7 +212,7 @@ function LatestBooksSection({
   return (
     <View style={styles.sectionBody}>
       <BookGrid
-        books={state.data.items}
+        books={books}
         columns={columns}
         tileWidth={tileWidth}
         width={contentWidth}

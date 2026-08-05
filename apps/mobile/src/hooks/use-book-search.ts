@@ -9,6 +9,7 @@ import {
 } from '@novella/api-client';
 
 import { bookSearch } from '@/services/client';
+import { filterBooksByContentSettings } from '@/services/content-filter';
 import {
   addSearchHistory,
   loadSearchHistory,
@@ -31,6 +32,8 @@ export interface BookSearchState {
   status: BookSearchStatus;
   totalPages: number;
 }
+
+const PAGE_SIZE = 24;
 
 const INITIAL_STATE: BookSearchState = {
   committedQuery: '',
@@ -90,19 +93,55 @@ export function useBookSearch() {
         keywords: normalized,
         mode,
         page,
-        size: 24,
+        size: PAGE_SIZE,
         ignoreAI: settings.ignoreAI,
         ignoreJapanese: settings.ignoreJapanese,
       } as const;
       if (format === 'Novel') {
-        const response = await bookSearch.searchNovels(request, nextController.signal);
-        if (requestGeneration !== generation.current || nextController.signal.aborted) return;
+        let backendPage = page;
+        let lastBackendPage = page - 1;
+        let totalPages = 0;
+        let novels: BookListItem[] = [];
+
+        // Level 6 is filtered locally. Consume enough backend pages to fill a
+        // visible page, just like Flutter's search page, so a page containing
+        // only hidden books does not look like a false empty search.
+        while (backendPage > 0) {
+          const response = await bookSearch.searchNovels(
+            { ...request, page: backendPage },
+            nextController.signal,
+          );
+          if (requestGeneration !== generation.current || nextController.signal.aborted) return;
+
+          totalPages = response.totalPages;
+          novels = dedupeById([
+            ...novels,
+            ...filterBooksByContentSettings(response.items, {
+              ignoreAI: settings.ignoreAI,
+              ignoreJapanese: settings.ignoreJapanese,
+              ignoreLevel6: settings.ignoreLevel6,
+            }),
+          ]);
+          lastBackendPage = response.page;
+
+          const nextBackendPage = response.page + 1;
+          if (
+            novels.length >= PAGE_SIZE ||
+            response.items.length === 0 ||
+            nextBackendPage > response.totalPages ||
+            nextBackendPage <= backendPage
+          ) {
+            break;
+          }
+          backendPage = nextBackendPage;
+        }
+
         setState((current) => ({
           ...current,
-          novels: append ? dedupeById([...current.novels, ...response.items]) : response.items,
-          page: response.page,
+          novels: append ? dedupeById([...current.novels, ...novels]) : novels,
+          page: lastBackendPage,
           status: 'ready',
-          totalPages: response.totalPages,
+          totalPages,
         }));
       } else {
         const response = await bookSearch.searchComics(request, nextController.signal);
@@ -127,7 +166,16 @@ export function useBookSearch() {
         status: 'error',
       }));
     }
-  }, [settings.ignoreAI, settings.ignoreJapanese]);
+  }, [settings.ignoreAI, settings.ignoreJapanese, settings.ignoreLevel6]);
+
+  // Re-run an active query when a content filter changes. Japanese/AI flags
+  // affect the backend request, while Level 6 is removed client-side, so
+  // merely filtering the currently visible page would not restore results
+  // when a setting is turned off.
+  useEffect(() => {
+    if (!state.committedQuery) return;
+    void run(state.committedQuery, state.format, state.mode, 1, false);
+  }, [run]);
 
   const submit = useCallback(async (
     query: string,

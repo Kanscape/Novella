@@ -8,6 +8,8 @@ import {
 } from '@novella/api-client';
 
 import { discovery } from '@/services/client';
+import { filterBooksByContentSettings } from '@/services/content-filter';
+import { useAppSettings } from '@/services/settings';
 
 export type DiscoverySectionState<T> =
   | { status: 'loading'; data: null; error: null }
@@ -30,6 +32,7 @@ const INITIAL_STATE: DiscoveryState = {
 };
 
 export function useDiscovery() {
+  const settings = useAppSettings();
   const [state, setState] = useState<DiscoveryState>(INITIAL_STATE);
   const mounted = useRef(true);
   const epochs = useRef<Record<DiscoverySection, number>>({
@@ -78,7 +81,25 @@ export function useDiscovery() {
       latestBooks: beginLoad(current.latestBooks, preserveData),
     }));
     try {
-      const data = await discovery.loadLatestBooks();
+      // Flutter's home page requests a larger recent-updates page and then
+      // applies the same client-side content filter used by search/rankings.
+      // The backend only accepts the Japanese/AI flags; Level 6 is filtered
+      // locally, so requesting 12 gives the six-tile preview room to fill.
+      const response = await discovery.loadBookListPage({
+        ignoreAI: settings.ignoreAI,
+        ignoreJapanese: settings.ignoreJapanese,
+        order: 'latest',
+        page: 1,
+        size: 12,
+      });
+      const data = {
+        ...response,
+        items: filterBooksByContentSettings(response.items, {
+          ignoreAI: settings.ignoreAI,
+          ignoreJapanese: settings.ignoreJapanese,
+          ignoreLevel6: settings.ignoreLevel6,
+        }),
+      };
       if (!mounted.current || epoch !== epochs.current.latestBooks) return;
       setState((current) => ({
         ...current,
@@ -95,7 +116,7 @@ export function useDiscovery() {
         },
       }));
     }
-  }, []);
+  }, [settings.ignoreAI, settings.ignoreJapanese, settings.ignoreLevel6]);
 
   const loadOnlineInfo = useCallback(async (preserveData = true) => {
     const epoch = ++epochs.current.onlineInfo;

@@ -11,10 +11,10 @@ export interface ContentFilterOptions {
   ignoreLevel6: boolean;
 }
 
-/** Content-settings filter shared by ranking and recently-updated lists.
- * Mirrors Flutter's filterBooksByContentSettings: Level 6 books and
- * Japanese/AI category books are removed client-side because the backend list
- * operations do not accept these filters. */
+/** Content-settings filter shared by discovery, ranking, catalog, and search.
+ * Mirrors Flutter's filterBooksByContentSettings. The backend accepts the
+ * Japanese/AI flags for some requests, but Level 6 has no request flag and
+ * every filtered list still applies the same client-side rules. */
 export function filterBooksByContentSettings(
   items: BookListItem[],
   options: ContentFilterOptions,
