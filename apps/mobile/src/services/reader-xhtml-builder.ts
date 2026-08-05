@@ -50,8 +50,10 @@ export interface ChapterXhtmlOptions {
   firstLineIndent?: boolean;
   /** Layout mode: vertical scroll or CSS-column paging. */
   readingMode?: ChapterReadingMode;
-  /** Long-press images to preview them full-screen (readerImagePreview…). */
+  /** Enable native full-screen image previews. */
   imagePreviewEnabled?: boolean;
+  /** Open enabled image previews with a long press instead of a tap. */
+  imagePreviewOpenOnLongPress?: boolean;
   /** Paged mode: snap page turns instantly instead of animating. */
   pagedNoAnimation?: boolean;
 }
@@ -88,6 +90,9 @@ export function buildChapterXhtml(
   const readingMode: ChapterReadingMode = options.readingMode ?? 'scroll';
   const isPaged = readingMode === 'paged';
   const imagePreviewEnabled = options.imagePreviewEnabled ?? false;
+  // Preserve the original imagePreviewEnabled=true behavior for callers that
+  // have not adopted the explicit gesture option yet.
+  const imagePreviewOpenOnLongPress = options.imagePreviewOpenOnLongPress ?? imagePreviewEnabled;
   const pagedNoAnimation = options.pagedNoAnimation ?? false;
 
   // Theme values are exposed as CSS custom properties so the native side can
@@ -309,7 +314,7 @@ export function buildChapterXhtml(
         if (moved) return; // a drag just ended — don't also treat it as a tap
         if (e.target && e.target.closest) {
           // Never hijack clicks inside the footnote dialog or on links/buttons.
-          if (e.target.closest('dialog') || e.target.closest('a') || e.target.closest('button')) return;
+          if (e.target.closest('dialog') || e.target.closest('a') || e.target.closest('button') || e.target.closest('img')) return;
         }
         var w = scrollEl.clientWidth;
         var x = e.clientX;
@@ -349,32 +354,63 @@ export function buildChapterXhtml(
         });
       }
     }
-    function initImagePreview() {
+    function initImagePreview(openOnLongPress) {
       var timer = null;
       function cancel() { if (timer) { clearTimeout(timer); timer = null; } }
-      document.addEventListener('touchstart', function (e) {
-        cancel();
-        var t = e.target;
-        if (t && t.tagName === 'IMG' && t.getAttribute('src')) {
-          var src = t.getAttribute('src');
-          timer = setTimeout(function () {
-            if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'image-preview', src: src }));
-            }
-          }, 500);
+      function findImage(target) {
+        var current = target;
+        while (current && current !== document.body) {
+          if (current.tagName === 'IMG') {
+            return current.classList && current.classList.contains('no-preview') ? null : current;
+          }
+          current = current.parentElement;
         }
-      }, { passive: true });
-      document.addEventListener('touchmove', cancel, { passive: true });
-      document.addEventListener('touchend', cancel, { passive: true });
+        return null;
+      }
+      function sendPreview(image, event) {
+        if (!image) return;
+        var src = image.getAttribute('src');
+        if (!src) return;
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'image-preview',
+            src: src,
+            alt: image.getAttribute('alt') || '',
+          }));
+        }
+      }
+      if (openOnLongPress) {
+        document.addEventListener('touchstart', function (e) {
+          cancel();
+          var image = findImage(e.target);
+          if (image && image.getAttribute('src')) {
+            timer = setTimeout(function () {
+              timer = null;
+              sendPreview(image, null);
+            }, 500);
+          }
+        }, { passive: true });
+        document.addEventListener('touchmove', cancel, { passive: true });
+        document.addEventListener('touchend', cancel, { passive: true });
+      } else {
+        document.addEventListener('click', function (e) {
+          var image = findImage(e.target);
+          if (image) sendPreview(image, e);
+        });
+      }
       document.addEventListener('contextmenu', function (e) {
-        if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+        if (findImage(e.target)) e.preventDefault();
       });
     }
 
     function init() {
       initFootnotes();
       if (isPaged) initPaged();
-      ${imagePreviewEnabled ? 'initImagePreview();' : '// image preview disabled'}
+      ${imagePreviewEnabled ? 'initImagePreview(' + (imagePreviewOpenOnLongPress ? 'true' : 'false') + ');' : '// image preview disabled'}
       setTimeout(reportPosition, 300);
     }
     if (document.readyState === 'loading') {

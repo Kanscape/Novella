@@ -10,7 +10,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   scheme: 'novella',
   userInterfaceStyle: 'automatic',
   icon: './assets/icon.png',
-  plugins: ['expo-router', 'expo-dev-client'],
+  plugins: [
+    'expo-router',
+    'expo-dev-client',
+    ['expo-media-library', {
+      granularPermissions: ['photo'],
+      photosPermission: 'Allow Novella to access your photos.',
+      savePhotosPermission: 'Allow Novella to save images to your photo library.',
+    }],
+    'expo-sharing',
+  ],
   ios: {
     bundleIdentifier: 'sh.celia.novella',
     supportsTablet: true,

@@ -24,8 +24,10 @@
     "expo-image": "~57.0.1",
     "expo-linear-gradient": "~57.0.1",
     "expo-linking": "~57.0.4",
+    "expo-media-library": "~57.0.3",
     "expo-router": "~57.0.9",
     "expo-secure-store": "~57.0.1",
+    "expo-sharing": "~57.0.8",
     "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.2",
@@ -61,6 +63,7 @@
     "prebuild": "expo prebuild",
     "start": "expo start --dev-client",
     "test:community": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test src/services/community-utils.test.mjs src/services/community-board-icon-keys.test.mjs",
+    "test:reader": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test src/services/reader-image-format.test.mjs src/services/reader-xhtml-builder.test.mjs",
     "test:shelf": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test src/services/shelf-grid-reorder.test.mjs src/services/book-grid-layout.test.mjs src/services/chapter-title.test.mjs src/services/content-filter.test.mjs src/services/book-badge-definitions.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },

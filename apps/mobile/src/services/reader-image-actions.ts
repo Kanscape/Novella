@@ -1,0 +1,209 @@
+import { File, Paths } from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
+import { Platform, Share } from 'react-native';
+
+import { resolveReaderImageUrl } from '@/services/reader-image-dimensions';
+import {
+  resolveReaderImageFormat,
+  type ReaderImageFormat,
+} from '@/services/reader-image-format';
+
+export const READER_IMAGE_ALBUM_NAME = 'Novella';
+export const READER_IMAGE_SHARE_TITLE = '分享图片';
+
+export type ReaderImageActionErrorCode =
+  | 'invalid-url'
+  | 'download-failed'
+  | 'access-denied'
+  | 'not-enough-space'
+  | 'unsupported-format'
+  | 'save-failed'
+  | 'share-failed';
+
+export class ReaderImageActionError extends Error {
+  readonly code: ReaderImageActionErrorCode;
+
+  constructor(code: ReaderImageActionErrorCode, message: string) {
+    super(message);
+    this.name = 'ReaderImageActionError';
+    this.code = code;
+  }
+}
+
+interface DownloadedReaderImage {
+  file: File;
+  fileName: string;
+  format: ReaderImageFormat;
+}
+
+/** Save an image to the user's photo library and the Novella album. */
+export async function saveReaderImage(imageUrl: string): Promise<void> {
+  let permission: MediaLibrary.PermissionResponse;
+  try {
+    permission = Platform.OS === 'android'
+      ? await MediaLibrary.requestPermissionsAsync(false, ['photo'])
+      : await MediaLibrary.requestPermissionsAsync(false);
+  } catch (error) {
+    throw mapSaveError(error);
+  }
+  if (!permission.granted) {
+    throw new ReaderImageActionError('access-denied', '未获得相册访问权限');
+  }
+
+  const downloaded = await downloadReaderImage(imageUrl);
+  try {
+    const asset = await MediaLibrary.Asset.create(downloaded.file.uri);
+    const album = await MediaLibrary.Album.get(READER_IMAGE_ALBUM_NAME);
+    if (album) {
+      await album.add(asset);
+    } else {
+      await MediaLibrary.Album.create(READER_IMAGE_ALBUM_NAME, [asset], false);
+    }
+  } catch (error) {
+    throw mapSaveError(error);
+  } finally {
+    deleteDownloadedReaderImage(downloaded);
+  }
+}
+
+/**
+ * Share the downloaded image with the native share sheet. If a local file
+ * cannot be produced, fall back to sharing the original URL so a transient
+ * image/download failure does not make sharing entirely unusable.
+ */
+export async function shareReaderImage(imageUrl: string): Promise<void> {
+  const resolvedUrl = resolveReaderImageUrl(imageUrl);
+  if (!resolvedUrl) {
+    throw new ReaderImageActionError('invalid-url', '图片地址为空');
+  }
+
+  let downloaded: DownloadedReaderImage | null = null;
+  try {
+    downloaded = await downloadReaderImage(resolvedUrl);
+  } catch {
+    await shareReaderImageUrl(resolvedUrl);
+    return;
+  }
+
+  let handedToShareSheet = false;
+  try {
+    const available = await Sharing.isAvailableAsync();
+    if (!available) {
+      await shareReaderImageUrl(resolvedUrl);
+      return;
+    }
+    await Sharing.shareAsync(downloaded.file.uri, {
+      UTI: downloaded.format.uti,
+      dialogTitle: READER_IMAGE_SHARE_TITLE,
+      mimeType: downloaded.format.mimeType,
+    });
+    handedToShareSheet = true;
+  } catch (error) {
+    if (error instanceof ReaderImageActionError) throw error;
+    throw new ReaderImageActionError('share-failed', getErrorMessage(error));
+  } finally {
+    // Android share targets can read the content URI after shareAsync resolves;
+    // leave a successful share file in cache briefly instead of deleting it
+    // while the receiving app is still opening it.
+    if (handedToShareSheet) {
+      scheduleDownloadedReaderImageCleanup(downloaded);
+    } else {
+      deleteDownloadedReaderImage(downloaded);
+    }
+  }
+}
+
+async function downloadReaderImage(imageUrl: string): Promise<DownloadedReaderImage> {
+  const resolvedUrl = resolveReaderImageUrl(imageUrl);
+  if (!resolvedUrl) {
+    throw new ReaderImageActionError('invalid-url', '图片地址为空');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(resolvedUrl, { headers: { Accept: 'image/*' } });
+  } catch (error) {
+    throw new ReaderImageActionError('download-failed', getErrorMessage(error));
+  }
+  if (!response.ok) {
+    throw new ReaderImageActionError(
+      'download-failed',
+      `图片下载失败（HTTP ${response.status}）`,
+    );
+  }
+
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(await response.arrayBuffer());
+  } catch (error) {
+    throw new ReaderImageActionError('download-failed', getErrorMessage(error));
+  }
+  if (bytes.byteLength === 0) {
+    throw new ReaderImageActionError('download-failed', '图片下载结果为空');
+  }
+
+  const format = resolveReaderImageFormat(
+    resolvedUrl,
+    response.headers.get('content-type'),
+  );
+  const fileName = `novella_image_${Date.now()}${format.extension}`;
+  const file = new File(Paths.cache, fileName);
+  try {
+    file.create({ intermediates: true, overwrite: true });
+    file.write(bytes);
+  } catch (error) {
+    deleteFile(file);
+    throw new ReaderImageActionError('download-failed', getErrorMessage(error));
+  }
+
+  return { file, fileName, format };
+}
+
+async function shareReaderImageUrl(imageUrl: string): Promise<void> {
+  try {
+    await Share.share({
+      message: imageUrl,
+      title: READER_IMAGE_SHARE_TITLE,
+      url: imageUrl,
+    });
+  } catch (error) {
+    throw new ReaderImageActionError('share-failed', getErrorMessage(error));
+  }
+}
+
+function mapSaveError(error: unknown): ReaderImageActionError {
+  if (error instanceof ReaderImageActionError) return error;
+  const message = getErrorMessage(error);
+  if (/permission|denied|access/iu.test(message)) {
+    return new ReaderImageActionError('access-denied', '未获得相册访问权限');
+  }
+  if (/space|storage|quota|full/iu.test(message)) {
+    return new ReaderImageActionError('not-enough-space', '设备剩余空间不足');
+  }
+  if (/format|unsupported|type/iu.test(message)) {
+    return new ReaderImageActionError('unsupported-format', '图片格式暂不支持保存');
+  }
+  return new ReaderImageActionError('save-failed', message);
+}
+
+function deleteDownloadedReaderImage(downloaded: DownloadedReaderImage | null): void {
+  if (!downloaded) return;
+  deleteFile(downloaded.file);
+}
+
+function scheduleDownloadedReaderImageCleanup(downloaded: DownloadedReaderImage): void {
+  setTimeout(() => deleteDownloadedReaderImage(downloaded), 60_000);
+}
+
+function deleteFile(file: File): void {
+  try {
+    if (file.exists) file.delete();
+  } catch {
+    // Cache cleanup is best effort and must not mask the user-facing result.
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : String(error);
+}

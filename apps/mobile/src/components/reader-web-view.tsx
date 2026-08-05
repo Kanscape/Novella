@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Image, Modal, Pressable, StyleProp, StyleSheet, ViewStyle } from 'react-native';
+import { StyleProp, ViewStyle } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
+import { ReaderImagePreview, type ReaderImagePreviewSource } from '@/components/reader-image-preview';
 import type { ChapterReadingMode } from '@/services/reader-xhtml-builder';
 
 /** Scroll position reported by the chapter page. */
@@ -99,6 +100,7 @@ export const ReaderWebView = forwardRef<ReaderWebViewHandle, ReaderWebViewProps>
     // Latest reported progression — used to restore position after the html
     // reloads (reading-mode switch rebuilds the document).
     const lastProgressionRef = useRef<number>(0);
+    const [previewSource, setPreviewSource] = useState<ReaderImagePreviewSource | null>(null);
 
     useImperativeHandle(
       ref,
@@ -126,6 +128,7 @@ export const ReaderWebView = forwardRef<ReaderWebViewHandle, ReaderWebViewProps>
           id?: string;
           level?: string;
           message?: string;
+          alt?: string;
         };
         if (data.type === 'position') {
           const position: ReaderWebViewPosition = {
@@ -142,7 +145,11 @@ export const ReaderWebView = forwardRef<ReaderWebViewHandle, ReaderWebViewProps>
           }
         } else if (data.type === 'image-preview') {
           if (typeof data.src === 'string' && data.src.length > 0) {
-            setPreviewSrc(data.src);
+            const preview: ReaderImagePreviewSource = { uri: data.src };
+            if (typeof data.alt === 'string' && data.alt.trim().length > 0) {
+              preview.alt = data.alt.trim();
+            }
+            setPreviewSource(preview);
           }
         } else if (data.type === 'log') {
           const level = data.level === 'error' ? 'error' : data.level === 'warn' ? 'warn' : 'log';
@@ -177,7 +184,6 @@ export const ReaderWebView = forwardRef<ReaderWebViewHandle, ReaderWebViewProps>
     // default) even when the HTML body is dark — underlayColor is what paints
     // that region, and the style background covers Android + loading states.
     const pageBackground = theme?.backgroundColor ?? '#F2F2F7';
-    const [previewSrc, setPreviewSrc] = useState<string | null>(null);
     const themeScriptSource = themeScript(theme ?? {});
     const themeKey = JSON.stringify(theme ?? {});
     useEffect(() => {
@@ -211,27 +217,13 @@ export const ReaderWebView = forwardRef<ReaderWebViewHandle, ReaderWebViewProps>
           source={{ html }}
           style={[style, { backgroundColor: pageBackground }]}
         />
-        {previewSrc !== null ? (
-          <Modal visible transparent animationType="fade" onRequestClose={() => setPreviewSrc(null)}>
-            <Pressable style={styles.previewBackdrop} onPress={() => setPreviewSrc(null)}>
-              <Image source={{ uri: previewSrc }} style={styles.previewImage} resizeMode="contain" />
-            </Pressable>
-          </Modal>
+        {previewSource !== null ? (
+          <ReaderImagePreview
+            onClose={() => setPreviewSource(null)}
+            source={previewSource}
+          />
         ) : null}
       </>
     );
   },
 );
-
-const styles = StyleSheet.create({
-  previewBackdrop: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.92)',
-  },
-  previewImage: {
-    width: '100%',
-    height: '100%',
-  },
-});

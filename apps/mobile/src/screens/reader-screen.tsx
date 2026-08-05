@@ -109,7 +109,9 @@ export function ReaderScreen({ bookId, sortNum, openPosition = 'saved' }: Reader
       fontDataUrl,
       imageBaseUrl: SERVICE_ENDPOINTS.apiOrigin,
       readingMode: mode,
-      imagePreviewEnabled: settings.readerImagePreviewOpenOnLongPress,
+      // Preview is always available; the setting only chooses tap vs long press.
+      imagePreviewEnabled: true,
+      imagePreviewOpenOnLongPress: settings.readerImagePreviewOpenOnLongPress,
       pagedNoAnimation: settings.readerPagedNoAnimation,
       ...themeRef.current,
     }),
