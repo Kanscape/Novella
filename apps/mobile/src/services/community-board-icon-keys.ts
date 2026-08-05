@@ -1,7 +1,6 @@
 /**
- * Pure board-icon name resolution, ported from the Flutter
- * `resolveCommunityBoardIcon` / `resolveCommunityBoardFallbackIcon` pair
- * (`references/flutter-archive/lib/features/community/community_board_icon.dart`).
+ * Pure board-icon name resolution, ported from the Flutter legacy
+ * `resolveCommunityBoardIcon` / `resolveCommunityBoardFallbackIcon` pair.
  *
  * Returns a stable icon key (matching the @tabler/icons-react-native export
  * suffix) or null when neither the icon name nor the fallback text resolves.

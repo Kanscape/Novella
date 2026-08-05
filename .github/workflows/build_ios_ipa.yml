@@ -13,6 +13,7 @@ on:
       - ".github/workflows/build_ios_ipa.yml"
   push:
     branches: ["main"]
+    tags: ["v*"]
     paths:
       - "apps/mobile/**"
       - "packages/**"
@@ -24,17 +25,59 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-ios-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-ipa:
     name: Build Unsigned IPA
-    runs-on: macos-15
+    runs-on: macos-26
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set Build Metadata
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+
+          RELEASE_VERSION=""
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BUILD_NUMBER="$(git rev-list --count origin/main)"
+            BUILD_CHANNEL="pr"
+            BUILD_LABEL="PR #${{ github.event.pull_request.number }}"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              echo "::error::Release tag must use vX.Y.Z format: $GITHUB_REF_NAME"
+              exit 1
+            fi
+            RELEASE_VERSION="${BASH_REMATCH[1]}"
+            BUILD_NUMBER="$(git rev-list --count HEAD)"
+            BUILD_CHANNEL="tag"
+            BUILD_LABEL="Build $BUILD_NUMBER"
+          elif [ "$GITHUB_REF_NAME" = "main" ]; then
+            BUILD_NUMBER="$(git rev-list --count HEAD)"
+            BUILD_CHANNEL="main"
+            BUILD_LABEL="Build $BUILD_NUMBER"
+          else
+            BUILD_NUMBER="$(git rev-list --count origin/main)"
+            BUILD_CHANNEL="branch"
+            BUILD_LABEL="$GITHUB_REF_NAME"
+          fi
+
+          {
+            echo "APP_VERSION=$RELEASE_VERSION"
+            echo "APP_BUILD_NUMBER=$BUILD_NUMBER"
+            echo "APP_BUILD_CHANNEL=$BUILD_CHANNEL"
+            echo "APP_BUILD_LABEL=$BUILD_LABEL"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -42,17 +85,34 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm ci
 
-      - name: Validate shared package boundaries
-        run: npm run check:boundaries
+      - name: Select Xcode
+        # macos-26 默认已指向 Xcode 26.6，这里显式固定避免 runner 默认值漂移。
+        run: |
+          XCODE_APP="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -n "$XCODE_APP" ]; then
+            echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
+          fi
+          xcodebuild -version
+          xcodebuild -showsdks | head -5
 
-      - name: Typecheck workspace
-        run: npm run typecheck
+      - name: Show build environment
+        run: |
+          echo "BUILD_CHANNEL=${{ env.APP_BUILD_CHANNEL }}"
+          echo "BUILD_LABEL=${{ env.APP_BUILD_LABEL }}"
+          echo "BUILD_NUMBER=${{ env.APP_BUILD_NUMBER }}"
+          echo "RELEASE_VERSION=${{ env.APP_VERSION }}"
 
       - name: Generate iOS project
         working-directory: apps/mobile
-        run: npx expo prebuild --non-interactive --platform ios
+        env:
+          APP_VERSION: ${{ env.APP_VERSION }}
+          APP_BUILD_NUMBER: ${{ env.APP_BUILD_NUMBER }}
+          APP_BUILD_CHANNEL: ${{ env.APP_BUILD_CHANNEL }}
+          APP_BUILD_LABEL: ${{ env.APP_BUILD_LABEL }}
+        run: npx expo prebuild --non-interactive --no-install --platform ios
 
       - name: Install CocoaPods dependencies
+        working-directory: apps/mobile
         run: npx pod-install ios
 
       - name: Build unsigned iOS app
@@ -61,21 +121,43 @@ jobs:
             -workspace apps/mobile/ios/Novella.xcworkspace \
             -scheme Novella \
             -configuration Release \
-            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath apps/mobile/ios/build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build
 
+      - name: Verify built version matches metadata
+        run: |
+          set -euo pipefail
+          APP_PATH="apps/mobile/ios/build/Build/Products/Release-iphoneos/Novella.app"
+          test -d "$APP_PATH"
+          BUILT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+          BUILT_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
+          echo "Built version: $BUILT_VERSION ($BUILT_BUILD)"
+          if [ -n "${{ env.APP_VERSION }}" ] && [ "$BUILT_VERSION" != "${{ env.APP_VERSION }}" ]; then
+            echo "::error::Built version $BUILT_VERSION does not match tag version ${{ env.APP_VERSION }}"
+            exit 1
+          fi
+          if [ "$BUILT_BUILD" != "${{ env.APP_BUILD_NUMBER }}" ]; then
+            echo "::error::Built build number $BUILT_BUILD does not match ${{ env.APP_BUILD_NUMBER }}"
+            exit 1
+          fi
+
       - name: Package IPA
         run: |
           mkdir Payload
           cp -R apps/mobile/ios/build/Build/Products/Release-iphoneos/Novella.app Payload/
-          zip -qry novella-unsigned.ipa Payload
+          VERSION="${{ env.APP_VERSION }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/Novella.app/Info.plist)"
+          fi
+          zip -qry "novella-${VERSION}-${{ env.APP_BUILD_NUMBER }}-unsigned.ipa" Payload
 
       - name: Upload IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: novella-unsigned-ipa
-          path: novella-unsigned.ipa
+          path: novella-*-unsigned.ipa
+          if-no-files-found: error

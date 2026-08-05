@@ -7,8 +7,16 @@ import { NativeValueRow } from '@/components/native-setting-controls';
 
 const repositoryUrl = 'https://github.com/Kanscape/Novella';
 
+function displayVersion(): string {
+  const baseVersion = Constants.expoConfig?.version?.trim() ?? '';
+  if (!baseVersion) return '版本未知';
+
+  const buildLabel = Constants.expoConfig?.extra?.buildLabel?.trim() ?? '';
+  return buildLabel ? `${baseVersion} (${buildLabel})` : baseVersion;
+}
+
 export function AboutSettingsScreen() {
-  const version = Constants.expoConfig?.version ?? '2.0.0';
+  const version = displayVersion();
 
   return (
     <NativeGroupedList

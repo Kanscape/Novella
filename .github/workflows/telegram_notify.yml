@@ -183,12 +183,16 @@ jobs:
               "chat_id": os.environ["TELEGRAM_CHAT_ID"],
               "text": os.environ["MESSAGE_TEXT"],
               "parse_mode": "MarkdownV2",
-              "disable_web_page_preview": os.environ["DISABLE_WEB_PAGE_PREVIEW"] == "true",
+              "link_preview_options": {
+                  "is_disabled": os.environ["DISABLE_WEB_PAGE_PREVIEW"] == "true"
+              },
           }))
           PY
           )"
 
           curl --fail --show-error --silent \
+            --retry 3 \
+            --retry-all-errors \
             --request POST \
             --header "Content-Type: application/json" \
             --data "$payload" \
