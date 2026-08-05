@@ -4,7 +4,7 @@
 
 # 📚 Novella
 
-<a href="https://trendshift.io/repositories/22931" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22931" alt="Kanscape%2FNovella | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/22931?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-22931" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/22931" alt="Kanscape%2FNovella | Trendshift" width="250" height="55"/></a>
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![React Native](https://img.shields.io/badge/React%20Native-61DAFB?logo=react&logoColor=black)
