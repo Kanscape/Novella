@@ -13,6 +13,7 @@ import { filterBooksByContentSettings } from '@/services/content-filter';
 import {
   addSearchHistory,
   loadSearchHistory,
+  mergeSearchHistory,
   saveSearchHistory,
 } from '@/services/search-history';
 import { useAppSettings } from '@/services/settings';
@@ -57,7 +58,14 @@ export function useBookSearch() {
   useEffect(() => {
     let mounted = true;
     void loadSearchHistory().then((history) => {
-      if (mounted) setState((current) => ({ ...current, history }));
+      if (mounted) {
+        setState((current) => ({
+          ...current,
+          // The initial route query can be submitted before local history
+          // finishes loading. Merge instead of replacing the optimistic query.
+          history: mergeSearchHistory(current.history, history),
+        }));
+      }
     });
     return () => {
       mounted = false;
@@ -185,10 +193,7 @@ export function useBookSearch() {
     if (!normalized) return;
     const format = overrides.format ?? state.format;
     const mode = overrides.mode ?? state.mode;
-    const history = await addSearchHistory(state.history, normalized).catch(() => [
-      normalized,
-      ...state.history.filter((item) => item !== normalized),
-    ]);
+    const history = addSearchHistory(state.history, normalized);
     setState((current) => ({ ...current, history }));
     await run(normalized, format, mode, 1, false);
   }, [run, state.format, state.history, state.mode]);

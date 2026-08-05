@@ -98,6 +98,14 @@ function RootLayoutContent() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="settings" options={{ headerShown: false }} />
           <Stack.Screen name="book/[id]" options={{ title: '' }} />
+          <Stack.Screen
+            name="quick-search"
+            options={{
+              headerLargeTitle: !usesComposeBottomSheets,
+              headerShown: !usesComposeBottomSheets,
+              title: 'Search',
+            }}
+          />
           <Stack.Screen name="book/[id]/comments" options={{ headerShown: !usesComposeBottomSheets, title: 'Comments' }} />
           <Stack.Screen name="books" options={{ headerShown: !usesComposeBottomSheets, title: 'All novels' }} />
           <Stack.Screen name="comics" options={{ headerShown: !usesComposeBottomSheets, title: 'All comics' }} />

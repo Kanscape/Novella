@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import {
   ActivityIndicator,
   Pressable,
@@ -18,6 +19,12 @@ import {
 import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider';
 import { BookHtmlContent } from '@/components/book-html-content';
 import { ProfileAvatar } from '@/components/profile-avatar';
+import {
+  BOOK_SEARCH_ROUTE,
+  normalizeQuickSearchTags,
+  resolveTagQuickSearch,
+  toBookSearchRouteParams,
+} from '@/services/book-quick-search';
 import { useBookInfo } from '@/hooks/use-book-info';
 import type { BookDetailKind } from '@/hooks/use-book-detail';
 import type { BookDetailPalette } from '@/theme/book-detail-theme';
@@ -38,6 +45,17 @@ export function BookInfoSheetScreen({ bookId, kind, variant }: BookInfoSheetScre
     book?.coverUrl ?? null,
     book?.coverPlaceholder ?? null,
   );
+  const searchFormat = book?.type === 'Comic' || kind === 'Comic' ? 'Comic' : 'Novel';
+  const tags = book ? normalizeQuickSearchTags(book.classification.tags) : [];
+  const openTagSearch = (tag: string) => {
+    const searchTarget = resolveTagQuickSearch(tag);
+    if (searchTarget === null) return;
+
+    router.replace({
+      pathname: BOOK_SEARCH_ROUTE,
+      params: toBookSearchRouteParams(searchTarget, searchFormat),
+    });
+  };
 
   return (
     <ScrollView
@@ -70,26 +88,30 @@ export function BookInfoSheetScreen({ bookId, kind, variant }: BookInfoSheetScre
           </Pressable>
         </View>
       ) : null}
-      {book && variant === 'tags' ? (
+      {book && variant === 'tags' && tags.length > 0 ? (
         <View style={styles.sheetSection}>
           <View style={styles.sheetHeading}>
             <IconTag color={palette.primary} size={22} strokeWidth={2} />
             <Text style={[styles.sheetTitle, { color: palette.onSurface }]}>Book tags</Text>
           </View>
           <View style={styles.tags}>
-            {book.classification.tags.map((tag) => (
-              <View
+            {tags.map((tag) => (
+              <Pressable
+                accessibilityLabel={`Search for tag ${tag}`}
+                accessibilityRole="button"
                 key={tag}
-                style={[
+                onPress={() => openTagSearch(tag)}
+                style={({ pressed }) => [
                   styles.tag,
                   {
                     backgroundColor: palette.surfaceContainerHighest,
                     borderColor: palette.outlineVariant,
                   },
+                  pressed && styles.pressed,
                 ]}
               >
                 <Text style={[styles.tagLabel, { color: palette.onSurface }]}>{tag}</Text>
-              </View>
+              </Pressable>
             ))}
           </View>
         </View>

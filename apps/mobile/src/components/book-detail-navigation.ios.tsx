@@ -1,6 +1,7 @@
 import { Stack, router } from 'expo-router';
 
 import type { BookDetailNavigationProps } from '@/components/book-detail-navigation.types';
+import { hasSearchableQuickSearchTags } from '@/services/book-quick-search';
 
 const openVersions = (bookId: number, seriesTitle: string) => {
   router.push({
@@ -34,7 +35,7 @@ export function BookDetailNavigation({ book, palette, seriesTitle }: BookDetailN
       {book ? (
         <Stack.Toolbar placement="right">
           <Stack.Toolbar.Button
-            hidden={book.classification.tags.length === 0}
+            hidden={!hasSearchableQuickSearchTags(book.classification.tags)}
             icon="tag"
             tintColor={palette.primary}
             onPress={() =>

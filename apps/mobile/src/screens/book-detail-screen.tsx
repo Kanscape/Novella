@@ -11,6 +11,7 @@ import {
 import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -53,6 +54,12 @@ import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider
 import { BookHtmlContent } from '@/components/book-html-content';
 import { useBookDetail } from '@/hooks/use-book-detail';
 import { simplifyReaderChapterTitle } from '@/services/chapter-title';
+import {
+  BOOK_SEARCH_ROUTE,
+  resolveBookQuickSearch,
+  toBookSearchRouteParams,
+  type BookQuickSearchTarget,
+} from '@/services/book-quick-search';
 import { useAppSettings } from '@/services/settings';
 import type { BookDetailPalette } from '@/theme/book-detail-theme';
 
@@ -175,6 +182,20 @@ function BookDetailContent({
   const currentSortNum = getCurrentSortNum(book);
   const resumeChapter = currentSortNum ? book.chapters[currentSortNum - 1] : undefined;
   const settings = useAppSettings();
+  const searchFormat = book.type === 'Comic' || bookType === 'Comic' ? 'Comic' : 'Novel';
+  const titleSearchTarget = resolveBookQuickSearch(book, 'title', settings.seriesSearchMode);
+  const titleSearchAccessibilityLabel = titleSearchTarget?.mode === 'name'
+    ? `Search for series ${titleSearchTarget.query}`
+    : `Search for ${book.title.trim()}`;
+  const handleQuickSearch = useCallback((target: BookQuickSearchTarget) => {
+    const searchTarget = resolveBookQuickSearch(book, target, settings.seriesSearchMode);
+    if (searchTarget === null) return;
+
+    router.push({
+      pathname: BOOK_SEARCH_ROUTE,
+      params: toBookSearchRouteParams(searchTarget, searchFormat),
+    });
+  }, [book, searchFormat, settings.seriesSearchMode]);
   const cleanResumeTitle = resumeChapter
     ? book.type !== 'Comic' && settings.cleanChapterTitleScopes.includes('continueReading')
       ? simplifyReaderChapterTitle(resumeChapter.title)
@@ -222,7 +243,9 @@ function BookDetailContent({
               coverPlaceholder={coverPlaceholder}
               coverUrl={coverUrl}
               horizontalPadding={horizontalPadding}
+              onQuickSearch={handleQuickSearch}
               palette={palette}
+              titleSearchAccessibilityLabel={titleSearchAccessibilityLabel}
               scrollOffset={scrollOffset}
               topInset={topInset}
             />
@@ -385,7 +408,9 @@ function BookDetailContent({
           coverPlaceholder={coverPlaceholder}
           coverUrl={coverUrl}
           horizontalPadding={horizontalPadding}
+          onQuickSearch={handleQuickSearch}
           palette={palette}
+          titleSearchAccessibilityLabel={titleSearchAccessibilityLabel}
           scrollOffset={scrollOffset}
           topInset={topInset}
         />
@@ -399,16 +424,20 @@ function CollapsibleBookAppBar({
   coverPlaceholder,
   coverUrl,
   horizontalPadding,
+  onQuickSearch,
   palette,
   scrollOffset,
+  titleSearchAccessibilityLabel,
   topInset,
 }: {
   book: BookDetail;
   coverPlaceholder: string | null;
   coverUrl: string | null;
   horizontalPadding: number;
+  onQuickSearch: (target: BookQuickSearchTarget) => void;
   palette: BookDetailPalette;
   scrollOffset: SharedValue<number>;
+  titleSearchAccessibilityLabel: string;
   topInset: number;
 }) {
   const author = book.authorName?.trim() ?? '';
@@ -445,7 +474,7 @@ function CollapsibleBookAppBar({
 
   return (
     <Animated.View
-      pointerEvents="none"
+      pointerEvents="box-none"
       style={[
         styles.collapsibleAppBar,
         { backgroundColor: palette.surface, height: maxHeight },
@@ -453,6 +482,7 @@ function CollapsibleBookAppBar({
       ]}
     >
       <Animated.View
+        pointerEvents="box-none"
         style={[
           styles.flexibleAppBarBackground,
           { height: maxHeight },
@@ -466,7 +496,9 @@ function CollapsibleBookAppBar({
           coverUrl={coverUrl}
           height={maxHeight}
           horizontalPadding={horizontalPadding}
+          onQuickSearch={onQuickSearch}
           palette={palette}
+          titleSearchAccessibilityLabel={titleSearchAccessibilityLabel}
         />
       </Animated.View>
     </Animated.View>
@@ -478,16 +510,20 @@ function InlineBookHero({
   coverPlaceholder,
   coverUrl,
   horizontalPadding,
+  onQuickSearch,
   palette,
   scrollOffset,
+  titleSearchAccessibilityLabel,
   topInset,
 }: {
   book: BookDetail;
   coverPlaceholder: string | null;
   coverUrl: string | null;
   horizontalPadding: number;
+  onQuickSearch: (target: BookQuickSearchTarget) => void;
   palette: BookDetailPalette;
   scrollOffset: SharedValue<number>;
+  titleSearchAccessibilityLabel: string;
   topInset: number;
 }) {
   const author = book.authorName?.trim() ?? '';
@@ -523,7 +559,9 @@ function InlineBookHero({
           coverUrl={coverUrl}
           height={height}
           horizontalPadding={horizontalPadding}
+          onQuickSearch={onQuickSearch}
           palette={palette}
+          titleSearchAccessibilityLabel={titleSearchAccessibilityLabel}
         />
       </Animated.View>
     </View>
@@ -537,7 +575,9 @@ function BookHeroContent({
   coverUrl,
   height,
   horizontalPadding,
+  onQuickSearch,
   palette,
+  titleSearchAccessibilityLabel,
 }: {
   author: string;
   book: BookDetail;
@@ -545,11 +585,16 @@ function BookHeroContent({
   coverUrl: string | null;
   height: number;
   horizontalPadding: number;
+  onQuickSearch: (target: BookQuickSearchTarget) => void;
   palette: BookDetailPalette;
+  titleSearchAccessibilityLabel: string;
 }) {
+  const title = book.title.trim();
+
   return (
     <Surface
       elevation={0}
+      pointerEvents="box-none"
       style={[
         styles.hero,
         { backgroundColor: palette.surface, height },
@@ -557,12 +602,21 @@ function BookHeroContent({
     >
       {palette.gradientColors ? (
         <>
-          <View style={[StyleSheet.absoluteFill, heroGradientStyle(palette.gradientColors)]} />
-          <View style={[StyleSheet.absoluteFill, heroTransitionStyle(palette.headerTransitionColors)]} />
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, heroGradientStyle(palette.gradientColors)]}
+          />
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, heroTransitionStyle(palette.headerTransitionColors)]}
+          />
         </>
       ) : null}
-      <View style={[styles.heroContent, { left: horizontalPadding, right: horizontalPadding }]}>
-        <View style={styles.coverShadow}>
+      <View
+        pointerEvents="box-none"
+        style={[styles.heroContent, { left: horizontalPadding, right: horizontalPadding }]}
+      >
+        <View pointerEvents="none" style={styles.coverShadow}>
           <View style={styles.coverFrame}>
             {coverUrl ? (
               <BookCoverImage
@@ -577,22 +631,46 @@ function BookHeroContent({
             )}
           </View>
         </View>
-        <View style={styles.heroText}>
-          <Text
-            numberOfLines={4}
-            selectable
-            style={[styles.bookTitle, { color: palette.onSurface }]}
-          >
-            {book.title}
-          </Text>
-          {author ? (
-            <Text
-              numberOfLines={2}
-              selectable
-              style={[styles.author, { color: palette.onSurfaceVariant }]}
+        <View pointerEvents="box-none" style={styles.heroText}>
+          {title ? (
+            <Pressable
+              accessibilityLabel={titleSearchAccessibilityLabel}
+              accessibilityRole="button"
+              onPress={() => onQuickSearch('title')}
+              style={({ pressed }) => [styles.quickSearchTarget, pressed && styles.quickSearchPressed]}
             >
-              {author}
+              <Text
+                numberOfLines={4}
+                selectable
+                style={[styles.bookTitle, { color: palette.onSurface }]}
+              >
+                {book.title}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text
+              numberOfLines={4}
+              selectable
+              style={[styles.bookTitle, { color: palette.onSurface }]}
+            >
+              {book.title}
             </Text>
+          )}
+          {author ? (
+            <Pressable
+              accessibilityLabel={`Search for author ${author}`}
+              accessibilityRole="button"
+              onPress={() => onQuickSearch('author')}
+              style={({ pressed }) => [styles.quickSearchTarget, pressed && styles.quickSearchPressed]}
+            >
+              <Text
+                numberOfLines={2}
+                selectable
+                style={[styles.author, { color: palette.onSurfaceVariant }]}
+              >
+                {author}
+              </Text>
+            </Pressable>
           ) : null}
         </View>
       </View>
@@ -850,6 +928,8 @@ const styles = StyleSheet.create({
   introductionClipWithRuby: { maxHeight: 1000 },
   introductionPreview: { borderRadius: 8, paddingVertical: 4 },
   introductionSection: { gap: 8, paddingBottom: 24, paddingTop: 24 },
+  quickSearchPressed: { opacity: 0.72 },
+  quickSearchTarget: { borderRadius: 4 },
   loadingAction: { borderRadius: 16, height: 56, width: '100%' },
   loadingAuthor: { height: 15, width: '42%' },
   loadingBlock: { borderRadius: 8, overflow: 'hidden' },

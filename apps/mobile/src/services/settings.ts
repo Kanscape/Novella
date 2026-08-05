@@ -4,6 +4,10 @@ import type { RankPeriod } from '@novella/client-core';
 
 import { createExpoStorage } from '@/adapters/expo-runtime';
 import {
+  decodeSeriesSearchMode,
+  type SeriesSearchMode,
+} from '@/services/book-quick-search';
+import {
   DEFAULT_THEME_SEED,
   isMaterialSchemeVariant,
   isThemeSeed,
@@ -68,6 +72,7 @@ export interface AppSettings {
   readerSidePadding: number;
   readerViewMode: ReaderViewMode;
   seedColorValue: string;
+  seriesSearchMode: SeriesSearchMode;
   theme: ThemeMode;
   useSystemColor: boolean;
   convertType: TranslationMode;
@@ -95,6 +100,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   readerSidePadding: 30,
   readerViewMode: 'paged',
   seedColorValue: DEFAULT_THEME_SEED,
+  seriesSearchMode: 'system',
   theme: 'system',
   useSystemColor: process.env.EXPO_OS === 'android',
   convertType: 'none',
@@ -235,6 +241,7 @@ function decodeSettings(value: unknown): AppSettings {
     ...(candidate.readerViewMode === 'paged' || candidate.readerViewMode === 'scroll'
       ? { readerViewMode: candidate.readerViewMode }
       : {}),
+    seriesSearchMode: decodeSeriesSearchMode(candidate.seriesSearchMode),
     ...(isThemeSeed(candidate.seedColorValue)
       ? { seedColorValue: candidate.seedColorValue.toUpperCase() }
       : {}),

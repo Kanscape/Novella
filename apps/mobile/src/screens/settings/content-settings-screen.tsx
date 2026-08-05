@@ -6,6 +6,7 @@ import {
   NativeGroupedListSection,
 } from '@/components/native-grouped-list';
 import { NativePickerRow, NativeToggleRow } from '@/components/native-setting-controls';
+import { SERIES_SEARCH_MODE_OPTIONS } from '@/services/book-quick-search';
 import {
   RANK_PERIOD_OPTIONS,
   updateAppSettings,
@@ -54,6 +55,17 @@ export function ContentSettingsScreen() {
           onValueChange={(value) => void updateAppSettings({ ignoreLevel6: value })}
           title="Hide Level 6 content"
           value={settings.ignoreLevel6}
+        />
+      </NativeGroupedListSection>
+
+      <NativeGroupedListSection title="Search">
+        <NativePickerRow
+          description="Choose which series name detail-page quick search uses"
+          icon="search"
+          onValueChange={(value) => void updateAppSettings({ seriesSearchMode: value })}
+          options={SERIES_SEARCH_MODE_OPTIONS}
+          selectedValue={settings.seriesSearchMode}
+          title="Series search"
         />
       </NativeGroupedListSection>
 

@@ -8,6 +8,7 @@ import type { BookDetail } from '@novella/api-client';
 
 import { NativeSelectionMenu } from '../../modules/novella-ui';
 import type { BookDetailNavigationProps } from '@/components/book-detail-navigation.types';
+import { hasSearchableQuickSearchTags } from '@/services/book-quick-search';
 import { useAppColorScheme } from '@/theme/app-theme';
 
 const COMIC_MENU_ITEMS = [
@@ -24,7 +25,18 @@ export function BookDetailNavigation({ book, palette, seriesTitle }: BookDetailN
         headerStyle: { backgroundColor: 'transparent' },
         headerTintColor: palette.onSurface,
         headerTransparent: true,
-        ...(book ? { headerRight: () => <AndroidHeaderActions book={book} palette={palette} {...(seriesTitle === undefined ? {} : { seriesTitle })} showTags={book.classification.tags.length > 0} /> } : {}),
+        ...(book
+          ? {
+              headerRight: () => (
+                <AndroidHeaderActions
+                  book={book}
+                  palette={palette}
+                  {...(seriesTitle === undefined ? {} : { seriesTitle })}
+                  showTags={hasSearchableQuickSearchTags(book.classification.tags)}
+                />
+              ),
+            }
+          : {}),
         title: '',
       }}
     />

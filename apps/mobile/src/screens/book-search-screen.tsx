@@ -41,29 +41,37 @@ export interface BookSearchScreenProps {
   initialFormat?: BookSearchFormat;
   initialMode?: BookSearchMode;
   initialQuery?: string;
+  showBackButton?: boolean;
 }
 
 export function BookSearchScreen({
   initialFormat = 'Novel',
   initialMode = 'fuzzy',
   initialQuery = '',
+  showBackButton = false,
 }: BookSearchScreenProps) {
   const styles = useBookSearchScreenStyles();
   const { colors } = useAppTheme();
   const search = useBookSearch();
   const [query, setQuery] = useState(initialQuery);
   const submittedInitial = useRef(false);
+  const initialQueryValue = initialQuery.trim();
+  // A routed query exists before the hook's first effect can commit it. Keep
+  // the first frame in loading state instead of rendering a false empty page.
+  const initialSearchPending =
+    initialQueryValue !== '' && search.status === 'idle' && search.committedQuery === '';
+  const visibleStatus = initialSearchPending ? 'loading' : search.status;
   const { columns, contentWidth, height, tileWidth } = useBookGridLayout(16);
   const results = useMemo<SearchResult[]>(() => search.format === 'Novel'
     ? search.novels.map((item) => ({ key: `Novel:${item.id}`, kind: 'Novel', item }))
     : search.comics.map((item) => ({ key: `Comic:${item.title}`, kind: 'Comic', item })),
   [search.comics, search.format, search.novels]);
   const skeletonCount =
-    search.status === 'loading' && results.length === 0
+    visibleStatus === 'loading' && results.length === 0
       ? bookGridSkeletonCount({ columns, headerOffset: 200, height, tileWidth })
       : 0;
   const loadingMoreKeys =
-    search.status === 'loadingMore'
+    visibleStatus === 'loadingMore'
       ? bookGridLoadingMoreKeys(results.length, columns)
       : [];
   const data: (number | SearchResult)[] = [
@@ -76,8 +84,8 @@ export function BookSearchScreen({
     submittedInitial.current = true;
     if (initialFormat !== search.format) search.changeFormat(initialFormat);
     if (initialMode !== search.mode) search.changeMode(initialMode);
-    if (initialQuery.trim()) {
-      void search.submit(initialQuery, { format: initialFormat, mode: initialMode });
+    if (initialQueryValue) {
+      void search.submit(initialQueryValue, { format: initialFormat, mode: initialMode });
     }
   }, [initialFormat, initialMode, initialQuery, search]);
 
@@ -97,6 +105,7 @@ export function BookSearchScreen({
         },
       ]}
       largeTitle
+      {...(showBackButton ? { onBackPress: () => router.back() } : {})}
       onActionPress={(id) => {
         if (!id.startsWith('search-mode:')) return;
         const mode = id.slice('search-mode:'.length) as BookSearchMode;
@@ -104,16 +113,19 @@ export function BookSearchScreen({
           search.changeMode(mode);
         }
       }}
+      showBackButton={showBackButton}
       title="Search"
     >
       <FlatList
         ListEmptyComponent={
           <SearchEmpty
-            committedQuery={search.committedQuery}
+            committedQuery={
+              search.committedQuery || (initialSearchPending ? initialQueryValue : '')
+            }
             error={search.error}
             hasHistory={search.history.length > 0}
             onRetry={search.retry}
-            status={search.status}
+            status={visibleStatus}
           />
         }
         ListHeaderComponent={
@@ -131,7 +143,7 @@ export function BookSearchScreen({
               }}
               query={query}
             />
-            {search.status === 'idle' && search.history.length > 0 ? (
+            {visibleStatus === 'idle' && search.history.length > 0 ? (
               <View style={styles.historySection}>
                 <View style={styles.historyHeader}>
                   <Text style={styles.sectionTitle}>Recent searches</Text>
@@ -230,6 +242,7 @@ function SearchEmpty({
 }) {
   const styles = useBookSearchScreenStyles();
   const { colors } = useAppTheme();
+  if (status === 'loading' || status === 'loadingMore') return null;
   if (status === 'error') {
     return (
       <View style={styles.empty}>
