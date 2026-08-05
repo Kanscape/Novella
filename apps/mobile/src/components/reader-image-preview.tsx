@@ -17,7 +17,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { showAlert } from '@/components/native-alert-dialog';
@@ -45,6 +45,10 @@ export interface ReaderImagePreviewProps {
 /** Full-screen reader image preview with Flutter-equivalent actions and zoom. */
 export function ReaderImagePreview({ source, onClose }: ReaderImagePreviewProps) {
   const { width, height } = useWindowDimensions();
+  // Read the stable app-window inset before presenting the transparent Modal.
+  // A SafeAreaView inside the modal can receive transient window metrics on
+  // its first iOS presentation and place the buttons below the Dynamic Island.
+  const { top: topInset } = useSafeAreaInsets();
   const imageUri = resolveReaderImageUrl(source.uri);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -201,7 +205,10 @@ export function ReaderImagePreview({ source, onClose }: ReaderImagePreviewProps)
               ) : null}
             </Animated.View>
           </GestureDetector>
-          <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.toolbarSafeArea}>
+          <View
+            pointerEvents="box-none"
+            style={[styles.toolbarSafeArea, { top: topInset }]}
+          >
             <View style={styles.toolbar}>
               <PreviewActionButton
                 accessibilityLabel="分享图片"
@@ -221,7 +228,7 @@ export function ReaderImagePreview({ source, onClose }: ReaderImagePreviewProps)
                 {isSaving ? <ActivityIndicator color="#FFFFFF" size="small" /> : <IconDownload color="#FFFFFF" size={21} />}
               </PreviewActionButton>
             </View>
-          </SafeAreaView>
+          </View>
         </View>
       </GestureHandlerRootView>
     </Modal>
@@ -312,7 +319,6 @@ const styles = StyleSheet.create({
     left: 0,
     position: 'absolute',
     right: 0,
-    top: 0,
   },
   toolbar: {
     alignItems: 'center',
