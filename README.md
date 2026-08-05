@@ -1,43 +1,36 @@
-# Novella
+<p align="center">
+  <img src="assets/banner.png" alt="Novella banner" width="100%">
+</p>
 
-Novella is a third-party client for 轻书架.
+# 📚 Novella
 
-The repository is being rewritten from Flutter to a TypeScript workspace:
+<a href="https://trendshift.io/repositories/22931" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22931" alt="Kanscape%2FNovella | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
-- `apps/mobile`: React Native + Expo for Android and iOS.
-- `apps/site`: React static website.
-- `packages/*`: platform-neutral client core, protocol, sync, reader, and platform contracts.
-- `apps/desktop`: reserved for a future Electron + React desktop client.
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![React Native](https://img.shields.io/badge/React%20Native-61DAFB?logo=react&logoColor=black)
+![Expo](https://img.shields.io/badge/Expo-000020?logo=expo&logoColor=white)
+![License](https://img.shields.io/badge/License-AGPL%203.0-blue)
 
-The previous Flutter implementation is preserved on the `archive/flutter` branch.
+轻书架第三方客户端。
 
-## Development status
+本仓库正在从 Dart 迁移到 TypeScript：
 
-The React Native rewrite is under active development. The application contract and data formats remain compatible with the existing LightNovelShelf service unless a migration note documents a change.
+- `apps/mobile`：基于 React Native + Expo 的 Android 与 iOS 客户端。
+- `apps/site`：React 静态网站。
+- `packages/*`：与平台无关的客户端核心、协议。
 
-## Mobile development
+原有的 Flutter 实现保留在 `archive/flutter` 分支上。
 
-The mobile app uses a local Expo development build for Android and iOS. EAS and
-Expo Go are not part of the development workflow.
+## 开发状态
 
-```bash
-npm run prebuild --workspace @novella/mobile
-npm run android
-npm run ios
-npm run dev:mobile
-```
+React Native 重写正在积极开发中，欢迎向本仓库提交代码。功能开发清单见 [Issues](https://github.com/Kanscape/Novella/issues) 中的待办事项；如果你想做的功能不在清单中，请先在 [Discussions](https://github.com/Kanscape/Novella/discussions) 中讨论。
 
-Run Expo CLI commands from `apps/mobile`, not the workspace root. For example:
+## 移动端开发
 
-```bash
-cd apps/mobile
-npx expo start --dev-client --clear
-```
+移动端使用 Expo Development Build 开发，支持 Android 与 iOS。
 
-Starting Expo from the repository root makes Expo treat `novella-workspace` as
-the app and falls back to `expo/AppEntry`, which cannot resolve the mobile
-Expo Router entry.
+开发工作流（首次构建、日常开发、重新生成原生工程）与代码规范（原生设计、图标、组件泛用性）见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## License
+## 许可证
 
-AGPL-3.0. See [LICENSE](LICENSE).
+AGPL-3.0。参见 [LICENSE](LICENSE)。

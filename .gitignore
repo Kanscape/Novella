@@ -85,6 +85,7 @@ docs/
 .trellis/
 .agents/
 .codex/
+AGENTS.md
 /references/
 /.dart_tool/
 /.fvm/
