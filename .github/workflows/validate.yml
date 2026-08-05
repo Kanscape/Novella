@@ -1,4 +1,4 @@
-name: Validate Rewrite
+name: Validate
 
 on:
   workflow_dispatch:
