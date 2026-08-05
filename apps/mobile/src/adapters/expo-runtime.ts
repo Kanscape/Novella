@@ -146,10 +146,9 @@ export class ExpoHttpTransport implements HttpTransport {
     if (shouldAttachBackendIdentity(request.url)) {
       headers.set('User-Agent', this.#userAgent);
       headers.set('x-id', await this.#identity.getValue());
+      const token = await this.#credentials.get(SESSION_TOKEN_KEY);
+      if (token) headers.set('Authorization', `Bearer ${token}`);
     }
-
-    const token = await this.#credentials.get(SESSION_TOKEN_KEY);
-    if (token) headers.set('Authorization', `Bearer ${token}`);
 
     const requestTimeout = createRequestTimeout(request.signal);
     let response: Response;
@@ -166,7 +165,9 @@ export class ExpoHttpTransport implements HttpTransport {
       requestTimeout.dispose();
     }
 
-    const body = (await response.json().catch(() => undefined)) as T;
+    const body = (request.responseType === 'text'
+      ? await response.text()
+      : await response.json().catch(() => undefined)) as T;
     return {
       body,
       headers: Object.fromEntries(response.headers.entries()),

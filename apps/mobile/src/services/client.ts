@@ -7,8 +7,11 @@ import {
   createClientSessionController,
   createCommentsUseCase,
   createComicDetailUseCase,
+  createCommunitySpeechGuard,
+  createCommunityUseCase,
   createDiscoveryUseCase,
   createHistoryUseCase,
+  createNotificationsUseCase,
   createProfileUseCase,
   createReaderUseCase,
   createShelfUseCase,
@@ -17,17 +20,23 @@ import {
   type BookSearchUseCase,
   type CommentsUseCase,
   type ComicDetailUseCase,
+  type CommunitySpeechGuard,
+  type CommunityUseCase,
   type DiscoveryUseCase,
   type HistoryUseCase,
+  type NotificationsUseCase,
   type ProfileUseCase,
   type ReaderUseCase,
   type ShelfUseCase,
 } from '@novella/client-core';
 
 import {
+  createExpoStorage,
   ExpoAppLifecycle,
+  ExpoClock,
   ExpoCredentialStore,
   ExpoHttpTransport,
+  ExpoLogger,
   ExpoPasswordHasher,
   ExpoRequestIdentity,
   ExpoSignalRTransport,
@@ -38,6 +47,8 @@ const requestIdentity = new ExpoRequestIdentity(credentials);
 const http = new ExpoHttpTransport(credentials, requestIdentity);
 const signalR = new ExpoSignalRTransport(credentials, requestIdentity);
 const lifecycle = new ExpoAppLifecycle();
+const storage = createExpoStorage();
+const passwordHasher = new ExpoPasswordHasher();
 let authentication: AuthenticationUseCase;
 const session = createClientSessionController({
   bootstrapAuthentication: () => authentication.bootstrap(),
@@ -54,18 +65,30 @@ export const bookDetails: BookDetailUseCase = createBookDetailUseCase(api);
 export const comicDetails: ComicDetailUseCase = createComicDetailUseCase(api);
 export const bookSearch: BookSearchUseCase = createBookSearchUseCase(api);
 export const comments: CommentsUseCase = createCommentsUseCase(api);
+export const communitySpeechGuard: CommunitySpeechGuard = createCommunitySpeechGuard({
+  clock: new ExpoClock(),
+  hasher: passwordHasher,
+  http,
+  logger: new ExpoLogger(),
+  storage,
+});
+export const community: CommunityUseCase = createCommunityUseCase(
+  api,
+  communitySpeechGuard,
+);
+export const notifications: NotificationsUseCase = createNotificationsUseCase(api);
 export const history: HistoryUseCase = createHistoryUseCase(api);
 export const profile: ProfileUseCase = createProfileUseCase(api);
 export const reader: ReaderUseCase = createReaderUseCase(api);
 export const shelf: ShelfUseCase = createShelfUseCase(api);
 authentication = createAuthenticationUseCase(
   api,
-  new ExpoPasswordHasher(),
+  passwordHasher,
   credentials,
   signalR,
 );
 
-export { authentication };
+export { authentication, storage };
 
 /**
  * Local-only probe of whether a session was ever stored. Resolves fast (no

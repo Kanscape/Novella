@@ -9,16 +9,20 @@ import {
 } from 'react-native';
 
 import { showAlert } from '@/components/native-alert-dialog';
-import { IconArrowBackUp, IconMessage, IconRefresh, IconTrash } from '@tabler/icons-react-native';
+import { IconMessage, IconRefresh } from '@tabler/icons-react-native';
 import { PaperProvider } from 'react-native-paper';
 import { Skeleton } from 'heroui-native';
 
-import type { CommentItem, CommentReply, CommentUser } from '@novella/api-client';
+import type { CommentItem, CommentReply } from '@novella/api-client';
 
 import { BookCommentsNavigation } from '@/components/book-comments-navigation';
+import {
+  CommentThreadChildren,
+  CommentThreadRow,
+  type CommentThreadPalette,
+} from '@/components/comment-thread';
 import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider';
 import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
-import { ProfileAvatar } from '@/components/profile-avatar';
 import { useComments } from '@/hooks/use-comments';
 import { consumeCommentsChanged } from '@/services/comment-events';
 import type { BookDetailPalette } from '@/theme/book-detail-theme';
@@ -35,6 +39,7 @@ interface ReplyTarget {
 export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
   const detailTheme = useBookDetailRouteTheme(bookId, null, null, true);
   const { palette } = detailTheme;
+  const commentPalette = toCommentThreadPalette(palette);
   const {
     deleteComment,
     error,
@@ -161,7 +166,7 @@ export function BookCommentsScreen({ bookId }: BookCommentsScreenProps) {
                 item={item}
                 onDelete={confirmDelete}
                 onReply={openComposer}
-                palette={palette}
+                palette={commentPalette}
               />
             )}
             showsVerticalScrollIndicator={false}
@@ -223,31 +228,23 @@ function CommentRow({
   item: CommentItem;
   onDelete: (id: number) => void;
   onReply: (target: ReplyTarget) => void;
-  palette: BookDetailPalette;
+  palette: CommentThreadPalette;
 }) {
   return (
     <View style={styles.commentBlock}>
-      <View style={styles.commentRow}>
-        <Avatar palette={palette} size={40} user={item.user} />
-        <View style={styles.commentBody}>
-          <Text style={[styles.userName, { color: palette.onSurface }]}>
-            {item.user.userName}
-          </Text>
-          <Text selectable style={[styles.commentText, { color: palette.onSurface }]}>
-            {item.content.trim()}
-          </Text>
-          <CommentActions
-            canDelete={item.canEdit}
-            createdAt={item.createdAt}
-            onDelete={() => onDelete(item.id)}
-            onReply={() => onReply({ parentId: item.id, userName: item.user.userName })}
-            palette={palette}
-            variant="comment"
-          />
-        </View>
-      </View>
+      <CommentThreadRow
+        avatarUrl={item.user.avatarUrl}
+        canDelete={item.canEdit}
+        canReply
+        content={item.content}
+        createdAtLabel={formatRelativeTime(item.createdAt)}
+        onDelete={() => onDelete(item.id)}
+        onReply={() => onReply({ parentId: item.id, userName: item.user.userName })}
+        palette={palette}
+        userName={item.user.userName}
+      />
       {item.replies.length > 0 ? (
-        <View style={[styles.replies, { borderLeftColor: palette.outlineVariant }]}>
+        <CommentThreadChildren palette={palette}>
           {item.replies.map((reply) => (
             <ReplyRow
               key={reply.id}
@@ -258,7 +255,7 @@ function CommentRow({
               reply={reply}
             />
           ))}
-        </View>
+        </CommentThreadChildren>
       ) : null}
     </View>
   );
@@ -274,115 +271,36 @@ function ReplyRow({
   onDelete: (id: number) => void;
   onReply: (target: ReplyTarget) => void;
   parentId: number;
-  palette: BookDetailPalette;
+  palette: CommentThreadPalette;
   reply: CommentReply;
 }) {
   return (
-    <View style={styles.replyRow}>
-      <View style={styles.replyIdentity}>
-        <Avatar palette={palette} size={24} user={reply.user} />
-        <Text style={[styles.replyIdentityText, { color: palette.onSurface }]}>
-          <Text style={[styles.replyName, { color: palette.onSurface }]}>
-            {reply.user.userName}
-          </Text>
-          {reply.replyToUser ? (
-            <>
-              <Text style={[styles.replyConnector, { color: palette.onSurfaceVariant }]}> replied to </Text>
-              <Text style={[styles.replyName, { color: palette.onSurface }]}>
-                {reply.replyToUser.userName}
-              </Text>
-            </>
-          ) : null}
-        </Text>
-      </View>
-      <Text selectable style={[styles.commentText, { color: palette.onSurface }]}>
-        {reply.content.trim()}
-      </Text>
-      <CommentActions
-        canDelete={reply.canEdit}
-        createdAt={reply.createdAt}
-        onDelete={() => onDelete(reply.id)}
-        onReply={() =>
-          onReply({ parentId, replyId: reply.id, userName: reply.user.userName })
-        }
-        palette={palette}
-        variant="reply"
-      />
-    </View>
-  );
-}
-
-function CommentActions({
-  canDelete,
-  createdAt,
-  onDelete,
-  onReply,
-  palette,
-  variant,
-}: {
-  canDelete: boolean;
-  createdAt: string;
-  onDelete: () => void;
-  onReply: () => void;
-  palette: BookDetailPalette;
-  variant: 'comment' | 'reply';
-}) {
-  const iconSize = variant === 'comment' ? 18 : 16;
-  return (
-    <View style={styles.commentActions}>
-      <Text style={[
-        styles.timestamp,
-        { color: palette.onSurfaceVariant },
-        variant === 'reply' && styles.replyTimestamp,
-      ]}>
-        {formatRelativeTime(createdAt)}
-      </Text>
-      <View style={styles.actionButtons}>
-        <Pressable
-          accessibilityLabel="Reply"
-          accessibilityRole="button"
-          onPress={onReply}
-          style={({ pressed }) => [styles.smallAction, pressed && styles.pressed]}
-        >
-          <IconArrowBackUp
-            color={palette.onSurfaceVariant}
-            size={iconSize}
-            strokeWidth={2}
-          />
-        </Pressable>
-        {canDelete ? (
-          <Pressable
-            accessibilityLabel="Delete comment"
-            accessibilityRole="button"
-            onPress={onDelete}
-            style={({ pressed }) => [styles.smallAction, pressed && styles.pressed]}
-          >
-            <IconTrash color={palette.error} size={iconSize} strokeWidth={2} />
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-function Avatar({
-  palette,
-  size,
-  user,
-}: {
-  palette: BookDetailPalette;
-  size: number;
-  user: CommentUser;
-}) {
-  return (
-    <ProfileAvatar
-      avatarUrl={user.avatarUrl}
-      fallbackBackground={palette.surfaceContainerHighest}
-      fallbackColor={palette.onSurface}
-      size={size}
-      userName={user.userName}
+    <CommentThreadRow
+      avatarUrl={reply.user.avatarUrl}
+      canDelete={reply.canEdit}
+      canReply
+      content={reply.content}
+      createdAtLabel={formatRelativeTime(reply.createdAt)}
+      onDelete={() => onDelete(reply.id)}
+      onReply={() => onReply({ parentId, replyId: reply.id, userName: reply.user.userName })}
+      palette={palette}
+      replyToName={reply.replyToUser?.userName ?? null}
+      userName={reply.user.userName}
+      variant="reply"
     />
   );
+}
+
+function toCommentThreadPalette(palette: BookDetailPalette): CommentThreadPalette {
+  return {
+    accent: palette.primary,
+    error: palette.error,
+    highlightBackground: palette.primaryContainer,
+    label: palette.onSurface,
+    onSurfaceVariant: palette.onSurfaceVariant,
+    separator: palette.outlineVariant,
+    surfaceContainerHighest: palette.surfaceContainerHighest,
+  };
 }
 
 function formatRelativeTime(value: string): string {
@@ -401,12 +319,7 @@ function formatRelativeTime(value: string): string {
 }
 
 const styles = StyleSheet.create({
-  actionButtons: { alignItems: 'center', flexDirection: 'row', gap: 8 },
-  commentActions: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 32 },
   commentBlock: { paddingBottom: 8 },
-  commentBody: { flex: 1, gap: 4 },
-  commentRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 16, paddingHorizontal: 16, paddingVertical: 8 },
-  commentText: { fontSize: 14, lineHeight: 19 },
   content: { gap: 8, paddingBottom: 48, paddingTop: 8 },
   emptyState: { alignItems: 'center', gap: 12, paddingHorizontal: 32, paddingVertical: 64 },
   emptyText: { fontSize: 15, textAlign: 'center' },
@@ -416,22 +329,13 @@ const styles = StyleSheet.create({
   inlineButton: { alignItems: 'center', flexDirection: 'row', gap: 6, padding: 6 },
   inlineButtonLabel: { fontSize: 14, fontWeight: '600' },
   pressed: { opacity: 0.68 },
-  replies: { borderLeftWidth: 2, gap: 12, marginBottom: 8, marginLeft: 72, marginRight: 16, paddingLeft: 12 },
-  replyConnector: { fontWeight: '400' },
-  replyIdentity: { alignItems: 'center', flexDirection: 'row', gap: 8 },
+  root: { flex: 1 },
   skeletonAction: { height: 11, marginTop: 4, width: '32%' },
-  skeletonAvatar: { borderRadius: 20, height: 40, overflow: 'hidden', width: 40 },  skeletonBody: { flex: 1, gap: 7, paddingTop: 3 },
+  skeletonAvatar: { borderRadius: 20, height: 40, overflow: 'hidden', width: 40 },
+  skeletonBody: { flex: 1, gap: 7, paddingTop: 3 },
   skeletonLine: { borderRadius: 6, height: 13, overflow: 'hidden', width: '100%' },
   skeletonList: { gap: 22, paddingHorizontal: 16, paddingTop: 8 },
   skeletonName: { height: 12, width: '42%' },
   skeletonRow: { flexDirection: 'row', gap: 16 },
   skeletonTextShort: { width: '72%' },
-  replyIdentityText: { flex: 1, fontSize: 12, lineHeight: 16 },
-  replyName: { fontWeight: '700' },
-  replyRow: { gap: 4 },
-  replyTimestamp: { fontSize: 10 },
-  root: { flex: 1 },
-  smallAction: { alignItems: 'center', height: 32, justifyContent: 'center', minWidth: 32, paddingHorizontal: 5 },
-  timestamp: { fontSize: 12 },
-  userName: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
 });

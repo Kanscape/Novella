@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 
 export interface NativeRouteBottomSheetProps {
-  bookId: number;
+  /** Book context for themed sheets; optional for sheets without a book. */
+  bookId?: number;
   children: ReactNode;
   snapPoints?: (number | string)[];
 }

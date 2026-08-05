@@ -7,6 +7,7 @@ import {
   useMemo,
 } from 'react';
 import { StyleSheet, useColorScheme } from 'react-native';
+import type { ColorValue } from 'react-native';
 
 import { usePlatformAppColors } from '@/hooks/use-platform-app-colors';
 import { useAppSettings } from '@/services/settings';
@@ -42,6 +43,28 @@ export function AppThemeProvider({ children }: PropsWithChildren) {
     Uniwind.setTheme(settings.theme);
   }, [settings.theme]);
 
+  // Keep HeroUI Native's semantic color tokens driven by the app theme so
+  // its components (chips, inputs, skeletons, …) use the same accent as
+  // everything else instead of the library default blue. iOS exposes the
+  // accent as an opaque PlatformColor (systemPink, stable in both
+  // appearances); Android exposes it as an `#RRGGBBAA` Material primary.
+  useLayoutEffect(() => {
+    const accentHex = resolveThemeAccentHex(colors.accent);
+    const white = '#FFFFFF';
+    const theme = colorScheme === 'dark' ? 'dark' : 'light';
+    Uniwind.updateCSSVariables(theme, {
+      '--accent': accentHex,
+      '--accent-foreground': white,
+      '--color-accent': accentHex,
+      '--color-accent-foreground': white,
+      '--focus': accentHex,
+      '--color-focus': accentHex,
+      '--color-accent-soft': `${accentHex}26`,
+      '--color-accent-soft-hover': `${accentHex}33`,
+      '--color-accent-soft-foreground': accentHex,
+    });
+  }, [colorScheme, colors.accent]);
+
   const value = useMemo<AppThemeContextValue>(
     () => ({ colorScheme, colors, isOledDark }),
     [colorScheme, colors, isOledDark],
@@ -58,6 +81,35 @@ export function useAppTheme(): AppThemeContextValue {
 
 export function useAppColorScheme(): AppColorScheme {
   return useAppTheme().colorScheme;
+}
+
+/**
+ * Resolve the app accent to a color paper/color-parsing libraries accept.
+ * Android exposes `colors.accent` as an `#RRGGBBAA` hex string; iOS exposes
+ * a PlatformColor object (systemPink) that string-based parsers can't
+ * resolve, so it maps to systemPink's stable hex (`#FF375F`, identical in
+ * both appearances). Any literal string passes through unchanged.
+ */
+export function resolveAccentHex(accent: ColorValue): string {
+  return typeof accent === 'string' ? accent : '#FF375F';
+}
+
+/**
+ * Pick a readable foreground for the accent (paper's `onPrimary` role).
+ * Uses simple relative-luminance weighting; falls back to white for
+ * non-hex colors. Handles `#RRGGBBAA` (Android Material) by ignoring alpha.
+ */
+export function resolveOnAccentHex(accent: ColorValue): string {
+  const hex = resolveAccentHex(accent);
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return '#FFFFFF';
+  return 0.299 * r + 0.587 * g + 0.114 * b > 186 ? '#000000' : '#FFFFFF';
+}
+
+function resolveThemeAccentHex(accent: ColorValue): string {
+  return resolveAccentHex(accent);
 }
 
 export function createThemedStyles<T extends StyleSheet.NamedStyles<T>>(

@@ -19,6 +19,7 @@ export type NativeTopAppBarAction = {
   enabled?: boolean;
   icon:
     | 'adjustmentsHorizontal'
+    | 'bell'
     | 'check'
     | 'dots'
     | 'folderPlus'

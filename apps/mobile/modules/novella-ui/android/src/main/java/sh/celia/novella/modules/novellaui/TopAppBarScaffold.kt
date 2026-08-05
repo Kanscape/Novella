@@ -40,6 +40,7 @@ data class BackPressedEvent(
 
 enum class TopAppBarActionIcon(val value: String) : Enumerable {
   ADJUSTMENTS_HORIZONTAL("adjustmentsHorizontal"),
+  BELL("bell"),
   CHECK("check"),
   DOTS("dots"),
   FOLDER_PLUS("folderPlus"),
@@ -51,6 +52,7 @@ enum class TopAppBarActionIcon(val value: String) : Enumerable {
   val resourceId: Int
     get() = when (this) {
       ADJUSTMENTS_HORIZONTAL -> R.drawable.ic_tabler_adjustments_horizontal_24
+      BELL -> R.drawable.ic_tabler_bell_24
       CHECK -> R.drawable.ic_tabler_check_24
       DOTS -> R.drawable.ic_tabler_dots_24
       FOLDER_PLUS -> R.drawable.ic_tabler_folder_plus_24

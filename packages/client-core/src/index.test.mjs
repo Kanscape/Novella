@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import {
+  COMMUNITY_STORAGE_KEYS,
+  CommunitySpeechBlockedError,
+  CommunitySpeechRulesUnavailableError,
   createBookSearchUseCase,
   createClientSessionController,
+  createCommunitySpeechGuard,
+  createCommunityUseCase,
   createDiscoveryUseCase,
   createHistoryUseCase,
+  createNotificationsUseCase,
   createProfileUseCase,
   createReaderUseCase,
   createShelfDraft,
@@ -16,6 +23,7 @@ import {
   getShelfItemsAtPath,
   getShelfSelectionBookCount,
   moveShelfBooks,
+  normalizeCommunitySpeechText,
   parseAvatarSource,
   removeShelfItems,
   renameShelfFolder,
@@ -637,6 +645,284 @@ test('shelf draft rejects cross-container and incomplete reorder operations', ()
     now: 'b',
   }), /destination folder/i);
 });
+
+test('Community use case validates input, forwards cancellation, and gates speech mutations', async () => {
+  const calls = [];
+  const guardChecks = [];
+  const signal = new AbortController().signal;
+  const api = {
+    getCommunityHome(query, options) {
+      calls.push(['home', query, options]);
+      return Promise.resolve({ feed: [] });
+    },
+    getCommunityFeed(query, options) {
+      calls.push(['feed', query, options]);
+      return Promise.resolve({ feed: [] });
+    },
+    getCommunityThread(request, options) {
+      calls.push(['thread', request, options]);
+      return Promise.resolve(null);
+    },
+    getCommunityReplyChildren(request, options) {
+      calls.push(['children', request, options]);
+      return Promise.resolve({ items: [] });
+    },
+    getMyCommunityOverview(options) {
+      calls.push(['mine', options]);
+      return Promise.resolve({ publishedThreads: [] });
+    },
+    createCommunityThread(request) {
+      calls.push(['createThread', request]);
+      return Promise.resolve({ id: 5 });
+    },
+    createCommunityReply(request) {
+      calls.push(['createReply', request]);
+      return Promise.resolve({ id: 6 });
+    },
+    toggleCommunityThreadLike(id) {
+      calls.push(['threadLike', id]);
+      return Promise.resolve({ liked: true, likes: 1 });
+    },
+    toggleCommunityThreadFavorite(id) {
+      calls.push(['threadFavorite', id]);
+      return Promise.resolve({ favorited: true, favorites: 1 });
+    },
+    toggleCommunityReplyLike(id) {
+      calls.push(['replyLike', id]);
+      return Promise.resolve({ liked: true, likes: 1 });
+    },
+  };
+  const guard = {
+    async check(fields) {
+      guardChecks.push(fields);
+      return { type: 'allowed', revision: 1 };
+    },
+    getSnapshot() { return false; },
+    async isSpeechDisabled() { return false; },
+    subscribe() { return () => undefined; },
+  };
+  const useCase = createCommunityUseCase(api, guard);
+
+  await useCase.loadHome({ page: 1, size: 6 }, signal);
+  await useCase.loadFeed({ order: 'reply' }, signal);
+  await useCase.loadThread({ threadId: 3, replyPage: 1 }, signal);
+  await useCase.loadReplyChildren({ threadId: 3, parentReplyId: 4 }, signal);
+  await useCase.loadMyOverview(signal);
+  await useCase.createThread({
+    boardKey: ' general ',
+    subCategoryKey: ' news ',
+    title: '  Valid title  ',
+    contentText: '  This body is definitely long enough.  ',
+    contentHtml: '  <p>This body is definitely long enough.</p>  ',
+  });
+  await useCase.createReply({ threadId: 3, content: '  reply  ', replyToId: 4 });
+  await useCase.toggleThreadLike(3);
+  await useCase.toggleThreadFavorite(3);
+  await useCase.toggleReplyLike(4);
+
+  assert.equal(calls[0][2].signal, signal);
+  assert.equal(calls[2][2].signal, signal);
+  assert.deepEqual(calls[5][1], {
+    boardKey: 'general',
+    subCategoryKey: 'news',
+    title: 'Valid title',
+    contentHtml: '<p>This body is definitely long enough.</p>',
+  });
+  assert.deepEqual(calls[6][1], { threadId: 3, content: 'reply', replyToId: 4 });
+  assert.deepEqual(guardChecks, [[
+    { scope: 'threadTitle', text: 'Valid title' },
+    { scope: 'threadBody', text: 'This body is definitely long enough.' },
+  ], [
+    { scope: 'reply', text: 'reply' },
+  ]]);
+  assert.throws(() => useCase.loadThread({ threadId: 0 }), /valid Community thread id/i);
+  await assert.rejects(() => useCase.createThread({
+    boardKey: 'all',
+    title: 'short',
+    contentText: 'too short',
+    contentHtml: '<p>too short</p>',
+  }), /select a Community board/i);
+});
+
+test('notifications use case normalizes ids and validates paging', async () => {
+  const calls = [];
+  const useCase = createNotificationsUseCase({
+    getNotifications(request, options) {
+      calls.push(['load', request, options]);
+      return Promise.resolve({ page: 1, totalPages: 0, items: [] });
+    },
+    markNotifications(ids) {
+      calls.push(['mark', ids]);
+      return Promise.resolve();
+    },
+  });
+  const signal = new AbortController().signal;
+
+  await useCase.load({ page: 1, size: 20 }, signal);
+  await useCase.mark([4, 4, 5]);
+  await useCase.mark([]);
+  assert.equal(calls[0][2].signal, signal);
+  assert.deepEqual(calls.slice(1), [['mark', [4, 5]]]);
+  assert.throws(() => useCase.load({ page: 0 }), /valid notification page/i);
+  assert.throws(() => useCase.mark([0]), /valid notification id/i);
+});
+
+test('Community moderation normalizes width and punctuation, caches rules, and permanently disables speech', async () => {
+  assert.equal(normalizeCommunitySpeechText('Ｓｏｆｔ－ＷＡＲＥ！'), 'soft-ware'.replace('-', ''));
+  const rules = {
+    schemaVersion: 1,
+    revision: 2026071801,
+    normalization: 'compact-v1',
+    publishedAt: '2026-07-18T00:00:00Z',
+    rules: [{
+      id: 'request-upload-or-send',
+      scopes: ['threadTitle', 'threadBody', 'reply'],
+      clauses: [{ anyOf: ['求'] }, { anyOf: ['上传', '发'] }],
+    }],
+  };
+  const harness = createModerationHarness(rules);
+  const guard = createCommunitySpeechGuard(harness.dependencies);
+  const published = [];
+  guard.subscribe((disabled) => published.push(disabled));
+
+  assert.deepEqual(await guard.check([{ scope: 'reply', text: '普通讨论' }]), {
+    type: 'allowed',
+    revision: 2026071801,
+  });
+  assert.equal(harness.requests.length, 2);
+  assert.ok(harness.storage.values.has(COMMUNITY_STORAGE_KEYS.moderationRulesCache));
+
+  assert.deepEqual(await guard.check([{ scope: 'reply', text: '求！！！　发' }]), {
+    type: 'blocked',
+    revision: 2026071801,
+  });
+  assert.equal(guard.getSnapshot(), true);
+  assert.deepEqual(published, [true]);
+  assert.equal(harness.storage.values.get(COMMUNITY_STORAGE_KEYS.speechDisabled), 'true');
+  const metadata = JSON.parse(
+    harness.storage.values.get(COMMUNITY_STORAGE_KEYS.speechDisabledMetadata),
+  );
+  assert.equal(metadata.ruleId, 'request-upload-or-send');
+  assert.equal(JSON.stringify(metadata).includes('求'), false);
+  assert.deepEqual(await guard.check([{ scope: 'reply', text: 'anything' }]), {
+    type: 'alreadyDisabled',
+  });
+  assert.equal(harness.requests.length, 2);
+});
+
+test('Community moderation reuses a valid digest-checked cache without network', async () => {
+  const rules = {
+    schemaVersion: 1,
+    revision: 2,
+    normalization: 'compact-v1',
+    publishedAt: '2026-07-18T00:00:00Z',
+    rules: [{ id: 'software', scopes: ['reply'], clauses: [{ anyOf: ['软件'] }] }],
+  };
+  const first = createModerationHarness(rules);
+  const firstGuard = createCommunitySpeechGuard(first.dependencies);
+  assert.equal((await firstGuard.check([{ scope: 'reply', text: 'hello' }])).type, 'allowed');
+
+  const secondRequests = [];
+  const secondGuard = createCommunitySpeechGuard({
+    ...first.dependencies,
+    clock: { now: () => new Date('2026-08-04T00:30:00.000Z') },
+    http: {
+      async request(request) {
+        secondRequests.push(request);
+        throw new Error('network should not be used');
+      },
+    },
+  });
+  assert.deepEqual(await secondGuard.check([{ scope: 'reply', text: 'hello' }]), {
+    type: 'allowed',
+    revision: 2,
+  });
+  assert.deepEqual(secondRequests, []);
+});
+
+test('Community mutations fail closed when moderation rules cannot be verified', async () => {
+  const rules = {
+    schemaVersion: 1,
+    revision: 3,
+    normalization: 'compact-v1',
+    publishedAt: '2026-07-18T00:00:00Z',
+    rules: [{ id: 'software', scopes: ['reply'], clauses: [{ anyOf: ['软件'] }] }],
+  };
+  const harness = createModerationHarness(rules, { digest: '0'.repeat(64) });
+  const guard = createCommunitySpeechGuard(harness.dependencies);
+  const decision = await guard.check([{ scope: 'reply', text: 'hello' }]);
+  assert.equal(decision.type, 'rulesUnavailable');
+  assert.ok(decision.error instanceof CommunitySpeechRulesUnavailableError);
+  assert.equal(harness.storage.values.has(COMMUNITY_STORAGE_KEYS.speechDisabled), false);
+
+  const useCase = createCommunityUseCase({
+    createCommunityReply() {
+      throw new Error('must not reach API');
+    },
+  }, guard);
+  await assert.rejects(
+    () => useCase.createReply({ threadId: 1, content: 'hello' }),
+    CommunitySpeechRulesUnavailableError,
+  );
+
+  const blockedUseCase = createCommunityUseCase({}, {
+    async check() { return { type: 'alreadyDisabled' }; },
+    getSnapshot() { return true; },
+    async isSpeechDisabled() { return true; },
+    subscribe() { return () => undefined; },
+  });
+  await assert.rejects(
+    () => blockedUseCase.createReply({ threadId: 1, content: 'hello' }),
+    CommunitySpeechBlockedError,
+  );
+});
+
+function createModerationHarness(rules, overrides = {}) {
+  const rulesText = JSON.stringify(rules);
+  const digest = overrides.digest ?? createHash('sha256').update(rulesText).digest('hex');
+  const manifest = JSON.stringify({
+    schemaVersion: 1,
+    revision: rules.revision,
+    rulesPath: 'rules.json',
+    sha256: digest,
+    size: Buffer.byteLength(rulesText, 'utf8'),
+    cacheMaxAgeSeconds: 21_600,
+  });
+  const requests = [];
+  const storage = {
+    values: new Map(),
+    async get(key) { return this.values.get(key) ?? null; },
+    async set(key, value) { this.values.set(key, value); },
+    async delete(key) { this.values.delete(key); },
+  };
+  const dependencies = {
+    clock: { now: () => new Date('2026-08-04T00:00:00.000Z') },
+    storage,
+    hasher: {
+      async sha256(value) {
+        return createHash('sha256').update(value).digest('hex');
+      },
+    },
+    logger: {
+      debug() {},
+      error() {},
+      info() {},
+      warn() {},
+    },
+    http: {
+      async request(request) {
+        requests.push(request);
+        return {
+          status: 200,
+          headers: {},
+          body: request.url.endsWith('/manifest.json') ? manifest : rulesText,
+        };
+      },
+    },
+    manifestUrl: 'https://example.com/community/manifest.json',
+  };
+  return { dependencies, requests, storage };
+}
 
 function deferred() {
   let resolve;

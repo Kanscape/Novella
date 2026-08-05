@@ -32,6 +32,7 @@
     "heroui-native": "^1.0.8",
     "react": "19.2.3",
     "react-native": "0.86.2",
+    "react-native-enriched-html": "1.1.0",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-paper": "^5.15.3",
     "react-native-reanimated": "4.5.1",
@@ -59,6 +60,7 @@
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "start": "expo start --dev-client",
+    "test:community": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test src/services/community-utils.test.mjs src/services/community-board-icon-keys.test.mjs",
     "test:shelf": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test src/services/shelf-grid-reorder.test.mjs src/services/book-grid-layout.test.mjs src/services/chapter-title.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },

@@ -6,9 +6,12 @@ import {
   RateLimitRequestScheduler,
   REQUEST_RATE_LIMIT,
   RequestCancelledError,
+  decodeAppNotificationPage,
   decodeBookDetail,
   decodeComicContent,
   decodeComicInfo,
+  decodeCommunityHome,
+  decodeCommunityThread,
   decodeUserProfile,
   extractBlurHashPlaceholder,
   normalizeBlurHash,
@@ -558,3 +561,221 @@ test('retries one SignalR NoToken failure and schedules each physical attempt', 
   assert.equal(invokeCalls, 2);
   assert.deepEqual(sleeps, [10]);
 });
+
+test('decodes Community home, nested replies, nullable metadata, and missing threads', () => {
+  const item = communityFeedItem({
+    SubCategoryKey: '',
+    SubCategoryLabel: null,
+    AuthorName: '',
+    AuthorIsDeleted: true,
+    PublishedAt: '',
+  });
+  const home = decodeCommunityHome({
+    Title: 'Community',
+    Subtitle: 'Talk together',
+    Announcement: '',
+    AnnouncementLink: '',
+    TodayThreads: 2,
+    OnlineUserCount: 3,
+    CatalogBoards: [{
+      Id: 1,
+      Key: 'general',
+      Title: 'General',
+      Description: '',
+      Icon: 'chat',
+      SubCategories: [{ Id: 2, Key: 'news', Label: 'News' }],
+    }],
+    Boards: [{
+      Id: 1,
+      Key: 'general',
+      Title: 'General',
+      Description: '',
+      Icon: 'chat',
+      TodayPosts: 2,
+      HeatLabel: 'Warm',
+    }],
+    SubCategories: [{ Key: 'news', Label: 'News', Count: 1 }],
+    SelectedSubCategoryKey: '',
+    Feed: [item],
+    FeedPage: { Page: 1, Size: 6, Total: 1, TotalPages: 1, HasMore: false },
+    HotThreads: [{ Id: 1, Title: 'Hello', BoardName: 'General', Heat: 8, PublishedAt: '' }],
+    ActiveUsers: [{ Id: 3, Name: 'Reader', Avatar: '', Badge: '', Score: 9, Summary: '' }],
+  });
+
+  assert.equal(home.catalogBoards[0].subCategories[0].key, 'news');
+  assert.equal(home.feed[0].subCategoryKey, null);
+  assert.equal(home.feed[0].authorIsDeleted, true);
+  assert.equal(home.feed[0].publishedAt, null);
+  assert.equal(home.hotThreads[0].publishedAt, null);
+
+  const thread = decodeCommunityThread({
+    ...item,
+    Liked: true,
+    Favorited: false,
+    BodyHtml: '<p>Hello</p>',
+    RepliesPage: { Page: 1, Size: 5, Total: 1, TotalPages: 1, HasMore: false },
+    ReplyItems: [{
+      Id: 10,
+      AuthorName: 'Reply author',
+      AuthorBadge: '',
+      Content: 'Reply',
+      Likes: 1,
+      Liked: true,
+      ReplyTo: { Id: 9, AuthorName: '', AuthorIsDeleted: true },
+      ChildReplies: [],
+      ChildPage: { Page: 1, Size: 3, Total: 0, TotalPages: 0, HasMore: false },
+    }],
+    RelatedThreads: [],
+  });
+  assert.equal(thread.replyItems[0].authorBadge, null);
+  assert.equal(thread.replyItems[0].replyTo.authorIsDeleted, true);
+  assert.equal(decodeCommunityThread(null), null);
+  assert.equal(decodeCommunityThread({}), null);
+});
+
+test('maps every Community and notification operation to the gzip Hub contract', async () => {
+  const calls = [];
+  const feedItem = communityFeedItem();
+  const thread = {
+    ...feedItem,
+    BodyHtml: '<p>Body</p>',
+    RepliesPage: { Page: 1, Size: 5, Total: 0, TotalPages: 0, HasMore: false },
+    ReplyItems: [],
+    RelatedThreads: [],
+  };
+  const client = new ApiClient(
+    { async request() { throw new Error('not used'); } },
+    {
+      async connect() {},
+      async close() {},
+      async invoke(method, args) {
+        calls.push({ method, args });
+        const responses = {
+          GetCommunityHome: {
+            Title: '', Subtitle: '', Announcement: '', AnnouncementLink: '',
+            CatalogBoards: [], Boards: [], SubCategories: [], Feed: [], HotThreads: [], ActiveUsers: [],
+          },
+          GetCommunityFeed: { SubCategories: [], Feed: [] },
+          GetCommunityThread: thread,
+          CreateCommunityThread: thread,
+          CreateCommunityReply: { Id: 4, Content: 'reply' },
+          ToggleCommunityThreadLike: { Liked: true, Likes: 2 },
+          ToggleCommunityThreadFavorite: { Favorited: true, Favorites: 3 },
+          ToggleCommunityReplyLike: { Liked: false, Likes: 1 },
+          GetCommunityReplyChildren: { Items: [], Page: { Page: 2, Size: 3 } },
+          GetMyCommunityOverview: { AuthorName: 'Reader', PublishedThreads: [], ParticipatedReplies: [], FavoriteThreads: [] },
+          GetNotifications: { Page: 1, TotalPages: 1, Data: [] },
+          MarkNotifications: null,
+        };
+        return { Success: true, Response: responses[method] };
+      },
+    },
+    null,
+    new RateLimitRequestScheduler(50, 1),
+  );
+
+  await client.getCommunityHome();
+  await client.getCommunityFeed({ boardKey: 'general', order: 'hot', scope: 'week', page: 2, size: 7 });
+  await client.getCommunityThread({ threadId: 3, replyPage: 2, trackView: false });
+  await client.createCommunityThread({ boardKey: 'general', title: 'A title', contentHtml: '<p>Body</p>' });
+  await client.createCommunityReply({ threadId: 3, content: 'reply', replyToId: 4 });
+  assert.deepEqual(await client.toggleCommunityThreadLike(3), { liked: true, likes: 2 });
+  assert.deepEqual(await client.toggleCommunityThreadFavorite(3), { favorited: true, favorites: 3 });
+  assert.deepEqual(await client.toggleCommunityReplyLike(4), { liked: false, likes: 1 });
+  await client.getCommunityReplyChildren({ threadId: 3, parentReplyId: 4, page: 2 });
+  await client.getMyCommunityOverview();
+  await client.getNotifications();
+  await client.markNotifications([7, 8]);
+
+  assert.deepEqual(calls.map((call) => call.method), [
+    'GetCommunityHome',
+    'GetCommunityFeed',
+    'GetCommunityThread',
+    'CreateCommunityThread',
+    'CreateCommunityReply',
+    'ToggleCommunityThreadLike',
+    'ToggleCommunityThreadFavorite',
+    'ToggleCommunityReplyLike',
+    'GetCommunityReplyChildren',
+    'GetMyCommunityOverview',
+    'GetNotifications',
+    'MarkNotifications',
+  ]);
+  assert.deepEqual(calls[0].args, [{
+    BoardKey: 'all', SubCategoryKey: '', Order: 'reply', Scope: 'all', Page: 1, Size: 6,
+  }, { UseGzip: true }]);
+  assert.deepEqual(calls[1].args[0], {
+    BoardKey: 'general', SubCategoryKey: '', Order: 'hot', Scope: 'week', Page: 2, Size: 7,
+  });
+  assert.deepEqual(calls[2].args[0], {
+    ThreadId: 3, ReplyPage: 2, ReplySize: 5, TrackView: false,
+  });
+  assert.deepEqual(calls[4].args[0], { ThreadId: 3, Content: 'reply', ReplyToId: 4 });
+  assert.deepEqual(calls[8].args[0], { ThreadId: 3, ParentReplyId: 4, Page: 2, Size: 3 });
+  assert.deepEqual(calls[10].args[0], { Page: 1, Size: 20 });
+  assert.deepEqual(calls[11].args[0], { Ids: [7, 8] });
+});
+
+test('decodes notification reply focus, Series targets, and unknown future kinds safely', () => {
+  const page = decodeAppNotificationPage({
+    Page: 2,
+    TotalPages: 3,
+    Data: [{
+      Id: 9,
+      Actor: { Id: 5, UserName: 'Reader', Avatar: '' },
+      Type: 'CommunityThreadChildReply',
+      ObjectType: 'Series',
+      ObjectId: 22,
+      IsRead: false,
+      CreatedAt: '',
+      Extra: {
+        object_id: 22,
+        object_title: 'Thread',
+        series_title: 'Series name',
+        preview: 'Preview',
+        reply_id: 30,
+        parent_reply_id: 29,
+        reply_to_reply_id: null,
+        reply_preview: '',
+      },
+    }, {
+      Id: 10,
+      Type: 'FutureNotification',
+      ObjectType: 'FutureObject',
+      Extra: {},
+    }],
+  });
+
+  assert.equal(page.items[0].objectType, 'Series');
+  assert.equal(page.items[0].extra.replyId, 30);
+  assert.equal(page.items[0].extra.parentReplyId, 29);
+  assert.equal(page.items[0].extra.replyPreview, null);
+  assert.equal(page.items[1].type, 'Unknown');
+  assert.equal(page.items[1].objectType, 'Unknown');
+});
+
+function communityFeedItem(overrides = {}) {
+  return {
+    Id: 1,
+    BoardKey: 'general',
+    BoardName: 'General',
+    SubCategoryKey: 'news',
+    SubCategoryLabel: 'News',
+    Title: 'Hello',
+    Excerpt: 'Excerpt',
+    AuthorName: 'Reader',
+    AuthorIsDeleted: false,
+    AuthorAvatar: '',
+    PublishedAt: '2026-01-01T00:00:00.000Z',
+    Replies: 1,
+    Views: 2,
+    Heat: 3,
+    Likes: 4,
+    Favorites: 5,
+    Tags: ['tag'],
+    Featured: false,
+    Pinned: false,
+    Locked: false,
+    ...overrides,
+  };
+}

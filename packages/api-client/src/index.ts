@@ -16,6 +16,8 @@ export const SERVICE_ENDPOINTS = Object.freeze({
   resetPasswordPath: '/api/user/reset_password',
   refreshTokenPath: '/api/user/refresh_token',
   signalRHub: 'https://api.lightnovel.life/hub/api',
+  communityModerationManifest:
+    'https://novella.celia.sh/assets/community-moderation/manifest.json',
 });
 
 export const SIGNALR_PROTOCOL = Object.freeze({
@@ -550,6 +552,265 @@ export interface DailyCheckInResult {
   level: number;
 }
 
+export type CommunityBoardKey = string;
+export type CommunityFeedOrder = 'reply' | 'latest' | 'hot' | 'featured';
+export type CommunityFeedScope = 'all' | 'today' | 'week';
+
+export interface CommunityListQuery {
+  boardKey?: CommunityBoardKey;
+  subCategoryKey?: string;
+  order?: CommunityFeedOrder;
+  scope?: CommunityFeedScope;
+  page?: number;
+  size?: number;
+}
+
+export interface CommunityCatalogSubCategory {
+  id: number;
+  key: string;
+  label: string;
+}
+
+export interface CommunityCatalogBoard {
+  id: number;
+  key: CommunityBoardKey;
+  title: string;
+  description: string;
+  icon: string;
+  subCategories: CommunityCatalogSubCategory[];
+}
+
+export interface CommunitySubCategorySummary {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface CommunityPagination {
+  page: number;
+  size: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+export interface CommunityBoardSummary {
+  id: number;
+  key: CommunityBoardKey;
+  title: string;
+  description: string;
+  icon: string;
+  todayPosts: number;
+  heatLabel: string;
+}
+
+export interface CommunityFeedItem {
+  id: number;
+  boardKey: CommunityBoardKey;
+  boardName: string;
+  subCategoryKey: string | null;
+  subCategoryLabel: string | null;
+  title: string;
+  excerpt: string;
+  authorName: string;
+  authorIsDeleted: boolean;
+  authorAvatar: string;
+  publishedAt: string | null;
+  replies: number;
+  views: number;
+  heat: number;
+  likes: number;
+  favorites: number;
+  tags: string[];
+  featured: boolean;
+  pinned: boolean;
+  locked: boolean;
+}
+
+export interface CommunityHotRankItem {
+  id: number;
+  title: string;
+  boardName: string;
+  heat: number;
+  publishedAt: string | null;
+}
+
+export interface CommunityActiveUserItem {
+  id: number;
+  name: string;
+  avatar: string;
+  badge: string;
+  score: number;
+  summary: string;
+}
+
+export interface CommunityReplyTarget {
+  id: number;
+  authorName: string;
+  authorIsDeleted: boolean;
+}
+
+export interface CommunityThreadReply {
+  id: number;
+  authorName: string;
+  authorIsDeleted: boolean;
+  authorBadge: string | null;
+  authorAvatar: string;
+  publishedAt: string | null;
+  content: string;
+  likes: number;
+  liked: boolean;
+  replyTo: CommunityReplyTarget | null;
+  childReplies: CommunityThreadReply[];
+  childPage: CommunityPagination;
+}
+
+export interface CommunityThreadDetail extends CommunityFeedItem {
+  liked: boolean;
+  favorited: boolean;
+  bodyHtml: string;
+  repliesPage: CommunityPagination;
+  replyItems: CommunityThreadReply[];
+  relatedThreads: CommunityFeedItem[];
+}
+
+export interface CommunityHomePayload {
+  title: string;
+  subtitle: string;
+  announcement: string;
+  announcementLink: string;
+  todayThreads: number;
+  onlineUserCount: number;
+  catalogBoards: CommunityCatalogBoard[];
+  boards: CommunityBoardSummary[];
+  subCategories: CommunitySubCategorySummary[];
+  selectedSubCategoryKey: string;
+  feed: CommunityFeedItem[];
+  feedPage: CommunityPagination;
+  hotThreads: CommunityHotRankItem[];
+  activeUsers: CommunityActiveUserItem[];
+}
+
+export interface CommunityFeedPayload {
+  subCategories: CommunitySubCategorySummary[];
+  selectedSubCategoryKey: string;
+  feed: CommunityFeedItem[];
+  feedPage: CommunityPagination;
+}
+
+export interface GetCommunityThreadRequest {
+  threadId: number;
+  replyPage?: number;
+  replySize?: number;
+  trackView?: boolean;
+}
+
+export interface CreateCommunityThreadRequest {
+  boardKey: CommunityBoardKey;
+  subCategoryKey?: string;
+  title: string;
+  contentHtml: string;
+}
+
+export interface CreateCommunityReplyRequest {
+  threadId: number;
+  content: string;
+  replyToId?: number;
+}
+
+export interface GetCommunityReplyChildrenRequest {
+  threadId: number;
+  parentReplyId: number;
+  page?: number;
+  size?: number;
+}
+
+export interface CommunityReplyChildrenPayload {
+  items: CommunityThreadReply[];
+  page: CommunityPagination;
+}
+
+export interface CommunityMyReplyItem {
+  id: number;
+  threadId: number;
+  threadTitle: string;
+  boardName: string;
+  content: string;
+  publishedAt: string | null;
+  likes: number;
+  replyToName: string | null;
+}
+
+export interface CommunityMyOverview {
+  authorName: string;
+  publishedThreads: CommunityFeedItem[];
+  participatedReplies: CommunityMyReplyItem[];
+  favoriteThreads: CommunityFeedItem[];
+}
+
+export interface CommunityLikeToggleResult {
+  liked: boolean;
+  likes: number;
+}
+
+export interface CommunityFavoriteToggleResult {
+  favorited: boolean;
+  favorites: number;
+}
+
+export type AppNotificationType =
+  | 'Comment'
+  | 'CommentReply'
+  | 'CommunityThreadReply'
+  | 'CommunityThreadChildReply'
+  | 'Unknown';
+
+export type AppNotificationObjectType =
+  | 'Book'
+  | 'Announcement'
+  | 'CommunityThread'
+  | 'Series'
+  | 'Unknown';
+
+export interface AppNotificationActor {
+  id: number;
+  userName: string;
+  avatar: string;
+}
+
+export interface AppNotificationExtra {
+  objectId: number;
+  objectTitle: string;
+  seriesTitle: string | null;
+  preview: string;
+  replyId: number | null;
+  parentReplyId: number | null;
+  replyToReplyId: number | null;
+  replyPreview: string | null;
+}
+
+export interface AppNotificationItem {
+  id: number;
+  actor: AppNotificationActor | null;
+  type: AppNotificationType;
+  objectType: AppNotificationObjectType;
+  objectId: number;
+  isRead: boolean;
+  createdAt: string | null;
+  extra: AppNotificationExtra;
+}
+
+export interface AppNotificationPage {
+  totalPages: number;
+  page: number;
+  items: AppNotificationItem[];
+}
+
+export interface GetNotificationsRequest {
+  page?: number;
+  size?: number;
+}
+
 export interface AnnouncementItem {
   id: number;
   title: string;
@@ -845,6 +1106,151 @@ export class ApiClient {
 
   deleteComment(id: number): Promise<void> {
     return this.invoke('DeleteComment', { Id: id }, () => undefined);
+  }
+
+  getCommunityHome(
+    query: CommunityListQuery = {},
+    options: RequestScheduleOptions = {},
+  ): Promise<CommunityHomePayload> {
+    return this.invoke(
+      'GetCommunityHome',
+      encodeCommunityListQuery(query),
+      decodeCommunityHome,
+      options,
+    );
+  }
+
+  getCommunityFeed(
+    query: CommunityListQuery = {},
+    options: RequestScheduleOptions = {},
+  ): Promise<CommunityFeedPayload> {
+    return this.invoke(
+      'GetCommunityFeed',
+      encodeCommunityListQuery(query),
+      decodeCommunityFeed,
+      options,
+    );
+  }
+
+  getCommunityThread(
+    request: GetCommunityThreadRequest,
+    options: RequestScheduleOptions = {},
+  ): Promise<CommunityThreadDetail | null> {
+    const replyPage = Math.max(1, request.replyPage ?? 1);
+    return this.invoke(
+      'GetCommunityThread',
+      {
+        ThreadId: request.threadId,
+        ReplyPage: replyPage,
+        ReplySize: Math.max(1, request.replySize ?? 5),
+        TrackView: request.trackView ?? replyPage === 1,
+      },
+      decodeCommunityThread,
+      options,
+    );
+  }
+
+  createCommunityThread(
+    request: CreateCommunityThreadRequest,
+  ): Promise<CommunityThreadDetail> {
+    return this.invoke(
+      'CreateCommunityThread',
+      {
+        BoardKey: request.boardKey,
+        SubCategoryKey: request.subCategoryKey ?? '',
+        Title: request.title,
+        ContentHtml: request.contentHtml,
+      },
+      decodeCommunityThreadRequired,
+    );
+  }
+
+  createCommunityReply(
+    request: CreateCommunityReplyRequest,
+  ): Promise<CommunityThreadReply> {
+    return this.invoke(
+      'CreateCommunityReply',
+      {
+        ThreadId: request.threadId,
+        Content: request.content,
+        ...(request.replyToId === undefined ? {} : { ReplyToId: request.replyToId }),
+      },
+      decodeCommunityThreadReply,
+    );
+  }
+
+  toggleCommunityThreadLike(threadId: number): Promise<CommunityLikeToggleResult> {
+    return this.invoke(
+      'ToggleCommunityThreadLike',
+      { ThreadId: threadId },
+      decodeCommunityLikeToggle,
+    );
+  }
+
+  toggleCommunityThreadFavorite(
+    threadId: number,
+  ): Promise<CommunityFavoriteToggleResult> {
+    return this.invoke(
+      'ToggleCommunityThreadFavorite',
+      { ThreadId: threadId },
+      decodeCommunityFavoriteToggle,
+    );
+  }
+
+  toggleCommunityReplyLike(replyId: number): Promise<CommunityLikeToggleResult> {
+    return this.invoke(
+      'ToggleCommunityReplyLike',
+      { ReplyId: replyId },
+      decodeCommunityLikeToggle,
+    );
+  }
+
+  getCommunityReplyChildren(
+    request: GetCommunityReplyChildrenRequest,
+    options: RequestScheduleOptions = {},
+  ): Promise<CommunityReplyChildrenPayload> {
+    return this.invoke(
+      'GetCommunityReplyChildren',
+      {
+        ThreadId: request.threadId,
+        ParentReplyId: request.parentReplyId,
+        Page: Math.max(1, request.page ?? 1),
+        Size: Math.max(1, request.size ?? 3),
+      },
+      decodeCommunityReplyChildren,
+      options,
+    );
+  }
+
+  getMyCommunityOverview(
+    options: RequestScheduleOptions = {},
+  ): Promise<CommunityMyOverview> {
+    return this.invoke(
+      'GetMyCommunityOverview',
+      {},
+      decodeCommunityMyOverview,
+      options,
+    );
+  }
+
+  getNotifications(
+    request: GetNotificationsRequest = {},
+    options: RequestScheduleOptions = {},
+  ): Promise<AppNotificationPage> {
+    return this.invoke(
+      'GetNotifications',
+      {
+        Page: Math.max(1, request.page ?? 1),
+        Size: Math.max(1, request.size ?? 20),
+      },
+      decodeAppNotificationPage,
+      options,
+    );
+  }
+
+  markNotifications(ids: number[]): Promise<void> {
+    if (ids.length === 0) return Promise.resolve();
+    return this.invoke('MarkNotifications', { Ids: ids }, () => undefined);
   }
 
   getReadHistory(): Promise<ReadHistory> {
@@ -1195,6 +1601,394 @@ export function decodeAnnouncementPage(value: unknown): AnnouncementPage {
       };
     }),
   };
+}
+
+export function decodeCommunityHome(value: unknown): CommunityHomePayload {
+  const response = asRecord(value, 'community home response');
+  return {
+    title: asStringOrEmpty(response.Title),
+    subtitle: asStringOrEmpty(response.Subtitle),
+    announcement: asStringOrEmpty(response.Announcement),
+    announcementLink: asStringOrEmpty(response.AnnouncementLink),
+    todayThreads: Math.max(0, asNumber(response.TodayThreads, 0)),
+    onlineUserCount: Math.max(0, asNumber(response.OnlineUserCount, 0)),
+    catalogBoards: decodeOptionalArray(
+      response.CatalogBoards,
+      'community catalog boards',
+      decodeCommunityCatalogBoard,
+    ),
+    boards: decodeOptionalArray(
+      response.Boards,
+      'community boards',
+      decodeCommunityBoardSummary,
+    ),
+    subCategories: decodeOptionalArray(
+      response.SubCategories,
+      'community subcategories',
+      decodeCommunitySubCategorySummary,
+    ),
+    selectedSubCategoryKey: asStringOrEmpty(response.SelectedSubCategoryKey),
+    feed: decodeOptionalArray(
+      response.Feed,
+      'community feed',
+      decodeCommunityFeedItem,
+    ),
+    feedPage: decodeCommunityPagination(response.FeedPage),
+    hotThreads: decodeOptionalArray(
+      response.HotThreads,
+      'community hot threads',
+      decodeCommunityHotRankItem,
+    ),
+    activeUsers: decodeOptionalArray(
+      response.ActiveUsers,
+      'community active users',
+      decodeCommunityActiveUserItem,
+    ),
+  };
+}
+
+export function decodeCommunityFeed(value: unknown): CommunityFeedPayload {
+  const response = asRecord(value, 'community feed response');
+  return {
+    subCategories: decodeOptionalArray(
+      response.SubCategories,
+      'community subcategories',
+      decodeCommunitySubCategorySummary,
+    ),
+    selectedSubCategoryKey: asStringOrEmpty(response.SelectedSubCategoryKey),
+    feed: decodeOptionalArray(
+      response.Feed,
+      'community feed',
+      decodeCommunityFeedItem,
+    ),
+    feedPage: decodeCommunityPagination(response.FeedPage),
+  };
+}
+
+export function decodeCommunityThread(
+  value: unknown,
+): CommunityThreadDetail | null {
+  if (value === null || value === undefined) return null;
+  if (isRecord(value) && Object.keys(value).length === 0) return null;
+  return decodeCommunityThreadRequired(value);
+}
+
+export function decodeCommunityThreadRequired(
+  value: unknown,
+): CommunityThreadDetail {
+  const response = asRecord(value, 'community thread response');
+  return {
+    ...decodeCommunityFeedItem(response),
+    liked: asBoolean(response.Liked, false),
+    favorited: asBoolean(response.Favorited, false),
+    bodyHtml: asStringOrEmpty(response.BodyHtml),
+    repliesPage: decodeCommunityPagination(response.RepliesPage),
+    replyItems: decodeOptionalArray(
+      response.ReplyItems,
+      'community replies',
+      decodeCommunityThreadReply,
+    ),
+    relatedThreads: decodeOptionalArray(
+      response.RelatedThreads,
+      'related community threads',
+      decodeCommunityFeedItem,
+    ),
+  };
+}
+
+export function decodeCommunityReplyChildren(
+  value: unknown,
+): CommunityReplyChildrenPayload {
+  const response = asRecord(value, 'community reply children response');
+  return {
+    items: decodeOptionalArray(
+      response.Items,
+      'community child replies',
+      decodeCommunityThreadReply,
+    ),
+    page: decodeCommunityPagination(response.Page),
+  };
+}
+
+export function decodeCommunityMyOverview(value: unknown): CommunityMyOverview {
+  const response = asRecord(value, 'my community response');
+  return {
+    authorName: asStringOrEmpty(response.AuthorName),
+    publishedThreads: decodeOptionalArray(
+      response.PublishedThreads,
+      'published community threads',
+      decodeCommunityFeedItem,
+    ),
+    participatedReplies: decodeOptionalArray(
+      response.ParticipatedReplies,
+      'participated community replies',
+      decodeCommunityMyReplyItem,
+    ),
+    favoriteThreads: decodeOptionalArray(
+      response.FavoriteThreads,
+      'favorite community threads',
+      decodeCommunityFeedItem,
+    ),
+  };
+}
+
+export function decodeAppNotificationPage(value: unknown): AppNotificationPage {
+  const response = asRecord(value, 'notifications response');
+  return {
+    totalPages: Math.max(0, asNumber(response.TotalPages, 0)),
+    page: Math.max(1, asNumber(response.Page, 1)),
+    items: decodeOptionalArray(
+      response.Data,
+      'notifications',
+      decodeAppNotificationItem,
+    ),
+  };
+}
+
+function encodeCommunityListQuery(query: CommunityListQuery): JsonValue {
+  return {
+    BoardKey: query.boardKey ?? 'all',
+    SubCategoryKey: query.subCategoryKey ?? '',
+    Order: query.order ?? 'reply',
+    Scope: query.scope ?? 'all',
+    Page: Math.max(1, query.page ?? 1),
+    Size: Math.max(1, query.size ?? 6),
+  };
+}
+
+function decodeCommunityCatalogBoard(value: unknown): CommunityCatalogBoard {
+  const board = asRecord(value, 'community catalog board');
+  return {
+    id: asNumber(board.Id),
+    key: asString(board.Key),
+    title: asString(board.Title),
+    description: asStringOrEmpty(board.Description),
+    icon: asStringOrEmpty(board.Icon),
+    subCategories: decodeOptionalArray(
+      board.SubCategories,
+      'community catalog subcategories',
+      (item) => {
+        const subCategory = asRecord(item, 'community catalog subcategory');
+        return {
+          id: asNumber(subCategory.Id),
+          key: asString(subCategory.Key),
+          label: asString(subCategory.Label),
+        };
+      },
+    ),
+  };
+}
+
+function decodeCommunitySubCategorySummary(
+  value: unknown,
+): CommunitySubCategorySummary {
+  const subCategory = asRecord(value, 'community subcategory');
+  return {
+    key: asString(subCategory.Key),
+    label: asString(subCategory.Label),
+    count: Math.max(0, asNumber(subCategory.Count, 0)),
+  };
+}
+
+function decodeCommunityPagination(value: unknown): CommunityPagination {
+  const page = isRecord(value) ? value : {};
+  return {
+    page: Math.max(1, asNumber(page.Page, 1)),
+    size: Math.max(0, asNumber(page.Size, 0)),
+    total: Math.max(0, asNumber(page.Total, 0)),
+    totalPages: Math.max(0, asNumber(page.TotalPages, 0)),
+    hasMore: asBoolean(page.HasMore, false),
+  };
+}
+
+function decodeCommunityBoardSummary(value: unknown): CommunityBoardSummary {
+  const board = asRecord(value, 'community board');
+  return {
+    id: asNumber(board.Id),
+    key: asString(board.Key),
+    title: asString(board.Title),
+    description: asStringOrEmpty(board.Description),
+    icon: asStringOrEmpty(board.Icon),
+    todayPosts: Math.max(0, asNumber(board.TodayPosts, 0)),
+    heatLabel: asStringOrEmpty(board.HeatLabel),
+  };
+}
+
+function decodeCommunityFeedItem(value: unknown): CommunityFeedItem {
+  const item = asRecord(value, 'community feed item');
+  return {
+    id: asNumber(item.Id),
+    boardKey: asString(item.BoardKey),
+    boardName: asStringOrEmpty(item.BoardName),
+    subCategoryKey: asNullableString(item.SubCategoryKey),
+    subCategoryLabel: asNullableString(item.SubCategoryLabel),
+    title: asString(item.Title),
+    excerpt: asStringOrEmpty(item.Excerpt),
+    authorName: asStringOrEmpty(item.AuthorName),
+    authorIsDeleted: asBoolean(item.AuthorIsDeleted, false),
+    authorAvatar: asStringOrEmpty(item.AuthorAvatar),
+    publishedAt: asNullableDateString(item.PublishedAt),
+    replies: Math.max(0, asNumber(item.Replies, 0)),
+    views: Math.max(0, asNumber(item.Views, 0)),
+    heat: Math.max(0, asNumber(item.Heat, 0)),
+    likes: Math.max(0, asNumber(item.Likes, 0)),
+    favorites: Math.max(0, asNumber(item.Favorites, 0)),
+    tags: decodeStringArray(item.Tags),
+    featured: asBoolean(item.Featured, false),
+    pinned: asBoolean(item.Pinned, false),
+    locked: asBoolean(item.Locked, false),
+  };
+}
+
+function decodeCommunityHotRankItem(value: unknown): CommunityHotRankItem {
+  const item = asRecord(value, 'community hot thread');
+  return {
+    id: asNumber(item.Id),
+    title: asString(item.Title),
+    boardName: asStringOrEmpty(item.BoardName),
+    heat: Math.max(0, asNumber(item.Heat, 0)),
+    publishedAt: asNullableDateString(item.PublishedAt),
+  };
+}
+
+function decodeCommunityActiveUserItem(
+  value: unknown,
+): CommunityActiveUserItem {
+  const item = asRecord(value, 'community active user');
+  return {
+    id: asNumber(item.Id),
+    name: asString(item.Name),
+    avatar: asStringOrEmpty(item.Avatar),
+    badge: asStringOrEmpty(item.Badge),
+    score: Math.max(0, asNumber(item.Score, 0)),
+    summary: asStringOrEmpty(item.Summary),
+  };
+}
+
+function decodeCommunityThreadReply(value: unknown): CommunityThreadReply {
+  const reply = asRecord(value, 'community reply');
+  return {
+    id: asNumber(reply.Id),
+    authorName: asStringOrEmpty(reply.AuthorName),
+    authorIsDeleted: asBoolean(reply.AuthorIsDeleted, false),
+    authorBadge: asNullableString(reply.AuthorBadge),
+    authorAvatar: asStringOrEmpty(reply.AuthorAvatar),
+    publishedAt: asNullableDateString(reply.PublishedAt),
+    content: asStringOrEmpty(reply.Content),
+    likes: Math.max(0, asNumber(reply.Likes, 0)),
+    liked: asBoolean(reply.Liked, false),
+    replyTo: isRecord(reply.ReplyTo)
+      ? {
+          id: asNumber(reply.ReplyTo.Id),
+          authorName: asStringOrEmpty(reply.ReplyTo.AuthorName),
+          authorIsDeleted: asBoolean(reply.ReplyTo.AuthorIsDeleted, false),
+        }
+      : null,
+    childReplies: decodeOptionalArray(
+      reply.ChildReplies,
+      'community child replies',
+      decodeCommunityThreadReply,
+    ),
+    childPage: decodeCommunityPagination(reply.ChildPage),
+  };
+}
+
+function decodeCommunityMyReplyItem(value: unknown): CommunityMyReplyItem {
+  const item = asRecord(value, 'my community reply');
+  return {
+    id: asNumber(item.Id),
+    threadId: asNumber(item.ThreadId),
+    threadTitle: asString(item.ThreadTitle),
+    boardName: asStringOrEmpty(item.BoardName),
+    content: asStringOrEmpty(item.Content),
+    publishedAt: asNullableDateString(item.PublishedAt),
+    likes: Math.max(0, asNumber(item.Likes, 0)),
+    replyToName: asNullableString(item.ReplyToName),
+  };
+}
+
+function decodeCommunityLikeToggle(value: unknown): CommunityLikeToggleResult {
+  const result = asRecord(value, 'community like response');
+  return {
+    liked: asBoolean(result.Liked),
+    likes: Math.max(0, asNumber(result.Likes, 0)),
+  };
+}
+
+function decodeCommunityFavoriteToggle(
+  value: unknown,
+): CommunityFavoriteToggleResult {
+  const result = asRecord(value, 'community favorite response');
+  return {
+    favorited: asBoolean(result.Favorited),
+    favorites: Math.max(0, asNumber(result.Favorites, 0)),
+  };
+}
+
+function decodeAppNotificationItem(value: unknown): AppNotificationItem {
+  const item = asRecord(value, 'notification');
+  const actor = isRecord(item.Actor) ? item.Actor : null;
+  const extra = isRecord(item.Extra) ? item.Extra : {};
+  return {
+    id: asNumber(item.Id),
+    actor: actor === null
+      ? null
+      : {
+          id: asNumber(actor.Id),
+          userName: asStringOrEmpty(actor.UserName),
+          avatar: asStringOrEmpty(actor.Avatar),
+        },
+    type: decodeAppNotificationType(item.Type),
+    objectType: decodeAppNotificationObjectType(item.ObjectType),
+    objectId: asNumber(item.ObjectId, 0),
+    isRead: asBoolean(item.IsRead, false),
+    createdAt: asNullableDateString(item.CreatedAt),
+    extra: {
+      objectId: asNumber(extra.object_id, 0),
+      objectTitle: asStringOrEmpty(extra.object_title),
+      seriesTitle: asNullableString(extra.series_title),
+      preview: asStringOrEmpty(extra.preview),
+      replyId: asNullableNumber(extra.reply_id),
+      parentReplyId: asNullableNumber(extra.parent_reply_id),
+      replyToReplyId: asNullableNumber(extra.reply_to_reply_id),
+      replyPreview: asNullableString(extra.reply_preview),
+    },
+  };
+}
+
+function decodeAppNotificationType(value: unknown): AppNotificationType {
+  switch (value) {
+    case 'Comment':
+    case 'CommentReply':
+    case 'CommunityThreadReply':
+    case 'CommunityThreadChildReply':
+      return value;
+    default:
+      return 'Unknown';
+  }
+}
+
+function decodeAppNotificationObjectType(
+  value: unknown,
+): AppNotificationObjectType {
+  switch (value) {
+    case 'Book':
+    case 'Announcement':
+    case 'CommunityThread':
+    case 'Series':
+      return value;
+    default:
+      return 'Unknown';
+  }
+}
+
+function decodeOptionalArray<T>(
+  value: unknown,
+  name: string,
+  decode: (item: unknown) => T,
+): T[] {
+  if (value === null || value === undefined) return [];
+  return asArray(value, name).map(decode);
 }
 
 export function decodeBookDetail(value: unknown): BookDetail {

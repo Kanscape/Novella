@@ -1,10 +1,11 @@
 import BottomSheet, { BottomSheetView } from '@expo/ui/community/bottom-sheet';
 import { router } from 'expo-router';
-import { useCallback, useRef } from 'react';
+import { useCallback, useContext, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 
-import { useBookDetailRouteTheme } from '@/components/book-detail-theme-provider';
+import { BookDetailThemeContext } from '@/components/book-detail-theme-provider';
 import type { NativeRouteBottomSheetProps } from '@/components/native-route-bottom-sheet';
+import { useAppTheme } from '@/theme/app-theme';
 
 export function NativeRouteBottomSheet({
   bookId,
@@ -12,7 +13,13 @@ export function NativeRouteBottomSheet({
   snapPoints,
 }: NativeRouteBottomSheetProps) {
   const hasDismissed = useRef(false);
-  const { palette } = useBookDetailRouteTheme(bookId, null, null);
+  const { colors } = useAppTheme();
+  const bookContext = useContext(BookDetailThemeContext);
+  // Sheets inside a book detail route use the book palette; everything else
+  // (e.g. the community reply composer) falls back to the app theme surface.
+  const surface = bookContext && bookId
+    ? (bookContext.activeBookId === bookId ? bookContext.theme : bookContext.baseTheme).palette.surface
+    : (colors.surface as string);
 
   const handleDismiss = useCallback(() => {
     if (hasDismissed.current) return;
@@ -22,7 +29,7 @@ export function NativeRouteBottomSheet({
 
   return (
     <BottomSheet
-      backgroundStyle={{ backgroundColor: palette.surface }}
+      backgroundStyle={{ backgroundColor: surface }}
       enableDynamicSizing={!snapPoints}
       enablePanDownToClose
       index={0}

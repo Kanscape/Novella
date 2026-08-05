@@ -36,6 +36,7 @@ enum class SelectionMenuIcon(val value: String) : Enumerable {
   SPARKLES("sparkles"),
   TAG("tag"),
   TEXT_SIZE("textSize"),
+  TROPHY("trophy"),
   USER("user"),
   DOTS("dots");
 
@@ -46,6 +47,7 @@ enum class SelectionMenuIcon(val value: String) : Enumerable {
       SPARKLES -> R.drawable.ic_tabler_sparkles_24
       TAG -> R.drawable.ic_tabler_tag_24
       TEXT_SIZE -> R.drawable.ic_tabler_text_size_24
+      TROPHY -> R.drawable.ic_tabler_trophy_24
       USER -> R.drawable.ic_tabler_user_24
       DOTS -> R.drawable.ic_tabler_dots_24
     }

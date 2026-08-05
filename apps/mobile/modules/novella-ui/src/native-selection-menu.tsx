@@ -5,6 +5,7 @@ export type NativeSelectionMenuIcon =
   | 'sparkles'
   | 'tag'
   | 'textSize'
+  | 'trophy'
   | 'user';
 
 export interface NativeSelectionMenuItem {

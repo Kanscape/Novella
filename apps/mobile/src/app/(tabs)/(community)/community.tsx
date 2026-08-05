@@ -1,11 +1,5 @@
-import { PlaceholderScreen } from '@/screens/placeholder-screen';
+import { CommunityHomeScreen } from '@/screens/community-home-screen';
 
 export default function CommunityRoute() {
-  return (
-    <PlaceholderScreen
-      description="Browse announcements, forums, comments, and notifications from Web-Master."
-      icon="community"
-      title="Community"
-    />
-  );
+  return <CommunityHomeScreen />;
 }

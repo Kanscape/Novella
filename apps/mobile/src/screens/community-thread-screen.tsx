@@ -1,0 +1,697 @@
+import {
+  IconAlertCircle,
+  IconBookmark,
+  IconHeart,
+  IconLock,
+  IconMessageCircle,
+  IconMessages,
+  IconRefresh,
+} from '@tabler/icons-react-native';
+import { router, Stack, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import {
+  FlatList,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import {
+  ActivityIndicator,
+  Avatar,
+  Button,
+  MD3DarkTheme,
+  MD3LightTheme,
+  PaperProvider,
+  Surface,
+} from 'react-native-paper';
+
+import type { CommunityThreadReply } from '@novella/api-client';
+
+import { CommunityHtmlContent } from '@/components/community/community-html-content';
+import {
+  CommentThreadChildren,
+  CommentThreadRow,
+  type CommentThreadPalette,
+} from '@/components/comment-thread';
+import { CommunitySectionTitle, CommunityThreadSkeleton } from '@/components/community/community-ui';
+import { NativeScreenScaffold } from '@/components/native-screen-scaffold';
+import { useCommunityThread } from '@/hooks/use-community-thread';
+import { communitySpeechGuard } from '@/services/client';
+import { consumeCommunityThreadChanged } from '@/services/community-reply-events';
+import { findCommunityReply, formatCommunityTime } from '@/services/community-utils';
+import { createThemedStyles, resolveAccentHex, resolveOnAccentHex, useAppTheme } from '@/theme/app-theme';
+
+export function CommunityThreadScreen({
+  initialTitle,
+  parentReplyId,
+  replyId,
+  threadId,
+}: {
+  initialTitle: string;
+  parentReplyId: number | null;
+  replyId: number | null;
+  threadId: number;
+}) {
+  const styles = useCommunityThreadStyles();
+  const { colorScheme, colors } = useAppTheme();
+  const basePaperTheme = colorScheme === 'dark' ? MD3DarkTheme : MD3LightTheme;
+  // Map paper's M3 color roles onto the app theme so contained buttons,
+  // contained-tonal (selected) buttons and the reply input's focus outline
+  // use the app accent instead of the library default purple. Paper's color
+  // parser can't resolve PlatformColor objects, so resolve iOS's semantic
+  // colors to their stable hex equivalents (systemPink is the same in both
+  // appearances); Android's Material palette is already hex strings.
+  const accentHex = resolveAccentHex(colors.accent);
+  const primaryContainerHex = resolveAccentHex(colors.primaryContainer);
+  const onPrimaryContainerHex = resolveAccentHex(colors.onPrimaryContainer);
+  const paperTheme = {
+    ...basePaperTheme,
+    colors: {
+      ...basePaperTheme.colors,
+      primary: accentHex,
+      onPrimary: resolveOnAccentHex(colors.accent),
+      secondaryContainer: primaryContainerHex,
+      onSecondaryContainer: onPrimaryContainerHex,
+    },
+  };
+  const commentPalette = toCommunityCommentPalette(colors);
+  const listRef = useRef<FlatList<CommunityThreadReply>>(null);
+  const hasFocused = useRef(false);
+  const [speechDisabled, setSpeechDisabled] = useState(communitySpeechGuard.getSnapshot());
+  const [speechReady, setSpeechReady] = useState(communitySpeechGuard.getSnapshot());
+  const {
+    loadChildren,
+    loadMore,
+    refresh,
+    retry,
+    state,
+    toggleReplyLike,
+    toggleThreadFavorite,
+    toggleThreadLike,
+  } = useCommunityThread({ parentReplyId, replyId, threadId });
+
+  // Refresh only when a reply was actually posted from the composer bottom
+  // sheet while this screen wasn't focused. Dismissing the composer without
+  // posting must not refresh — and the callback must stay referentially
+  // stable or the focus effect re-subscribes every render (Maximum update
+  // depth). Mirrors the book comments screen.
+  useFocusEffect(
+    useCallback(() => {
+      if (hasFocused.current && consumeCommunityThreadChanged()) void refresh();
+      hasFocused.current = true;
+    }, [refresh]),
+  );
+
+  useEffect(() => {
+    void communitySpeechGuard.isSpeechDisabled().then((disabled) => {
+      setSpeechDisabled(disabled);
+      setSpeechReady(true);
+    });
+    return communitySpeechGuard.subscribe((disabled) => {
+      setSpeechDisabled(disabled);
+      setSpeechReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!state.highlightedReplyId || !state.thread) return;
+    const targetTopLevelId = parentReplyId && findCommunityReply(state.thread.replyItems, parentReplyId)
+      ? parentReplyId
+      : state.highlightedReplyId;
+    const index = state.thread.replyItems.findIndex((item) => item.id === targetTopLevelId);
+    if (index >= 0) {
+      setTimeout(() => listRef.current?.scrollToIndex({ animated: true, index, viewPosition: 0.2 }), 100);
+    }
+  }, [parentReplyId, state.highlightedReplyId, state.thread]);
+
+  const thread = state.thread;
+  const canReply = Boolean(thread && !thread.locked && speechReady && !speechDisabled);
+  const title = thread?.boardName || initialTitle || 'Discussion';
+
+  function openReply(reply: CommunityThreadReply | null) {
+    if (!canReply) return;
+    router.push({
+      pathname: '/thread/[id]/reply',
+      params: {
+        id: String(threadId),
+        ...(reply
+          ? { parentReplyId: String(reply.id), replyToName: reply.authorName }
+          : {}),
+      },
+    });
+  }
+
+  const header = thread ? (
+    <View style={styles.header}>
+      <Surface elevation={0} style={styles.postCard}>
+        <View style={styles.chips}>
+          <ThreadTagPill label={thread.boardName} variant="accent" />
+          {thread.subCategoryLabel ? <ThreadTagPill label={thread.subCategoryLabel} variant="neutral" /> : null}
+          {thread.locked ? <ThreadTagPill label="Locked" variant="warning" /> : null}
+        </View>
+        <View style={styles.postBody}>
+          <Text style={styles.title}>{thread.title}</Text>
+          <View style={styles.authorRow}>
+            <ThreadAvatar
+              avatarUrl={thread.authorAvatar}
+              name={thread.authorIsDeleted ? 'Deleted user' : thread.authorName}
+              size={38}
+            />
+            <View style={styles.authorCopy}>
+              <Text style={styles.authorName}>
+                {thread.authorIsDeleted ? 'Deleted user' : thread.authorName || 'Unknown user'}
+              </Text>
+              <Text style={styles.time}>{formatCommunityTime(thread.publishedAt)}</Text>
+            </View>
+          </View>
+          <View style={styles.html}>
+            <CommunityHtmlContent html={thread.bodyHtml} />
+          </View>
+        </View>
+        <View style={styles.actions}>
+          <Button
+            accessibilityLabel={thread.liked ? 'Unlike discussion' : 'Like discussion'}
+            disabled={thread.locked || state.threadActionId !== null}
+            icon={({ size, color }) => (
+              <IconHeart color={color} size={size} strokeWidth={2} />
+            )}
+            mode={thread.liked ? 'contained-tonal' : 'text'}
+            onPress={() => void toggleThreadLike()}
+            style={styles.actionButton}
+          >
+            {thread.likes}
+          </Button>
+          <Button
+            accessibilityLabel={thread.favorited ? 'Remove favorite' : 'Add favorite'}
+            disabled={thread.locked || state.threadActionId !== null}
+            icon={({ size, color }) => (
+              <IconBookmark color={color} size={size} strokeWidth={2} />
+            )}
+            mode={thread.favorited ? 'contained-tonal' : 'text'}
+            onPress={() => void toggleThreadFavorite()}
+            style={styles.actionButton}
+          >
+            {thread.favorites}
+          </Button>
+          <Button
+            disabled={!canReply}
+            icon={({ size, color }) => (
+              <IconMessageCircle color={color} size={size} strokeWidth={2} />
+            )}
+            mode="contained"
+            onPress={() => openReply(null)}
+            style={styles.actionButton}
+          >
+            Reply
+          </Button>
+        </View>
+      </Surface>
+
+      {thread.locked ? (
+        <ThreadNotice
+          icon={<IconLock color={colors.secondaryLabel as string} size={20} strokeWidth={2} />}
+          text="This discussion is locked and no longer accepts reactions or replies."
+        />
+      ) : speechDisabled ? (
+        <ThreadNotice
+          icon={<IconLock color={colors.secondaryLabel as string} size={20} strokeWidth={2} />}
+          text="Community posting is disabled on this device. Reading remains available."
+        />
+      ) : null}
+
+      <CommunitySectionTitle title={`Replies · ${thread.repliesPage.total}`} />
+      {state.error ? (
+        <ThreadStateCard
+          description={state.error}
+          onRetry={retry}
+          title="Community action failed"
+          variant="error"
+        />
+      ) : null}
+    </View>
+  ) : null;
+
+  const footer = thread ? (
+    <View style={styles.footer}>
+      {state.loadingMore ? (
+        <View style={styles.footerSpinner}>
+          <ActivityIndicator color={colors.accent as string} />
+        </View>
+      ) : null}
+      {thread.repliesPage.hasMore ? (
+        <Button
+          disabled={state.loadingMore}
+          mode="outlined"
+          onPress={() => void loadMore()}
+          style={styles.footerButton}
+        >
+          Load more replies
+        </Button>
+      ) : null}
+      {thread.relatedThreads.length > 0 ? (
+        <View style={styles.related}>
+          <CommunitySectionTitle title="Related Discussions" />
+          {thread.relatedThreads.map((item) => (
+            <RelatedThreadCard
+              item={item}
+              key={item.id}
+              onPress={() => router.replace({
+                pathname: '/thread/[id]',
+                params: { id: String(item.id), initialTitle: item.title },
+              })}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  ) : null;
+
+  return (
+    <PaperProvider theme={paperTheme}>
+      <>
+        <Stack.Screen options={{ title }} />
+        <NativeScreenScaffold
+          largeTitle={false}
+          onBackPress={() => router.back()}
+          showBackButton
+          title={title}
+        >
+          <View style={styles.root}>
+            <FlatList
+              ListEmptyComponent={
+                state.loading ? (
+                  <View style={styles.loading}><CommunityThreadSkeleton /></View>
+                ) : state.error && !thread ? (
+                  <ThreadStateCard description={state.error} onRetry={retry} title="Unable to load Discussion" variant="error" />
+                ) : thread ? (
+                  <ThreadStateCard
+                    description="Be the first person to reply."
+                    title="No replies yet"
+                    variant="empty"
+                  />
+                ) : (
+                  <ThreadStateCard
+                    description="This discussion may have been removed."
+                    title="Discussion unavailable"
+                    variant="empty"
+                  />
+                )
+              }
+              ListFooterComponent={footer}
+              ListHeaderComponent={header}
+              contentContainerStyle={styles.content}
+              contentInsetAdjustmentBehavior="automatic"
+              data={thread?.replyItems ?? []}
+              ItemSeparatorComponent={() => <View style={styles.replySeparator} />}
+              keyExtractor={(item) => String(item.id)}
+              keyboardDismissMode="interactive"
+              nestedScrollEnabled
+              onScrollToIndexFailed={({ index }) => {
+                setTimeout(() => listRef.current?.scrollToIndex({ animated: true, index, viewPosition: 0.2 }), 200);
+              }}
+              ref={listRef}
+              refreshControl={
+                <RefreshControl
+                  colors={[colors.accent as string]}
+                  onRefresh={() => void refresh()}
+                  refreshing={state.loading && Boolean(thread)}
+                  tintColor={colors.accent}
+                />
+              }
+              renderItem={({ item }) => (
+                <ReplyCard
+                  actionId={state.actionId}
+                  canReply={canReply}
+                  highlightedReplyId={state.highlightedReplyId}
+                  onLike={(reply) => void toggleReplyLike(reply)}
+                  onLoadChildren={(reply) => void loadChildren(reply)}
+                  onReply={openReply}
+                  palette={commentPalette}
+                  reply={item}
+                />
+              )}
+              showsVerticalScrollIndicator={false}
+            />
+          </View>
+        </NativeScreenScaffold>
+      </>
+    </PaperProvider>
+  );
+}
+
+function ThreadTagPill({ label, variant }: { label: string; variant: 'accent' | 'neutral' | 'warning' }) {
+  const styles = useCommunityThreadStyles();
+  return (
+    <View
+      style={[
+        styles.tagPill,
+        variant === 'accent' && styles.tagPillAccent,
+        variant === 'warning' && styles.tagPillWarning,
+      ]}
+    >
+      <Text
+        style={[
+          styles.tagPillText,
+          variant === 'accent' && styles.tagPillTextAccent,
+          variant === 'warning' && styles.tagPillTextWarning,
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function ThreadAvatar({
+  avatarUrl,
+  name,
+  size,
+}: {
+  avatarUrl: string;
+  name: string;
+  size: number;
+}) {
+  const styles = useCommunityThreadStyles();
+  const { colors } = useAppTheme();
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [avatarUrl]);
+  const initial = name.trim().slice(0, 1).toUpperCase() || '?';
+
+  if (avatarUrl.trim() && !failed) {
+    return (
+      <Avatar.Image
+        onError={() => setFailed(true)}
+        size={size}
+        source={{ uri: avatarUrl.trim() }}
+        style={[styles.avatar, { backgroundColor: colors.surfaceContainerHighest }]}
+      />
+    );
+  }
+  return (
+    <Avatar.Text
+      color={colors.label as string}
+      label={initial}
+      labelStyle={styles.avatarLabel}
+      size={size}
+      style={[styles.avatar, { backgroundColor: colors.surfaceContainerHighest }]}
+    />
+  );
+}
+
+function ThreadNotice({ icon, text }: { icon: ReactNode; text: string }) {
+  const styles = useCommunityThreadStyles();
+  return (
+    <Surface elevation={0} style={styles.noticeCard}>
+      <View style={styles.noticeBody}>
+        {icon}
+        <Text style={styles.noticeText}>{text}</Text>
+      </View>
+    </Surface>
+  );
+}
+
+function ThreadStateCard({
+  description,
+  onRetry,
+  title,
+  variant,
+}: {
+  description: string;
+  onRetry?: () => void;
+  title: string;
+  variant: 'empty' | 'error';
+}) {
+  const styles = useCommunityThreadStyles();
+  const { colors } = useAppTheme();
+  const Icon = variant === 'error' ? IconAlertCircle : IconMessages;
+  return (
+    <Surface elevation={0} style={styles.stateCard}>
+      <View style={styles.stateBody}>
+        <View style={styles.stateIconBox}>
+          <Icon
+            color={(variant === 'error' ? colors.error : colors.secondaryLabel) as string}
+            size={22}
+            strokeWidth={2}
+          />
+        </View>
+        <View style={styles.stateCopy}>
+          <Text style={styles.stateTitle}>{title}</Text>
+          <Text style={styles.stateDescription}>{description}</Text>
+        </View>
+        {onRetry ? (
+          <Button
+            icon={({ size, color }) => (
+              <IconRefresh color={color} size={size} strokeWidth={2} />
+            )}
+            mode="outlined"
+            onPress={onRetry}
+            style={styles.stateRetry}
+          >
+            Try again
+          </Button>
+        ) : null}
+      </View>
+    </Surface>
+  );
+}
+
+function RelatedThreadCard({
+  item,
+  onPress,
+}: {
+  item: {
+    boardName: string;
+    id: number;
+    replies: number;
+    title: string;
+  };
+  onPress(): void;
+}) {
+  const styles = useCommunityThreadStyles();
+  const { colors } = useAppTheme();
+  return (
+    <Surface elevation={0} style={styles.relatedCard}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [styles.relatedPressable, pressed && styles.pressed]}
+      >
+        <Text numberOfLines={2} style={styles.relatedTitle}>{item.title}</Text>
+        <View style={styles.relatedMeta}>
+          <ThreadTagPill label={item.boardName} variant="accent" />
+          {item.replies > 0 ? (
+            <View style={styles.relatedReplies}>
+              <IconMessageCircle color={colors.secondaryLabel as string} size={13} strokeWidth={2} />
+              <Text style={styles.relatedRepliesText}>{item.replies}</Text>
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
+    </Surface>
+  );
+}
+
+function ReplyCard({
+  actionId,
+  canReply,
+  highlightedReplyId,
+  onLike,
+  onLoadChildren,
+  onReply,
+  palette,
+  reply,
+}: {
+  actionId: string | null;
+  canReply: boolean;
+  highlightedReplyId: number | null;
+  onLike(reply: CommunityThreadReply): void;
+  onLoadChildren(reply: CommunityThreadReply): void;
+  onReply(reply: CommunityThreadReply): void;
+  palette: CommentThreadPalette;
+  reply: CommunityThreadReply;
+}) {
+  const styles = useCommunityThreadStyles();
+  const hasChildren = reply.childReplies.length > 0 || reply.childPage.hasMore;
+  const replyToName = reply.replyTo
+    ? (reply.replyTo.authorIsDeleted ? 'Deleted user' : reply.replyTo.authorName)
+    : null;
+
+  return (
+    <View style={styles.replyBlock}>
+      <CommentThreadRow
+        actionsDisabled={actionId !== null}
+        avatarUrl={reply.authorAvatar}
+        badge={reply.authorBadge}
+        canReply={canReply}
+        content={reply.content}
+        createdAtLabel={formatCommunityTime(reply.publishedAt)}
+        deleted={reply.authorIsDeleted}
+        highlighted={highlightedReplyId === reply.id}
+        horizontalInset={0}
+        like={{
+          count: reply.likes,
+          disabled: actionId !== null,
+          liked: reply.liked,
+          onPress: () => onLike(reply),
+        }}
+        onReply={() => onReply(reply)}
+        palette={palette}
+        replyToName={replyToName}
+        userName={reply.authorName}
+      />
+      {hasChildren ? (
+        <CommentThreadChildren horizontalInset={0} palette={palette}>
+          {reply.childReplies.map((child) => {
+            const childReplyToName = child.replyTo
+              ? (child.replyTo.authorIsDeleted ? 'Deleted user' : child.replyTo.authorName)
+              : null;
+            return (
+              <CommentThreadRow
+                actionsDisabled={actionId !== null}
+                avatarUrl={child.authorAvatar}
+                badge={child.authorBadge}
+                canReply={canReply}
+                content={child.content}
+                createdAtLabel={formatCommunityTime(child.publishedAt)}
+                deleted={child.authorIsDeleted}
+                highlighted={highlightedReplyId === child.id}
+                key={child.id}
+                like={{
+                  count: child.likes,
+                  disabled: actionId !== null,
+                  liked: child.liked,
+                  onPress: () => onLike(child),
+                }}
+                onReply={() => onReply(child)}
+                palette={palette}
+                replyToName={childReplyToName}
+                userName={child.authorName}
+                variant="reply"
+              />
+            );
+          })}
+          {reply.childPage.hasMore ? (
+            <Button
+              disabled={actionId === `children:${reply.id}`}
+              loading={actionId === `children:${reply.id}`}
+              mode="text"
+              onPress={() => onLoadChildren(reply)}
+              style={styles.childMoreButton}
+            >
+              {reply.childReplies.length > 0 ? 'Load more replies' : 'Show replies'}
+            </Button>
+          ) : null}
+        </CommentThreadChildren>
+      ) : null}
+    </View>
+  );
+}
+
+function toCommunityCommentPalette(
+  colors: ReturnType<typeof useAppTheme>['colors'],
+): CommentThreadPalette {
+  return {
+    accent: colors.accent,
+    error: colors.error,
+    highlightBackground: colors.primaryContainer,
+    label: colors.label,
+    onSurfaceVariant: colors.secondaryLabel,
+    separator: colors.separator,
+    surfaceContainerHighest: colors.surfaceContainerHighest,
+  };
+}
+
+const useCommunityThreadStyles = createThemedStyles((colors) => ({
+  actionButton: { borderRadius: 999 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 12 },
+  authorCopy: { flex: 1 },
+  authorName: { color: colors.label, fontSize: 14, fontWeight: '700' },
+  authorRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  avatar: { overflow: 'hidden' },
+  avatarLabel: { fontSize: 13, fontWeight: '700' },
+  childMoreButton: { alignSelf: 'flex-start', marginLeft: 6 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 14, paddingTop: 14 },
+  content: { paddingBottom: 42, paddingHorizontal: 16 },
+  footer: { gap: 16, paddingTop: 16 },
+  footerButton: { alignSelf: 'center' },
+  footerSpinner: { alignItems: 'center', paddingVertical: 4 },
+  header: { gap: 14, paddingBottom: 14 },
+  html: { marginTop: 6 },
+  loading: { paddingTop: 14 },
+  noticeBody: { alignItems: 'center', flexDirection: 'row', gap: 10, padding: 14 },
+  noticeCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.separator,
+    borderCurve: 'continuous',
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  noticeText: { color: colors.secondaryLabel, flex: 1, fontSize: 13, lineHeight: 19 },
+  postBody: { gap: 13, padding: 16 },
+  postCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.separator,
+    borderCurve: 'continuous',
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  pressed: { opacity: 0.72 },
+  related: { gap: 12 },
+  relatedCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.separator,
+    borderCurve: 'continuous',
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  relatedMeta: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 8 },
+  relatedPressable: { padding: 14 },
+  relatedReplies: { alignItems: 'center', flexDirection: 'row', gap: 4 },
+  relatedRepliesText: { color: colors.secondaryLabel, fontSize: 12, fontVariant: ['tabular-nums'], fontWeight: '700' },
+  relatedTitle: { color: colors.label, fontSize: 15, fontWeight: '600', lineHeight: 20 },
+  replyBlock: { paddingVertical: 8 },
+  replySeparator: { backgroundColor: colors.separator, height: StyleSheet.hairlineWidth },
+  root: { backgroundColor: colors.background, flex: 1 },
+  stateBody: { alignItems: 'flex-start', flexDirection: 'row', gap: 12, padding: 18 },
+  stateCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.separator,
+    borderCurve: 'continuous',
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  stateCopy: { flex: 1, gap: 4 },
+  stateDescription: { color: colors.secondaryLabel, fontSize: 13, lineHeight: 19 },
+  stateIconBox: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceContainerHighest,
+    borderCurve: 'continuous',
+    borderRadius: 14,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  stateRetry: { alignSelf: 'center' },
+  stateTitle: { color: colors.label, fontSize: 16, fontWeight: '700' },
+  tagPill: {
+    backgroundColor: colors.surfaceContainerHighest,
+    borderCurve: 'continuous',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  tagPillAccent: { backgroundColor: colors.primaryContainer },
+  tagPillText: { color: colors.secondaryLabel, fontSize: 11, fontWeight: '600' },
+  tagPillTextAccent: { color: colors.onPrimaryContainer, fontWeight: '700' },
+  tagPillTextWarning: { color: '#B45309' },
+  tagPillWarning: { backgroundColor: '#FEF3C7' },
+  time: { color: colors.secondaryLabel, fontSize: 12, marginTop: 2 },
+  title: { color: colors.label, fontSize: 27, fontWeight: '800', lineHeight: 34 },
+}));

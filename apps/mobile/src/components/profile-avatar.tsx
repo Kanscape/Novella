@@ -1,11 +1,12 @@
 import { Avatar as HeroAvatar } from 'heroui-native';
+import type { ColorValue } from 'react-native';
 
 export interface ProfileAvatarProps {
   avatarUrl: string;
   /** Optional fallback background for palette-based screens (e.g. book themes). */
-  fallbackBackground?: string;
+  fallbackBackground?: ColorValue;
   /** Optional fallback text color for palette-based screens. */
-  fallbackColor?: string;
+  fallbackColor?: ColorValue;
   /** Pixel size, or one of heroui's named sizes (sm=40, md=48, lg=64). */
   size?: number | 'sm' | 'md' | 'lg';
   userName: string;

@@ -20,14 +20,17 @@ export interface CredentialStore {
   set(key: string, value: string): Promise<void>;
 }
 
-export interface PasswordHasher {
+export interface Sha256Hasher {
   sha256(value: string): Promise<string>;
 }
+
+export interface PasswordHasher extends Sha256Hasher {}
 
 export interface HttpRequest {
   body?: JsonValue | string;
   headers?: Readonly<Record<string, string>>;
   method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
+  responseType?: 'json' | 'text';
   signal?: AbortSignal;
   url: string;
 }

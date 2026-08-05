@@ -37,6 +37,8 @@ interface BookDetailThemeContextValue {
 
 const BookDetailThemeContext = createContext<BookDetailThemeContextValue | null>(null);
 
+export { BookDetailThemeContext };
+
 export function BookDetailThemeProvider({ children }: { children: ReactNode }) {
   const coverUrls = useRef(new Map<number, string>());
   const coverPlaceholders = useRef(new Map<number, string>());

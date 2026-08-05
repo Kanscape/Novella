@@ -1,9 +1,12 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
+import { useProfile } from '@/hooks/use-profile';
 import { useAppTheme } from '@/theme/app-theme';
 
 export default function TabsLayout() {
   const { colors } = useAppTheme();
+  const { profile } = useProfile();
+  const unreadNotifications = profile?.unreadNotificationCount ?? 0;
 
   return (
     <NativeTabs
@@ -37,6 +40,11 @@ export default function TabsLayout() {
           sf="text.bubble.fill"
         />
         <NativeTabs.Trigger.Label>Community</NativeTabs.Trigger.Label>
+        {unreadNotifications > 0 ? (
+          <NativeTabs.Trigger.Badge>
+            {unreadNotifications > 99 ? '99+' : String(unreadNotifications)}
+          </NativeTabs.Trigger.Badge>
+        ) : null}
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="(search)">
         <NativeTabs.Trigger.Icon
