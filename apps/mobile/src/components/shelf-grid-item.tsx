@@ -132,6 +132,7 @@ export function ShelfFolderGridItem({
 const useShelfFolderGridItemStyles = createThemedStyles((colors) => ({
   coverFrame: {
     backgroundColor: colors.card,
+    borderCurve: 'continuous',
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
@@ -145,12 +146,15 @@ const useShelfFolderGridItemStyles = createThemedStyles((colors) => ({
   folderBadge: {
     alignItems: 'center',
     backgroundColor: colors.accent,
-    borderRadius: 8,
-    bottom: 4,
+    borderCurve: 'continuous',
+    borderRadius: 12,
+    bottom: 0,
     justifyContent: 'center',
+    minHeight: 28,
+    minWidth: 28,
     padding: 4,
     position: 'absolute',
-    right: 4,
+    right: 0,
   },
   interactionOverlay: {
     alignItems: 'center',
