@@ -14,8 +14,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-router',
     'expo-dev-client',
     ['expo-media-library', {
-      granularPermissions: ['photo'],
-      photosPermission: 'Allow Novella to access your photos.',
+      // Saving does not need read access. iOS uses the add-only permission;
+      // Android requests no READ_MEDIA_* granular permission.
+      granularPermissions: [],
+      photosPermission: false,
       savePhotosPermission: 'Allow Novella to save images to your photo library.',
     }],
     'expo-sharing',

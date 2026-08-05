@@ -37,13 +37,13 @@ interface DownloadedReaderImage {
   format: ReaderImageFormat;
 }
 
-/** Save an image to the user's photo library and the Novella album. */
+/** Save an image without requesting read access to the user's photo library. */
 export async function saveReaderImage(imageUrl: string): Promise<void> {
   let permission: MediaLibrary.PermissionResponse;
   try {
     permission = Platform.OS === 'android'
-      ? await MediaLibrary.requestPermissionsAsync(false, ['photo'])
-      : await MediaLibrary.requestPermissionsAsync(false);
+      ? await MediaLibrary.requestPermissionsAsync(true, [])
+      : await MediaLibrary.requestPermissionsAsync(true);
   } catch (error) {
     throw mapSaveError(error);
   }
@@ -53,12 +53,19 @@ export async function saveReaderImage(imageUrl: string): Promise<void> {
 
   const downloaded = await downloadReaderImage(imageUrl);
   try {
-    const asset = await MediaLibrary.Asset.create(downloaded.file.uri);
-    const album = await MediaLibrary.Album.get(READER_IMAGE_ALBUM_NAME);
-    if (album) {
-      await album.add(asset);
+    if (Platform.OS === 'ios') {
+      // PHPhotoLibrary add-only access can create an asset, but album lookup
+      // and album mutation require full read/write access. Keep the privacy
+      // contract and save to the library without reading existing albums.
+      await MediaLibrary.Asset.create(downloaded.file.uri);
     } else {
-      await MediaLibrary.Album.create(READER_IMAGE_ALBUM_NAME, [asset], false);
+      // Android's MediaStore can place a new file directly in the album path
+      // without requesting READ_MEDIA_* access.
+      await MediaLibrary.Album.create(
+        READER_IMAGE_ALBUM_NAME,
+        [downloaded.file.uri],
+        true,
+      );
     }
   } catch (error) {
     throw mapSaveError(error);
