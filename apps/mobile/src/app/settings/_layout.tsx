@@ -5,6 +5,16 @@ import { useSystemScreenStackPreset } from '@/theme/stack-preset';
 export default function SettingsStackLayout() {
   const isAndroid = process.env.EXPO_OS === 'android';
   const systemScreenStackPreset = useSystemScreenStackPreset();
+  const badgeSheetOptions = isAndroid
+    ? {
+        animation: 'none' as const,
+        contentStyle: { backgroundColor: 'transparent' },
+      }
+    : {
+        sheetAllowedDetents: [0.75, 1],
+        sheetGrabberVisible: true,
+        sheetInitialDetentIndex: 0,
+      };
 
   return (
     <Stack screenOptions={{ ...systemScreenStackPreset, headerShown: !isAndroid }}>
@@ -16,6 +26,15 @@ export default function SettingsStackLayout() {
       <Stack.Screen name="avatar" options={{ title: 'Avatar' }} />
       <Stack.Screen name="reader" options={{ title: 'Reading' }} />
       <Stack.Screen name="content" options={{ title: 'Content' }} />
+      <Stack.Screen
+        name="badges"
+        options={{
+          ...badgeSheetOptions,
+          headerShown: false,
+          presentation: isAndroid ? 'transparentModal' : 'formSheet',
+          title: 'Badge meanings',
+        }}
+      />
       <Stack.Screen name="appearance" options={{ title: 'Appearance' }} />
       <Stack.Screen name="cache" options={{ title: 'Cache' }} />
       <Stack.Screen name="about" options={{ title: 'About Novella' }} />

@@ -4,6 +4,7 @@ export type NativeIconName =
   | 'appearance'
   | 'avatar'
   | 'badgeAi'
+  | 'badges'
   | 'badgeEdit'
   | 'badgeFilter1'
   | 'badgeFilter2'

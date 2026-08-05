@@ -1,6 +1,10 @@
 import { router } from 'expo-router';
 
-import { NativeGroupedList, NativeGroupedListSection } from '@/components/native-grouped-list';
+import {
+  NativeGroupedList,
+  NativeGroupedListRow,
+  NativeGroupedListSection,
+} from '@/components/native-grouped-list';
 import { NativePickerRow, NativeToggleRow } from '@/components/native-setting-controls';
 import {
   RANK_PERIOD_OPTIONS,
@@ -50,6 +54,15 @@ export function ContentSettingsScreen() {
           onValueChange={(value) => void updateAppSettings({ ignoreLevel6: value })}
           title="Hide Level 6 content"
           value={settings.ignoreLevel6}
+        />
+      </NativeGroupedListSection>
+
+      <NativeGroupedListSection title="Book badges">
+        <NativeGroupedListRow
+          description="Preview all book-cover badges and their meanings"
+          icon="badges"
+          onPress={() => router.push('/settings/badges')}
+          title="Badge meanings"
         />
       </NativeGroupedListSection>
 
