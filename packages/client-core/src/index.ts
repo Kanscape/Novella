@@ -110,6 +110,7 @@ export interface ClientSessionDependencies {
   lifecycle: AppLifecycle;
   signalR: SignalRTransport;
   backgroundDrainTimeoutMilliseconds?: number;
+  backgroundDisconnectDelayMilliseconds?: number;
   connectionTimeoutMilliseconds?: number;
   reconnectRetryDelaysMilliseconds?: readonly number[];
 }
@@ -407,12 +408,19 @@ export function createClientSessionController(
   let recovery: { epoch: number; promise: Promise<void> } | null = null;
   let epoch = 0;
   let closed = false;
+  let backgroundStartedAt: number | null = null;
+  let backgroundConnectionClosed = false;
+  let backgroundDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let gate = createClosedInvocationGate();
   let sessionSnapshot: ClientSessionSnapshot = { status: 'idle', error: null };
   const sessionListeners = new Set<(snapshot: ClientSessionSnapshot) => void>();
   const backgroundTasks = new Set<() => void | Promise<void>>();
   const backgroundDrainTimeoutMilliseconds =
     dependencies.backgroundDrainTimeoutMilliseconds ?? 2_000;
+  const backgroundDisconnectDelayMilliseconds = Math.max(
+    0,
+    dependencies.backgroundDisconnectDelayMilliseconds ?? 30_000,
+  );
   const connectionTimeoutMilliseconds =
     dependencies.connectionTimeoutMilliseconds ?? 30_000;
   const reconnectRetryDelaysMilliseconds =
@@ -425,6 +433,12 @@ export function createClientSessionController(
 
   function closeGate(): void {
     if (gate.open) gate = createClosedInvocationGate();
+  }
+
+  function cancelBackgroundDisconnect(): void {
+    if (backgroundDisconnectTimer === null) return;
+    clearTimeout(backgroundDisconnectTimer);
+    backgroundDisconnectTimer = null;
   }
 
   function openGate(): void {
@@ -478,12 +492,26 @@ export function createClientSessionController(
     }
   }
 
-  function startRecovery(recoveryEpoch: number, refreshAuthentication: boolean): Promise<void> {
+  function startRecovery(
+    recoveryEpoch: number,
+    refreshAuthentication: boolean,
+    forceReconnect = false,
+    silent = false,
+  ): Promise<void> {
     if (recovery?.epoch === recoveryEpoch) return recovery.promise;
 
     const promise = (async () => {
-      publish({ status: 'reconnecting', error: null });
+      if (!silent) publish({ status: 'reconnecting', error: null });
       let lastError: unknown | null = null;
+
+      if (forceReconnect) {
+        try {
+          await enqueueTransition(() => dependencies.signalR.close());
+        } catch (error) {
+          lastError = error;
+        }
+        if (!isCurrent(recoveryEpoch)) return;
+      }
 
       if (refreshAuthentication) {
         try {
@@ -550,6 +578,28 @@ export function createClientSessionController(
     }
   }
 
+  function scheduleBackgroundDisconnect(
+    transitionEpoch: number,
+    startedAt: number,
+    drain: Promise<void>,
+  ): void {
+    void drain.then(() => {
+      if (closed || foreground || transitionEpoch !== epoch) return;
+      const elapsed = Date.now() - startedAt;
+      const delay = Math.max(0, backgroundDisconnectDelayMilliseconds - elapsed);
+      backgroundDisconnectTimer = setTimeout(() => {
+        backgroundDisconnectTimer = null;
+        if (closed || foreground || transitionEpoch !== epoch) return;
+        void enqueueTransition(async () => {
+          if (closed || foreground || transitionEpoch !== epoch) return;
+          closeGate();
+          await dependencies.signalR.close();
+          backgroundConnectionClosed = true;
+        }).catch(() => undefined);
+      }, delay);
+    }).catch(() => undefined);
+  }
+
   function handleLifecycleState(state: 'foreground' | 'background'): void {
     if (closed) return;
     const nextForeground = state === 'foreground';
@@ -559,19 +609,36 @@ export function createClientSessionController(
     const transitionEpoch = ++epoch;
 
     if (!nextForeground) {
+      backgroundStartedAt = Date.now();
+      backgroundConnectionClosed = false;
       publish({ status: 'background', error: null });
-      const drain = drainBackgroundTasks();
-      void enqueueTransition(async () => {
-        await drain;
-        if (closed || foreground || transitionEpoch !== epoch) return;
-        closeGate();
-        await dependencies.signalR.close();
-      }).catch(() => undefined);
+      scheduleBackgroundDisconnect(
+        transitionEpoch,
+        backgroundStartedAt,
+        drainBackgroundTasks(),
+      );
       return;
     }
 
+    const backgroundDuration = backgroundStartedAt === null
+      ? null
+      : Math.max(0, Date.now() - backgroundStartedAt);
+    const forceReconnect =
+      !backgroundConnectionClosed &&
+      backgroundDuration !== null &&
+      backgroundDuration >= backgroundDisconnectDelayMilliseconds;
+    backgroundStartedAt = null;
+    backgroundConnectionClosed = false;
+    cancelBackgroundDisconnect();
     closeGate();
-    void startRecovery(transitionEpoch, true).catch(() => undefined);
+    void startRecovery(
+      transitionEpoch,
+      backgroundDuration === null ||
+        backgroundDuration >= backgroundDisconnectDelayMilliseconds,
+      forceReconnect,
+      backgroundDuration !== null &&
+        backgroundDuration < backgroundDisconnectDelayMilliseconds,
+    ).catch(() => undefined);
   }
 
   const transport: SignalRTransport = Object.freeze({
@@ -663,6 +730,9 @@ export function createClientSessionController(
       if (closed) return;
       closed = true;
       foreground = false;
+      backgroundStartedAt = null;
+      backgroundConnectionClosed = false;
+      cancelBackgroundDisconnect();
       epoch += 1;
       closeGate();
       lifecycleUnsubscribe?.();

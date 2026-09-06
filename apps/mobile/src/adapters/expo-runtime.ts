@@ -390,6 +390,9 @@ export class ExpoAppLifecycle implements AppLifecycle {
   subscribe(listener: (state: AppLifecycleState) => void): Unsubscribe {
     let previous = this.getCurrentState();
     const subscription = AppState.addEventListener('change', (status) => {
+      // `inactive` is a transient iOS state; do not turn it into a lifecycle
+      // transition that can start or stop the session.
+      if (status !== 'active' && status !== 'background') return;
       const next = toAppLifecycleState(status);
       if (next === previous) return;
       previous = next;
@@ -444,7 +447,10 @@ function shouldAttachBackendIdentity(url: string): boolean {
 }
 
 function toAppLifecycleState(status: AppStateStatus): AppLifecycleState {
-  return status === 'active' ? 'foreground' : 'background';
+  // iOS emits `inactive` for transient overlays and transitions (Control
+  // Center, notification shade, calls). Treat only a real background state as
+  // suspendable so those brief transitions do not tear down SignalR.
+  return status === 'background' ? 'background' : 'foreground';
 }
 
 export const REFRESH_TOKEN_KEY = AUTH_CREDENTIAL_KEYS.refreshToken;

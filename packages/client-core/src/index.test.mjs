@@ -266,6 +266,7 @@ test('background waits for registered reader persistence before closing SignalR'
     lifecycle,
     signalR,
     backgroundDrainTimeoutMilliseconds: 100,
+    backgroundDisconnectDelayMilliseconds: 0,
   });
   await session.start();
   session.registerBeforeBackground(() => persisted.promise);
@@ -275,6 +276,7 @@ test('background waits for registered reader persistence before closing SignalR'
   assert.equal(signalR.closeCalls, 0);
 
   persisted.resolve();
+  await nextTask();
   await nextTask();
   assert.equal(signalR.closeCalls, 1);
 
@@ -295,10 +297,12 @@ test('background closes the gate and foreground refreshes then reconnects before
     },
     lifecycle,
     signalR,
+    backgroundDisconnectDelayMilliseconds: 0,
   });
 
   await session.start();
   lifecycle.emit('background');
+  await nextTask();
   await nextTask();
   assert.equal(signalR.closeCalls, 1);
 
@@ -319,6 +323,48 @@ test('background closes the gate and foreground refreshes then reconnects before
   await invocation;
   assert.equal(signalR.connectCalls, 2);
   assert.equal(signalR.invokeCalls, 1);
+
+  await session.close();
+});
+
+test('short background keeps SignalR open until the grace period expires', async () => {
+  const lifecycle = new FakeLifecycle();
+  const signalR = new FakeSignalR();
+  const session = createClientSessionController({
+    async bootstrapAuthentication() {},
+    async refreshAuthentication() {},
+    lifecycle,
+    signalR,
+    backgroundDisconnectDelayMilliseconds: 25,
+  });
+
+  await session.start();
+  lifecycle.emit('background');
+  await nextTask();
+  assert.equal(signalR.closeCalls, 0);
+
+  lifecycle.emit('foreground');
+  await nextTask();
+  assert.equal(signalR.closeCalls, 0);
+
+  await session.close();
+});
+
+test('long background closes SignalR after the grace period', async () => {
+  const lifecycle = new FakeLifecycle();
+  const signalR = new FakeSignalR();
+  const session = createClientSessionController({
+    async bootstrapAuthentication() {},
+    async refreshAuthentication() {},
+    lifecycle,
+    signalR,
+    backgroundDisconnectDelayMilliseconds: 5,
+  });
+
+  await session.start();
+  lifecycle.emit('background');
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(signalR.closeCalls, 1);
 
   await session.close();
 });
